@@ -20,7 +20,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/compras', label: 'Compras', icon: '🛍️', admin: true },
   { to: '/reportes', label: 'Reportes', icon: '📈', admin: true },
   { to: '/gastos', label: 'Gastos', icon: '💵', admin: true },
-  { to: '/caja', label: 'Cierre de caja', icon: '🔒', admin: true },
+  { to: '/caja', label: 'Cierre de caja', icon: '🔒' },
   { to: '/usuarios', label: 'Usuarios', icon: '🧑‍💼', admin: true },
   { to: '/config', label: 'Configuración', icon: '⚙️', admin: true }
 ];

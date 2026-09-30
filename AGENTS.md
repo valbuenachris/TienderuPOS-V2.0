@@ -11,7 +11,8 @@
 - `tec_settings` is global because it has no tenant key. Do not present it as tenant-specific or expose SMTP secrets.
 - `tec_product_store_qty.quantity` is INTEGER and `price` is REAL; V1 store stock is whole-unit only and money calculations use decimal arithmetic.
 - All browser data access goes through the server, never Supabase JS/Data API. Existing RLS/grants remain unchanged and must not be treated as the app's tenant boundary.
-- Management endpoints (`/api/products`, `/api/customers`, `/api/expenses`, `/api/reports`, `/api/users`) are admin-only via `AdminGuard`; staff only accesses POS, own sales and dashboard. Suppliers, purchases and cash-register remain pending live-schema verification and are informational pages only.
+- Management endpoints (`/api/products`, `/api/customers`, `/api/expenses`, `/api/reports`, `/api/users`, `/api/suppliers`, `/api/purchases`) are admin-only via `AdminGuard`; registers (`/api/registers`) are available to staff scoped to their own store. Verify `tec_suppliers`, `tec_purchases`, `tec_purchase_items` and `tec_registers` against the live schema before first use; purchase quantities are whole units and update store stock plus product cost/price. No DDL.
 - Never enable `PASSWORD_REHASH_ENABLED` while the legacy sha1 POS shares `tec_users`.
+- Product images come from `tec_products.image`; full URLs (Supabase Storage) are returned unchanged, legacy filenames fall back to `PRODUCT_IMAGE_BASE_URL` (default `/uploads/thumbs`, mounted read-only via `LEGACY_UPLOADS_PATH`). Never rewrite absolute image URLs.
 
 Commands from this directory: `npm install`, `npm run dev:api`, `npm run dev:web`, `npm test`; build/push with `docker compose -f docker-compose.build.yml build --pull` and `docker compose -f docker-compose.build.yml push`; deploy pulled images with `docker compose pull` and `docker compose up -d`.

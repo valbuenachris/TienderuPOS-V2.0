@@ -24,7 +24,7 @@ export type Database = {
       tec_products: Table<{
         id: number; tenant_id: string | null; code: string | null; name: string | null;
         category_id: number | null; price: number | null; cost: number | null; tax: number | null;
-        type: string | null; reward_points: number | null;
+        type: string | null; reward_points: number | null; image: string | null;
       }>;
       tec_product_store_qty: Table<{
         id: number; tenant_id: string; product_id: number; store_id: number;
@@ -48,6 +48,28 @@ export type Database = {
       tec_expenses: Table<{
         id: number; tenant_id: string | null; date: string | null; reference: string | null;
         amount: number | null; note: string | null; created_by: number | null;
+      }>;
+      tec_suppliers: Table<{
+        id: number; tenant_id: string | null; name: string | null; cf1: string | null;
+        cf2: string | null; phone: string | null; email: string | null;
+      }>;
+      tec_purchases: Table<{
+        id: number; tenant_id: string | null; reference: string | null; date: string | null;
+        note: string | null; total: number | null; attachment: string | null; supplier_id: number | null;
+        received: number | null; created_by: number | null; store_id: number | null;
+      }>;
+      tec_purchase_items: Table<{
+        id: number; tenant_id: string | null; purchase_id: number | null; product_id: number | null;
+        quantity: number | null; cost: number | null; subtotal: number | null;
+        sale_price: number | null; profit_margin: number | null;
+      }>;
+      tec_registers: Table<{
+        id: number; tenant_id: string | null; date: string | null; user_id: number | null;
+        cash_in_hand: number | null; status: string | null; total_cash: number | null;
+        total_cheques: number | null; total_cc_slips: number | null;
+        total_cash_submitted: number | null; total_cheques_submitted: number | null;
+        total_cc_slips_submitted: number | null; note: string | null; closed_at: string | null;
+        transfer_opened_bills: string | null; closed_by: number | null; store_id: number | null;
       }>;
       tec_login_attempts: Table<{
         id: number; tenant_id: string | null; ip_address: string | null; login: string | null; time: number | null;

@@ -22,6 +22,8 @@ export interface Product {
   tax: string | null;
   available_quantity: string | null;
   type: string | null;
+  image_url: string | null;
+  image_full_url: string | null;
 }
 
 export interface Customer {
@@ -46,7 +48,16 @@ export interface SaleResult {
   grand_total: string;
   paid: string;
   status: string;
-  items: Array<{ product_id: number; quantity: string; unit_price: string; subtotal: string }>;
+  paid_by?: string | null;
+  created_at?: string | null;
+  items: Array<{
+    product_id: number;
+    code?: string | null;
+    name?: string | null;
+    quantity: string;
+    unit_price: string;
+    subtotal: string;
+  }>;
 }
 
 export interface CreateSalePayload {
@@ -286,3 +297,119 @@ export const fetchTopProducts = (from: string, to: string) =>
   apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));
 
 export const fetchUsers = () => apiRequest<UserRecord[]>('/users');
+
+export interface SupplierRecord {
+  id: number;
+  name: string | null;
+  cf1: string | null;
+  cf2: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+export interface SupplierPayload {
+  name: string;
+  cf1?: string;
+  cf2?: string;
+  phone?: string;
+  email?: string;
+}
+
+export interface PurchaseListRow {
+  id: number;
+  reference: string | null;
+  date: string | null;
+  note: string | null;
+  total: string | null;
+  received: number | null;
+  supplier_id: number | null;
+  supplier_name: string | null;
+  store_id: number | null;
+  created_by: number | null;
+}
+
+export interface PurchaseItemPayload {
+  product_id: number;
+  quantity: string;
+  cost: string;
+  sale_price?: string;
+}
+
+export interface PurchasePayload {
+  supplier_id?: number;
+  reference?: string;
+  date?: string;
+  note?: string;
+  store_id?: number;
+  items: PurchaseItemPayload[];
+}
+
+export interface RegisterRecord {
+  id: number;
+  date: string | null;
+  user_id: number | null;
+  cash_in_hand: string | null;
+  status: string | null;
+  total_cash: string | null;
+  total_cash_submitted: string | null;
+  note: string | null;
+  closed_at: string | null;
+  closed_by: number | null;
+  store_id: number | null;
+}
+
+export interface RegisterSummary {
+  store_id: number;
+  date: string;
+  payments: {
+    cash: string;
+    card: string;
+    transfer: string;
+    paid_total: string;
+    payments_count: number;
+    card_count: number;
+  };
+  sales: {
+    sales_count: number;
+    subtotal: string;
+    grand_total: string;
+    paid: string;
+  };
+}
+
+export interface RegisterCloseResult {
+  register: RegisterRecord;
+  totals: RegisterSummary['payments'];
+}
+
+export const fetchSuppliers = (search: string) =>
+  apiRequest<SupplierRecord[]>(withQuery('/suppliers', { q: search }));
+
+export const createSupplier = (payload: SupplierPayload) =>
+  apiRequest<SupplierRecord>('/suppliers', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateSupplier = (id: number, payload: SupplierPayload) =>
+  apiRequest<SupplierRecord>(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const fetchPurchases = (from?: string, to?: string) =>
+  apiRequest<PurchaseListRow[]>(withQuery('/purchases', { from, to, limit: 100 }));
+
+export const createPurchase = (payload: PurchasePayload) =>
+  apiRequest<{ id: number; reference: string; total: string; store_id: number; supplier_id: number | null; items: number }>(
+    '/purchases',
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+
+export const fetchRegisters = () => apiRequest<RegisterRecord[]>('/registers');
+
+export const fetchCurrentRegister = (storeId?: number) =>
+  apiRequest<RegisterRecord | null>(withQuery('/registers/current', { store_id: storeId }));
+
+export const fetchRegisterSummary = (date: string, storeId?: number) =>
+  apiRequest<RegisterSummary>(withQuery('/registers/summary', { date, store_id: storeId }));
+
+export const openRegister = (payload: { store_id?: number; cash_in_hand: string }) =>
+  apiRequest<RegisterRecord>('/registers/open', { method: 'POST', body: JSON.stringify(payload) });
+
+export const closeRegister = (id: number, payload: { note?: string; total_cash_submitted?: string }) =>
+  apiRequest<RegisterCloseResult>(`/registers/${id}/close`, { method: 'POST', body: JSON.stringify(payload) });

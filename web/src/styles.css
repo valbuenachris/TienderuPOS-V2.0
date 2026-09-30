@@ -107,6 +107,21 @@ input:focus, select:focus { border-color: #159252; box-shadow: 0 0 0 3px #159252
   overflow: hidden;
 }
 .product-card:hover { border-color: #69b58a; background: #f4fbf6; transform: translateY(-1px); }
+.product-image {
+  width: 100%;
+  height: 110px;
+  display: block;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid #e4ebe5;
+  background: #f4f7f4;
+}
+.product-image.placeholder {
+  display: grid;
+  place-items: center;
+  color: #9aa79e;
+  font-size: 32px;
+}
 .product-card strong {
   max-width: 100%;
   font-size: 14px;
@@ -162,7 +177,7 @@ input:focus, select:focus { border-color: #159252; box-shadow: 0 0 0 3px #159252
 .checkout { margin-top: 16px; }
 .notice { margin-bottom: 14px; padding: 11px 13px; border: 1px solid #d6eadb; border-radius: 10px; background: #f0f8f2; color: #27633c; font-size: 13px; }
 .notice.error { border-color: #f3d0ca; background: #fff4f2; color: #a53c2d; }
-.receipt { margin-top: 14px; padding: 11px; border-radius: 10px; background: #f1f8f3; color: #356345; font-size: 12px; }
+.receipt { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; padding: 11px; border-radius: 10px; background: #f1f8f3; color: #356345; font-size: 12px; }
 
 @media (max-width: 900px) {
   .workspace { grid-template-columns: 1fr; }
@@ -278,6 +293,48 @@ input:focus, select:focus { border-color: #159252; box-shadow: 0 0 0 3px #159252
 .link-button { display: inline-flex; align-items: center; text-decoration: none; }
 .notice.success { border-color: #d6eadb; background: #f0f8f2; color: #27633c; }
 .sidebar-backdrop { display: none; }
+
+.purchase-rows { display: grid; gap: 10px; }
+.purchase-row {
+  display: grid;
+  grid-template-columns: minmax(140px, 1.4fr) repeat(3, minmax(70px, 0.6fr)) auto;
+  gap: 8px;
+  align-items: end;
+}
+.purchase-row label { margin: 0; }
+.purchase-row .quiet { align-self: center; }
+.purchase-total { display: flex; align-items: baseline; justify-content: space-between; margin: 6px 0; }
+.purchase-total strong { font-size: 20px; font-weight: 800; }
+
+.print-receipt { display: none; }
+
+@media (max-width: 900px) {
+  .purchase-row { grid-template-columns: 1fr 1fr; }
+}
+
+@media print {
+  body { background: #fff; }
+  body * { visibility: hidden; }
+  .print-receipt, .print-receipt * { visibility: visible; }
+  .print-receipt {
+    display: block;
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 54mm;
+    padding: 0 2mm;
+    background: #fff;
+    color: #000;
+    font-family: "Courier New", ui-monospace, monospace;
+    font-size: 11px;
+    line-height: 1.35;
+  }
+  .print-center { text-align: center; }
+  .print-line { display: flex; justify-content: space-between; gap: 4px; }
+  .print-total { font-weight: 700; }
+  .print-thanks { margin-top: 6px; }
+  @page { size: 58mm auto; margin: 3mm 2mm; }
+}
 
 @media (max-width: 1000px) {
   .split-layout { grid-template-columns: 1fr; }

@@ -59,8 +59,12 @@ Las políticas y grants de Supabase no se modifican; RLS no reemplaza los filtro
 
 ## Interfaz y navegación
 
-El frontend usa React Router con un shell de 13 secciones. Los cajeros (`staff`) ven Punto de venta, Dashboard y Ventas; el grupo `admin` ve además Productos, Inventario, Clientes, Proveedores, Compras, Reportes, Gastos, Cierre de caja, Usuarios y Configuración.
+El frontend usa React Router con un shell de 13 secciones. Los cajeros (`staff`) ven Punto de venta, Dashboard, Ventas y Cierre de caja; el grupo `admin` ve además Productos, Inventario, Clientes, Proveedores, Compras, Reportes, Gastos, Usuarios y Configuración.
 
-Módulos operativos en esta versión: POS, Dashboard, historial de ventas, productos (crear/editar y ajustar stock), inventario (lectura), clientes (crear/editar), gastos (crear/editar), reportes (resumen diario y productos más vendidos), usuarios (lectura) y configuración (lectura). Proveedores, Compras y Cierre de caja quedan como páginas informativas hasta verificar su esquema en la base viva (`tec_suppliers`, `tec_purchases`, `tec_purchase_items`, `tec_registers`).
+Módulos operativos: POS con impresión de ticket de 58 mm, Dashboard, historial de ventas, productos (crear/editar/ajustar stock), inventario (lectura), clientes (crear/editar), proveedores (crear/editar), compras (registro con actualización de stock y costo; cantidades enteras), cierre de caja (apertura, resumen por forma de pago y cierre con arqueo), gastos (crear/editar), reportes (resumen diario y productos más vendidos), usuarios (lectura) y configuración (lectura).
 
-Endpoints de gestión (solo admin): `GET/POST /api/products`, `PUT /api/products/:id`, `PUT /api/products/:id/stock`, `GET/POST/PUT /api/customers`, `GET/POST/PUT /api/expenses`, `GET /api/reports/summary`, `GET /api/reports/top-products`, `GET /api/users`.
+Antes del primer uso de proveedores, compras o caja, verificar en la base viva las columnas de `tec_suppliers`, `tec_purchases`, `tec_purchase_items` y `tec_registers` (incluido `tenant_id`). No se aplica DDL.
+
+Endpoints de gestión (solo admin): `GET/POST /api/products`, `PUT /api/products/:id`, `PUT /api/products/:id/stock`, `GET/POST/PUT /api/customers`, `GET/POST/PUT /api/expenses`, `GET/POST/PUT /api/suppliers`, `GET /api/purchases?from&to`, `GET /api/purchases/:id`, `POST /api/purchases`, `GET /api/reports/summary`, `GET /api/reports/top-products`, `GET /api/users`. Caja (admin y staff): `GET /api/registers`, `GET /api/registers/current`, `GET /api/registers/summary`, `POST /api/registers/open`, `POST /api/registers/:id/close`.
+
+Las imágenes de producto (`tec_products.image`) pueden guardar una URL completa (Supabase Storage) o un nombre de archivo legacy. La API respeta la URL completa tal cual; para nombres legacy arma `/uploads/thumbs/<archivo>` con fallback a `/uploads/<archivo>` y un placeholder si no existen. El Compose de despliegue monta `LEGACY_UPLOADS_PATH` (por defecto `/home/ubuntu/pos-gres/uploads`) como solo lectura en el contenedor web; ese montaje solo aplica si usas nombres legacy.

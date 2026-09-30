@@ -3,16 +3,18 @@ import type { ReactElement } from 'react';
 import AppLayout from './app/AppLayout';
 import { SessionProvider, useSession } from './app/session';
 import DashboardPage from './pages/DashboardPage';
+import CashRegisterPage from './pages/CashRegisterPage';
 import CustomersPage from './pages/CustomersPage';
 import ExpensesPage from './pages/ExpensesPage';
 import InventoryPage from './pages/InventoryPage';
 import LoginPage from './pages/LoginPage';
-import PendingPage from './pages/PendingPage';
 import PosPage from './pages/PosPage';
 import ProductsPage from './pages/ProductsPage';
+import PurchasesPage from './pages/PurchasesPage';
 import ReportsPage from './pages/ReportsPage';
 import SalesHistoryPage from './pages/SalesHistoryPage';
 import SettingsPage from './pages/SettingsPage';
+import SuppliersPage from './pages/SuppliersPage';
 import UsersPage from './pages/UsersPage';
 
 function RequireAuth() {
@@ -46,20 +48,11 @@ export default function App() {
             <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
             <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
             <Route path="/clientes" element={<AdminOnly><CustomersPage /></AdminOnly>} />
-            <Route
-              path="/proveedores"
-              element={<AdminOnly><PendingPage title="Proveedores" detail="La tabla tec_suppliers no está verificada en la base viva. Este módulo se habilitará tras validar su esquema." /></AdminOnly>}
-            />
-            <Route
-              path="/compras"
-              element={<AdminOnly><PendingPage title="Compras" detail="Los módulos de compras requieren verificar tec_purchases y tec_purchase_items, y definir la actualización de stock/costo junto al POS legacy." /></AdminOnly>}
-            />
+            <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
+            <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
             <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />
             <Route path="/gastos" element={<AdminOnly><ExpensesPage /></AdminOnly>} />
-            <Route
-              path="/caja"
-              element={<AdminOnly><PendingPage title="Cierre de caja" detail="El cierre de caja requiere verificar tec_registers y las reglas de arqueo del POS legacy." /></AdminOnly>}
-            />
+            <Route path="/caja" element={<CashRegisterPage />} />
             <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />
             <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             <Route path="*" element={<Navigate to="/pos" replace />} />

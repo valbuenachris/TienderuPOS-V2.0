@@ -4,6 +4,7 @@ import {
   createManagedCustomer,
   createManagedProduct,
   createSale,
+  fetchCurrentRegister,
   fetchCustomers,
   fetchDailyReport,
   fetchExpenses,
@@ -11,10 +12,14 @@ import {
   fetchManagedProducts,
   fetchPosUser,
   fetchProducts,
+  fetchPurchases,
+  fetchRegisterSummary,
+  fetchRegisters,
   fetchReportSummary,
   fetchSales,
   fetchSettings,
   fetchStores,
+  fetchSuppliers,
   fetchTopProducts,
   fetchUsers,
   loginPos,
@@ -202,3 +207,53 @@ export const expenseMutations = {
   create: createExpense,
   update: updateExpense
 };
+
+export function useSuppliersQuery(token: string | null, tenantId: string | null, search: string) {
+  return useQuery({
+    queryKey: ['suppliers', tenantId, search],
+    queryFn: () => fetchSuppliers(search),
+    enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function usePurchasesQuery(token: string | null, tenantId: string | null, from?: string, to?: string) {
+  return useQuery({
+    queryKey: ['purchases', tenantId, from ?? '', to ?? ''],
+    queryFn: () => fetchPurchases(from, to),
+    enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useRegistersQuery(token: string | null, tenantId: string | null) {
+  return useQuery({
+    queryKey: ['registers', tenantId],
+    queryFn: fetchRegisters,
+    enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useCurrentRegisterQuery(token: string | null, tenantId: string | null, storeId: number | null) {
+  return useQuery({
+    queryKey: ['register-current', tenantId, storeId],
+    queryFn: () => fetchCurrentRegister(storeId ?? undefined),
+    enabled: Boolean(token && tenantId && storeId),
+    retry: false
+  });
+}
+
+export function useRegisterSummaryQuery(
+  token: string | null,
+  tenantId: string | null,
+  date: string,
+  storeId: number | null
+) {
+  return useQuery({
+    queryKey: ['register-summary', tenantId, storeId, date],
+    queryFn: () => fetchRegisterSummary(date, storeId ?? undefined),
+    enabled: Boolean(token && tenantId && storeId),
+    retry: false
+  });
+}

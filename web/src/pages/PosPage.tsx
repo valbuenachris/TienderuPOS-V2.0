@@ -9,6 +9,25 @@ import { formatMoney } from '../format';
 type CartLine = { product: Product; quantity: number };
 type PaymentMode = 'cash' | 'CC' | 'Transferencia' | 'due';
 
+function ProductImage({ product }: { product: Product }) {
+  const [stage, setStage] = useState(0);
+  const candidates = [product.image_url, product.image_full_url]
+    .filter((value): value is string => Boolean(value));
+  const source = candidates[stage];
+  if (!source) {
+    return <div className="product-image placeholder" aria-hidden>📦</div>;
+  }
+  return (
+    <img
+      className="product-image"
+      src={source}
+      alt={product.name || 'Producto'}
+      loading="lazy"
+      onError={() => setStage((value) => value + 1)}
+    />
+  );
+}
+
 export default function PosPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, user, isAdmin, stores, settings } = useSession();
@@ -143,6 +162,7 @@ export default function PosPage() {
               disabled={saleMutation.isPending || product.price === null || Number(product.available_quantity) <= 0}
               onClick={() => addToCart(product)}
             >
+              <ProductImage product={product} />
               <span className="product-code">{product.code || `#${product.id}`}</span>
               <strong>{product.name || 'Producto'}</strong>
               <span>{formatMoney(product.price, currency)}</span>
@@ -190,9 +210,36 @@ export default function PosPage() {
           <button className="primary full checkout" onClick={submitSale} disabled={saleMutation.isPending || cart.length === 0}>
             {saleMutation.isPending ? 'Procesando…' : 'Registrar venta'}
           </button>
-          {lastSale ? <div className="receipt">Última venta: <strong>#{lastSale.id}</strong> · {formatMoney(lastSale.grand_total, currency)}</div> : null}
+          {lastSale ? (
+            <div className="receipt">
+              <span>Última venta: <strong>#{lastSale.id}</strong> · {formatMoney(lastSale.grand_total, currency)}</span>
+              <button className="quiet" type="button" onClick={() => window.print()}>Imprimir ticket</button>
+            </div>
+          ) : null}
         </div>
       </aside>
+
+      {lastSale ? (
+        <div className="print-receipt" aria-hidden>
+          <div className="print-center"><strong>{settings?.site_name || 'POS'}</strong></div>
+          <div>Ticket #{lastSale.id}</div>
+          <div>{lastSale.created_at ? new Date(lastSale.created_at).toLocaleString('es-CO') : ''}</div>
+          <div>Cliente: {lastSale.customer_name || 'Cliente ocasional'}</div>
+          <div>--------------------------------</div>
+          {lastSale.items.map((item) => (
+            <div className="print-line" key={item.product_id}>
+              <span>{item.quantity} x {item.name || item.code || `#${item.product_id}`}</span>
+              <span>{formatMoney(item.subtotal, currency)}</span>
+            </div>
+          ))}
+          <div>--------------------------------</div>
+          <div className="print-line"><span>Subtotal</span><span>{formatMoney(lastSale.total, currency)}</span></div>
+          <div className="print-line"><span>Impuestos</span><span>{formatMoney(lastSale.tax_total, currency)}</span></div>
+          <div className="print-line print-total"><span>TOTAL</span><span>{formatMoney(lastSale.grand_total, currency)}</span></div>
+          <div className="print-line"><span>Pagado ({lastSale.paid_by || 'pendiente'})</span><span>{formatMoney(lastSale.paid, currency)}</span></div>
+          <div className="print-center print-thanks">¡Gracias por su compra!</div>
+        </div>
+      ) : null}
     </div>
   );
 }

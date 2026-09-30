@@ -7,9 +7,12 @@ import { DatabaseModule } from './database/database.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { HealthController } from './health.controller';
 import { ProductsModule } from './products/products.module';
+import { PurchasesModule } from './purchases/purchases.module';
+import { RegistersModule } from './registers/registers.module';
 import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
+import { SuppliersModule } from './suppliers/suppliers.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -28,7 +31,10 @@ import { UsersModule } from './users/users.module';
     CustomersModule,
     ExpensesModule,
     ReportsModule,
-    UsersModule
+    UsersModule,
+    SuppliersModule,
+    PurchasesModule,
+    RegistersModule
   ],
   controllers: [HealthController]
 })

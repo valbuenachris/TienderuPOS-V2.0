@@ -10,7 +10,7 @@ type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | '
   tax: string | null;
 };
 type StockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'> & { store_price: string | null };
-type SaleIdRow = Pick<TableRow<'tec_sales'>, 'id'>;
+type SaleIdRow = Pick<TableRow<'tec_sales'>, 'id' | 'created_at'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
 type CustomerIdNameRow = Pick<TableRow<'tec_customers'>, 'id' | 'name'>;
 type UpdatedStockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'>;
@@ -68,6 +68,8 @@ export class SalesService {
       const lines = [...input.items].sort((a, b) => a.product_id - b.product_id);
       const prepared: Array<{
         productId: number;
+        code: string | null;
+        name: string | null;
         quantity: Decimal;
         unitPrice: Decimal;
         subtotal: Decimal;
@@ -140,7 +142,7 @@ export class SalesService {
         const lineRewards = rewardsPerUnit * quantity.toNumber();
         if (!Number.isSafeInteger(lineRewards)) throw new BadRequestException('Reward points are out of range');
 
-        prepared.push({ productId: product.id, quantity, unitPrice, subtotal: lineSubtotal, rewardPoints: lineRewards });
+        prepared.push({ productId: product.id, code: product.code, name: product.name, quantity, unitPrice, subtotal: lineSubtotal, rewardPoints: lineRewards });
         total = total.plus(lineSubtotal);
         taxTotal = taxTotal.plus(lineTax);
         totalQuantity = totalQuantity.plus(quantity);
@@ -180,7 +182,7 @@ export class SalesService {
            total_items, total_quantity, status, created_by, store_id,
            total_reward_points, created_at, user_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, NULL)
-         RETURNING id`,
+         RETURNING id, created_at`,
         [
           tenantId, customer?.id ?? null, customer?.name ?? 'Cliente ocasional',
           total.toFixed(2), grandTotal.toFixed(2), paid.toFixed(2), prepared.length,
@@ -189,6 +191,7 @@ export class SalesService {
       );
       const saleId = header.rows[0]?.id;
       if (saleId === undefined) throw new BadRequestException('Sale could not be created');
+      const saleCreatedAt = header.rows[0]?.created_at ?? null;
 
       for (const line of prepared) {
         await client.query(
@@ -218,11 +221,15 @@ export class SalesService {
         grand_total: grandTotal.toFixed(2),
         paid: paid.toFixed(2),
         status,
+        paid_by: input.paid_by ?? null,
+        created_at: saleCreatedAt,
         total_items: prepared.length,
         total_quantity: totalQuantity.toFixed(2),
         total_reward_points: totalRewardPoints,
         items: prepared.map((line) => ({
           product_id: line.productId,
+          code: line.code,
+          name: line.name,
           quantity: line.quantity.toFixed(2),
           unit_price: line.unitPrice.toFixed(2),
           subtotal: line.subtotal.toFixed(2),

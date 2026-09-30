@@ -1,4 +1,5 @@
 import { Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import Decimal from 'decimal.js';
 import { PosUser } from '../auth/auth.types';
 import { SupabaseService } from '../database/supabase.service';
@@ -6,7 +7,7 @@ import { TableRow } from '../database/database.types';
 
 type ProductListRow = Pick<
   TableRow<'tec_products'>,
-  'id' | 'code' | 'name' | 'price' | 'tax' | 'type'
+  'id' | 'code' | 'name' | 'price' | 'tax' | 'type' | 'image'
 >;
 
 type StoreStockRow = Pick<TableRow<'tec_product_store_qty'>, 'product_id' | 'quantity' | 'price'>;
@@ -16,13 +17,43 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
+const ABSOLUTE_IMAGE_RE = /^(https?:)?\/\//i;
+
+function normalizeImageName(value: string | null): string | null {
+  if (!value) return null;
+  const clean = value.trim();
+  if (!clean || clean.toLowerCase().startsWith('no_image')) return null;
+  return clean;
+}
+
+function isAbsoluteImageUrl(value: string): boolean {
+  return ABSOLUTE_IMAGE_RE.test(value) || value.startsWith('/');
+}
+
+function resolveImageUrl(base: string, value: string | null): string | null {
+  const name = normalizeImageName(value);
+  if (!name) return null;
+  // Supabase Storage (or any external host) stores the full URL: use it as-is.
+  if (isAbsoluteImageUrl(name)) return name;
+  // Legacy rows store just the filename: prefix it with the configured base.
+  return `${base.replace(/\/+$/, '')}/${encodeURIComponent(name)}`;
+}
+
 function throwCatalogError(): never {
   throw new InternalServerErrorException('Catalog query failed');
 }
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly supabase: SupabaseService) {}
+  private readonly imageBase: string;
+  private readonly imageFullBase: string;
+
+  constructor(private readonly supabase: SupabaseService, config: ConfigService) {
+    this.imageBase = config.get<string>('PRODUCT_IMAGE_BASE_URL') ?? '/uploads/thumbs';
+    this.imageFullBase = this.imageBase.endsWith('/thumbs')
+      ? this.imageBase.slice(0, -'/thumbs'.length)
+      : this.imageBase;
+  }
 
   async listStores(tenantId: string, user: PosUser) {
     let query = this.supabase.client.from('tec_stores')
@@ -47,7 +78,7 @@ export class CatalogService {
     if (!store.data) throw new NotFoundException('Store not found in this tenant');
 
     const cleanSearch = search.trim().slice(0, 100);
-    const fields = 'id, code, name, price, tax, type';
+    const fields = 'id, code, name, price, tax, type, image';
     let productRows: ProductListRow[] = [];
 
     if (!cleanSearch) {
@@ -90,10 +121,14 @@ export class CatalogService {
       const price = rawPrice === null
         ? null
         : new Decimal(rawPrice).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+      const rawImage = normalizeImageName(product.image);
+      const hasAbsoluteImage = rawImage !== null && isAbsoluteImageUrl(rawImage);
       return {
         ...product,
         price,
         tax: product.tax === null ? null : String(product.tax),
+        image_url: resolveImageUrl(this.imageBase, product.image),
+        image_full_url: hasAbsoluteImage ? null : resolveImageUrl(this.imageFullBase, product.image),
         available_quantity: duplicateStockProducts.has(product.id) ? '0' : String(stock?.quantity ?? 0)
       };
     });

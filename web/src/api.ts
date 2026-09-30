@@ -1,0 +1,288 @@
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+const TOKEN_KEY = 'pos-gres-v2-token';
+
+export interface PosUser {
+  id: number;
+  tenant_id: string;
+  username: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  group_id: number | null;
+  group_name: string | null;
+  store_id: number | null;
+  active: number;
+}
+
+export interface Product {
+  id: number;
+  code: string | null;
+  name: string | null;
+  price: string | null;
+  tax: string | null;
+  available_quantity: string | null;
+  type: string | null;
+}
+
+export interface Customer {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+export interface Store {
+  id: number;
+  name: string;
+  code: string | null;
+}
+
+export interface SaleResult {
+  id: number;
+  customer_name: string | null;
+  store_id: number;
+  total: string;
+  tax_total: string;
+  grand_total: string;
+  paid: string;
+  status: string;
+  items: Array<{ product_id: number; quantity: string; unit_price: string; subtotal: string }>;
+}
+
+export interface CreateSalePayload {
+  store_id: number;
+  customer_id?: number;
+  items: Array<{ product_id: number; quantity: string }>;
+  paid_by?: 'cash' | 'CC' | 'Transferencia';
+}
+
+export interface PosSettings {
+  site_name: string;
+  currency_prefix: string;
+  default_customer: number | null;
+}
+
+export interface SaleListRow {
+  id: number;
+  customer_name: string | null;
+  total: string | null;
+  grand_total: string | null;
+  paid: string | null;
+  total_items: number | null;
+  total_quantity: string | null;
+  status: string | null;
+  created_at: string | null;
+  created_by: number | null;
+  store_id: number | null;
+}
+
+export interface DailyReport {
+  day: string;
+  sales_count: number;
+  total: string;
+  grand_total: string;
+  paid: string;
+}
+
+export interface ManagedProduct {
+  id: number;
+  code: string | null;
+  name: string | null;
+  price: string | null;
+  cost: string | null;
+  tax: string | null;
+  type: string | null;
+  reward_points: number | null;
+  store_quantity: number | null;
+  store_price: string | null;
+}
+
+export interface ManagedProductPayload {
+  code: string;
+  name: string;
+  price: string;
+  cost?: string;
+  tax?: string;
+  reward_points?: number;
+  store_id?: number;
+  quantity?: number;
+}
+
+export interface ManagedCustomer {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  store_id: number | null;
+}
+
+export interface ManagedCustomerPayload {
+  name: string;
+  email?: string;
+  phone?: string;
+  store_id?: number;
+}
+
+export interface ExpenseRecord {
+  id: number;
+  date: string | null;
+  reference: string | null;
+  amount: string | null;
+  note: string | null;
+  created_by: number | null;
+}
+
+export interface ExpensePayload {
+  reference: string;
+  amount: string;
+  date?: string;
+  note?: string;
+}
+
+export interface ReportDay {
+  day: string;
+  sales_count: number;
+  total: string;
+  grand_total: string;
+  paid: string;
+  due: string;
+}
+
+export interface TopProduct {
+  product_id: number;
+  code: string | null;
+  name: string | null;
+  quantity: string;
+  subtotal: string;
+}
+
+export interface UserRecord {
+  id: number;
+  username: string | null;
+  email: string | null;
+  first_name: string | null;
+  last_name: string | null;
+  group_name: string | null;
+  store_id: number | null;
+  active: number | null;
+}
+
+export function getToken(): string | null {
+  return sessionStorage.getItem(TOKEN_KEY);
+}
+
+export function setToken(token: string | null): void {
+  if (token) sessionStorage.setItem(TOKEN_KEY, token);
+  else sessionStorage.removeItem(TOKEN_KEY);
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readErrorMessage(payload: unknown): string {
+  if (!isRecord(payload)) return 'No fue posible completar la solicitud';
+  if (typeof payload.message === 'string') return payload.message;
+  if (isRecord(payload.error) && typeof payload.error.message === 'string') return payload.error.message;
+  return 'No fue posible completar la solicitud';
+}
+
+function withQuery(path: string, params: Record<string, string | number | undefined | null>): string {
+  const query = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') query.set(key, String(value));
+  }
+  const serialized = query.toString();
+  return serialized ? `${path}?${serialized}` : path;
+}
+
+export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
+  const headers = new Headers(init.headers);
+  headers.set('Accept', 'application/json');
+  if (init.body) headers.set('Content-Type', 'application/json');
+  const token = getToken();
+  if (token) headers.set('Authorization', `Bearer ${token}`);
+
+  const response = await fetch(`${API_BASE}${path}`, { ...init, headers });
+  if (response.status === 204) return undefined as T;
+  const payload: unknown = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(readErrorMessage(payload));
+  }
+  return payload as T;
+}
+
+export const loginPos = (identity: string, password: string) =>
+  apiRequest<{ access_token: string }>('/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ identity, password })
+  });
+
+export const logoutPos = () => apiRequest('/auth/logout', { method: 'POST' });
+
+export const fetchPosUser = () =>
+  apiRequest<{ tenant_id: string; user: PosUser }>('/auth/me');
+
+export const fetchStores = () => apiRequest<Store[]>('/catalog/stores');
+
+export const fetchCustomers = (storeId: number) =>
+  apiRequest<Customer[]>(`/catalog/customers?store_id=${storeId}`);
+
+export const fetchSettings = () => apiRequest<PosSettings>('/settings');
+
+export const fetchProducts = (storeId: number, search: string) => {
+  const query = new URLSearchParams({ store_id: String(storeId), q: search });
+  return apiRequest<Product[]>(`/catalog/products?${query.toString()}`);
+};
+
+export const createSale = (payload: CreateSalePayload) =>
+  apiRequest<SaleResult>('/sales', { method: 'POST', body: JSON.stringify(payload) });
+
+export const fetchSales = (from?: string, to?: string, limit = 50, offset = 0) =>
+  apiRequest<SaleListRow[]>(withQuery('/sales', { from, to, limit, offset }));
+
+export const fetchDailyReport = (date: string) =>
+  apiRequest<DailyReport>(withQuery('/sales/daily', { date }));
+
+export const fetchManagedProducts = (storeId: number, search: string) =>
+  apiRequest<ManagedProduct[]>(withQuery('/products', { store_id: storeId, q: search }));
+
+export const createManagedProduct = (payload: ManagedProductPayload) =>
+  apiRequest<{ id: number }>('/products', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateManagedProduct = (
+  id: number,
+  payload: Omit<ManagedProductPayload, 'store_id' | 'quantity'>
+) => apiRequest<ManagedProduct>(`/products/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const setManagedProductStock = (id: number, payload: { store_id: number; quantity: number }) =>
+  apiRequest<{ product_id: number; store_id: number; quantity: number }>(
+    `/products/${id}/stock`,
+    { method: 'PUT', body: JSON.stringify(payload) }
+  );
+
+export const fetchManagedCustomers = (search: string) =>
+  apiRequest<ManagedCustomer[]>(withQuery('/customers', { q: search }));
+
+export const createManagedCustomer = (payload: ManagedCustomerPayload) =>
+  apiRequest<ManagedCustomer>('/customers', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateManagedCustomer = (id: number, payload: ManagedCustomerPayload) =>
+  apiRequest<ManagedCustomer>(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const fetchExpenses = (from?: string, to?: string) =>
+  apiRequest<ExpenseRecord[]>(withQuery('/expenses', { from, to, limit: 200 }));
+
+export const createExpense = (payload: ExpensePayload) =>
+  apiRequest<ExpenseRecord>('/expenses', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateExpense = (id: number, payload: ExpensePayload) =>
+  apiRequest<ExpenseRecord>(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const fetchReportSummary = (from: string, to: string) =>
+  apiRequest<ReportDay[]>(withQuery('/reports/summary', { from, to }));
+
+export const fetchTopProducts = (from: string, to: string) =>
+  apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));
+
+export const fetchUsers = () => apiRequest<UserRecord[]>('/users');

@@ -1,0 +1,14 @@
+services:
+  api:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-api:${IMAGE_TAG:-v0.1.0}"
+    build:
+      context: ./api
+      dockerfile: Dockerfile
+
+  web:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-web:${IMAGE_TAG:-v0.1.0}"
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api

@@ -1,0 +1,17 @@
+# POS v2 development rules
+
+- This is a clean TypeScript/NestJS + React POS. Do not copy PHP/CodeIgniter implementation files here; `../pos-gres` remains the legacy reference until cutover.
+- The Supabase schema is immutable. Do not add migrations, alter tables, create indexes, change policies/grants, or enable ORM schema synchronization.
+- Use the typed `SupabaseService` for simple table CRUD and types in `api/src/database/database.types.ts`; use `pg` for atomic multi-table sales, BYTEA session compatibility, and exact-text monetary reports. Type every SQL result from the known table row types or an explicit aggregate projection.
+- Keep database/service-role credentials in the API `.env` only. React uses the Nest API and TanStack Query for server state; do not fetch server data with `useEffect` or connect the browser directly to Supabase.
+- All tenant-owned SQL must use `tenant_id` from the verified JWT/tenant resolver. Never accept a tenant ID or database credential from browser input.
+- Authentication and store scope use `tec_users` plus its tenant-matched `tec_groups` row; `group_name = 'admin'` can select tenant stores, while a cashier is limited to `tec_users.store_id`.
+- POS staff authenticate from `public.tec_users`; customers are `public.tec_customers`. For sales, `created_by` is the POS employee, `customer_id` is the customer, and `user_id` stays unused/null.
+- IDs use existing identity/sequences; omit `id` on inserts and use `RETURNING id`. Primary keys are global; do not allocate `MAX(id)+1` per tenant.
+- `tec_settings` is global because it has no tenant key. Do not present it as tenant-specific or expose SMTP secrets.
+- `tec_product_store_qty.quantity` is INTEGER and `price` is REAL; V1 store stock is whole-unit only and money calculations use decimal arithmetic.
+- All browser data access goes through the server, never Supabase JS/Data API. Existing RLS/grants remain unchanged and must not be treated as the app's tenant boundary.
+- Management endpoints (`/api/products`, `/api/customers`, `/api/expenses`, `/api/reports`, `/api/users`) are admin-only via `AdminGuard`; staff only accesses POS, own sales and dashboard. Suppliers, purchases and cash-register remain pending live-schema verification and are informational pages only.
+- Never enable `PASSWORD_REHASH_ENABLED` while the legacy sha1 POS shares `tec_users`.
+
+Commands from this directory: `npm install`, `npm run dev:api`, `npm run dev:web`, `npm test`; build/push with `docker compose -f docker-compose.build.yml build --pull` and `docker compose -f docker-compose.build.yml push`; deploy pulled images with `docker compose pull` and `docker compose up -d`.

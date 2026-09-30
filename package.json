@@ -1,0 +1,13 @@
+{
+  "name": "pos-gres-v2",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": ["api", "web"],
+  "scripts": {
+    "dev:api": "npm --workspace api run start:dev",
+    "dev:web": "npm --workspace web run dev",
+    "build": "npm --workspace api run build && npm --workspace web run build",
+    "test": "npm --workspace api test"
+  },
+  "engines": { "node": ">=22" }
+}

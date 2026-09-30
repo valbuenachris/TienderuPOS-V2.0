@@ -1,0 +1,43 @@
+services:
+  api:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-api:${IMAGE_TAG:-v0.1.0}"
+    container_name: pos-gres-v2-api
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      API_PORT: "3000"
+      NODE_ENV: production
+    expose:
+      - "3000"
+    networks:
+      - proxy
+      - database
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  web:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-web:${IMAGE_TAG:-v0.1.0}"
+    container_name: pos-gres-v2-web
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "80"
+    ports:
+      - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    name: ${NPM_NETWORK_NAME:-npm_net}
+    external: true
+  database:
+    name: ${SUPABASE_NETWORK_NAME:-supabase_default}
+    external: true

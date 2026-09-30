@@ -1,0 +1,70 @@
+// Narrow projections of the confirmed live columns used by V1; verify against the
+// exact Supabase project schema before deployment. Do not generate from legacy DDL.
+type Table<Row extends Record<string, unknown>> = {
+  Row: Row;
+  Insert: Partial<Row>;
+  Update: Partial<Row>;
+  Relationships: [];
+};
+
+export type Database = {
+  public: {
+    Tables: {
+      tec_users: Table<{
+        id: number; tenant_id: string | null; username: string | null; email: string | null;
+        first_name: string | null; last_name: string | null; group_id: number | null;
+        store_id: number | null; active: number | null; password: string | null;
+      }>;
+      tec_groups: Table<{ id: number; tenant_id: string | null; name: string | null }>;
+      tec_customers: Table<{
+        id: number; tenant_id: string | null; name: string | null; email: string | null;
+        phone: string | null; cf1: string | null; cf2: string | null; store_id: number | null;
+      }>;
+      tec_stores: Table<{ id: number; tenant_id: string; name: string; code: string | null }>;
+      tec_products: Table<{
+        id: number; tenant_id: string | null; code: string | null; name: string | null;
+        category_id: number | null; price: number | null; cost: number | null; tax: number | null;
+        type: string | null; reward_points: number | null;
+      }>;
+      tec_product_store_qty: Table<{
+        id: number; tenant_id: string; product_id: number; store_id: number;
+        quantity: number | null; price: number | null;
+      }>;
+      tec_sales: Table<{
+        id: number; tenant_id: string | null; customer_id: number | null; customer_name: string | null;
+        total: number | null; grand_total: number | null; paid: number | null; total_items: number | null;
+        total_quantity: number | null; status: string | null; created_at: string | null;
+        created_by: number | null; store_id: number | null; total_reward_points: number | null;
+        status_delivery: string | null; user_id: string | null;
+      }>;
+      tec_sale_items: Table<{
+        id: number; tenant_id: string | null; sale_id: number | null; product_id: number | null;
+        quantity: number | null; unit_price: number | null; subtotal: number | null; reward_points: number | null;
+      }>;
+      tec_payments: Table<{
+        id: number; tenant_id: string | null; sale_id: number | null; amount: number | null;
+        paid_by: string | null; created_at: string | null;
+      }>;
+      tec_expenses: Table<{
+        id: number; tenant_id: string | null; date: string | null; reference: string | null;
+        amount: number | null; note: string | null; created_by: number | null;
+      }>;
+      tec_login_attempts: Table<{
+        id: number; tenant_id: string | null; ip_address: string | null; login: string | null; time: number | null;
+      }>;
+      tec_sessions: Table<{
+        id: string; tenant_id: string | null; ip_address: string | null; timestamp: number | null; data: string | null;
+      }>;
+      tec_settings: Table<{
+        setting_id: number; site_name: string; currency_prefix: string; default_customer: number | null;
+      }>;
+    };
+    Views: { [_ in never]: never };
+    Functions: { [_ in never]: never };
+    Enums: { [_ in never]: never };
+    CompositeTypes: { [_ in never]: never };
+  };
+};
+
+export type TableRow<Name extends keyof Database['public']['Tables']> =
+  Database['public']['Tables'][Name]['Row'];

@@ -45,7 +45,11 @@ export class AuthService {
     config: ConfigService
   ) {
     this.bcryptRounds = Number(config.get('BCRYPT_ROUNDS') ?? 12);
-    this.tokenTtl = Number(config.get('JWT_TTL_SECONDS') ?? 28800);
+    const tokenTtl = Number(config.get('JWT_TTL_SECONDS') ?? 28800);
+    if (!Number.isInteger(tokenTtl) || tokenTtl < 900 || tokenTtl > 86400) {
+      throw new Error('JWT_TTL_SECONDS must be an integer between 900 and 86400');
+    }
+    this.tokenTtl = tokenTtl;
     this.maxLoginAttempts = Number(config.get('LOGIN_MAX_ATTEMPTS') ?? 5);
     this.lockoutSeconds = Number(config.get('LOGIN_LOCKOUT_SECONDS') ?? 600);
     // Disabled by default: the legacy POS verifies sha1 and shares tec_users.

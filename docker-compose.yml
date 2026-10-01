@@ -30,7 +30,7 @@ services:
     expose:
       - "80"
     volumes:
-      - "${LEGACY_UPLOADS_PATH:-/home/ubuntu/pos-gres/uploads}:/usr/share/nginx/html/uploads:ro"
+      - "${LEGACY_UPLOADS_PATH:-/srv/pos-media/uploads}:/usr/share/nginx/html/uploads:ro"
     ports:
       - "${WEB_BIND_IP:-127.0.0.1}:${WEB_PORT:-8080}:80"
     networks:

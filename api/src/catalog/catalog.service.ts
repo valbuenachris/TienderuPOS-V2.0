@@ -2,6 +2,7 @@ import { Injectable, InternalServerErrorException, NotFoundException } from '@ne
 import { ConfigService } from '@nestjs/config';
 import Decimal from 'decimal.js';
 import { PosUser } from '../auth/auth.types';
+import { resolvePublicBase, trimTrailingSlash } from '../common/image-url';
 import { SupabaseService } from '../database/supabase.service';
 import { TableRow } from '../database/database.types';
 
@@ -30,15 +31,6 @@ function isAbsoluteImageUrl(value: string): boolean {
   return ABSOLUTE_IMAGE_RE.test(value) || value.startsWith('/');
 }
 
-function resolveImageUrl(base: string, value: string | null): string | null {
-  const name = normalizeImageName(value);
-  if (!name) return null;
-  // Supabase Storage (or any external host) stores the full URL: use it as-is.
-  if (isAbsoluteImageUrl(name)) return name;
-  // Legacy rows store just the filename: prefix it with the configured base.
-  return `${base.replace(/\/+$/, '')}/${encodeURIComponent(name)}`;
-}
-
 function throwCatalogError(): never {
   throw new InternalServerErrorException('Catalog query failed');
 }
@@ -47,12 +39,33 @@ function throwCatalogError(): never {
 export class CatalogService {
   private readonly imageBase: string;
   private readonly imageFullBase: string;
+  private readonly supabasePublicBase: string;
+  private readonly supabaseInternalBase: string;
 
   constructor(private readonly supabase: SupabaseService, config: ConfigService) {
     this.imageBase = config.get<string>('PRODUCT_IMAGE_BASE_URL') ?? '/uploads/thumbs';
     this.imageFullBase = this.imageBase.endsWith('/thumbs')
       ? this.imageBase.slice(0, -'/thumbs'.length)
       : this.imageBase;
+    const internal = config.get<string>('SUPABASE_URL') ?? '';
+    this.supabaseInternalBase = trimTrailingSlash(internal);
+    this.supabasePublicBase = resolvePublicBase(config.get<string>('SUPABASE_PUBLIC_URL'), internal);
+  }
+
+  private resolveImageUrl(base: string, value: string | null): string | null {
+    const name = normalizeImageName(value);
+    if (!name) return null;
+    // Supabase Storage (or any external host) stores the full URL: use it as-is.
+    if (isAbsoluteImageUrl(name)) return this.toPublicUrl(name);
+    // Legacy rows store just the filename: prefix it with the configured base.
+    return `${base.replace(/\/+$/, '')}/${encodeURIComponent(name)}`;
+  }
+
+  private toPublicUrl(value: string): string {
+    if (this.supabaseInternalBase && this.supabasePublicBase && value.startsWith(this.supabaseInternalBase)) {
+      return `${this.supabasePublicBase}${value.slice(this.supabaseInternalBase.length)}`;
+    }
+    return value;
   }
 
   async listStores(tenantId: string, user: PosUser) {
@@ -127,8 +140,8 @@ export class CatalogService {
         ...product,
         price,
         tax: product.tax === null ? null : String(product.tax),
-        image_url: resolveImageUrl(this.imageBase, product.image),
-        image_full_url: hasAbsoluteImage ? null : resolveImageUrl(this.imageFullBase, product.image),
+        image_url: this.resolveImageUrl(this.imageBase, product.image),
+        image_full_url: hasAbsoluteImage ? null : this.resolveImageUrl(this.imageFullBase, product.image),
         available_quantity: duplicateStockProducts.has(product.id) ? '0' : String(stock?.quantity ?? 0)
       };
     });

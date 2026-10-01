@@ -1,5 +1,6 @@
-import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, Logger, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { resolvePublicBase, trimTrailingSlash } from '../common/image-url';
 import { DatabaseService } from '../database/database.service';
 import { SupabaseService } from '../database/supabase.service';
 import { TableRow } from '../database/database.types';
@@ -48,8 +49,10 @@ function cleanDetails(value: string | undefined): string | null {
 
 @Injectable()
 export class ProductsService {
+  private readonly logger = new Logger(ProductsService.name);
   private readonly bucket: string;
   private readonly publicBase: string;
+  private readonly internalBase: string;
 
   constructor(
     private readonly database: DatabaseService,
@@ -57,8 +60,20 @@ export class ProductsService {
     config: ConfigService
   ) {
     this.bucket = config.get<string>('SUPABASE_PRODUCT_BUCKET') ?? 'productos';
-    const configured = config.get<string>('SUPABASE_PUBLIC_URL') ?? config.get<string>('SUPABASE_URL') ?? '';
-    this.publicBase = configured.replace(/\/+$/, '');
+    const internal = config.get<string>('SUPABASE_URL') ?? '';
+    this.internalBase = trimTrailingSlash(internal);
+    this.publicBase = resolvePublicBase(config.get<string>('SUPABASE_PUBLIC_URL'), internal);
+    if (!this.publicBase) {
+      this.logger.warn('SUPABASE_PUBLIC_URL is required to store browser-reachable image URLs');
+    }
+  }
+
+  private toPublicUrl(value: string | null): string | null {
+    if (!value) return value;
+    if (this.internalBase && this.publicBase && value.startsWith(this.internalBase)) {
+      return `${this.publicBase}${value.slice(this.internalBase.length)}`;
+    }
+    return value;
   }
 
   async list(tenantId: string, storeId: number, search: string): Promise<ProductAdminRow[]> {
@@ -82,7 +97,12 @@ export class ProductsService {
        LIMIT 200`,
       [tenantId, storeId, pattern]
     );
-    return result.rows;
+    return result.rows.map((row) => ({
+      ...row,
+      image: this.toPublicUrl(row.image),
+      image_2: this.toPublicUrl(row.image_2),
+      image_3: this.toPublicUrl(row.image_3)
+    }));
   }
 
   async create(tenantId: string, input: CreateProductDto) {
@@ -153,7 +173,14 @@ export class ProductsService {
     );
     const updated = result.rows[0];
     if (!updated) throw new NotFoundException('Product not found in this tenant');
-    return { ...updated, store_quantity: null, store_price: null };
+    return {
+      ...updated,
+      image: this.toPublicUrl(updated.image),
+      image_2: this.toPublicUrl(updated.image_2),
+      image_3: this.toPublicUrl(updated.image_3),
+      store_quantity: null,
+      store_price: null
+    };
   }
 
   async setStock(tenantId: string, productId: number, input: SetStockDto) {
@@ -195,6 +222,9 @@ export class ProductsService {
     if (!extension) throw new BadRequestException('Only JPG, PNG or WEBP images are allowed');
     if (!file.buffer || file.buffer.length === 0) throw new BadRequestException('The uploaded file is empty');
     if (file.size > MAX_IMAGE_BYTES) throw new BadRequestException('The image must be 2 MB or smaller');
+    if (!this.publicBase) {
+      throw new InternalServerErrorException('SUPABASE_PUBLIC_URL is required to store product images');
+    }
 
     const existing = await this.database.query<ProductImageRow>(
       'SELECT id, image, image_2, image_3 FROM public.tec_products WHERE tenant_id = $1 AND id = $2 LIMIT 1',

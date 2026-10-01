@@ -19,6 +19,7 @@ export default function ProductImagesEditor({ product }: { product: ManagedProdu
   const [targetSlot, setTargetSlot] = useState<Slot>(1);
   const [busySlot, setBusySlot] = useState<Slot | null>(null);
   const [dragSlot, setDragSlot] = useState<Slot | null>(null);
+  const [brokenUrls, setBrokenUrls] = useState<Record<string, boolean>>({});
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
 
@@ -80,12 +81,14 @@ export default function ProductImagesEditor({ product }: { product: ManagedProdu
       <div className="image-gallery-grid">
         {SLOTS.map(({ slot, label, field }) => {
           const url = product[field];
+          const broken = url !== null && brokenUrls[url] === true;
+          const showImage = Boolean(url) && !broken;
           const busy = busySlot === slot;
           return (
             <div className="image-field" key={slot}>
               <span className="image-slot-label">{label}</span>
               <div
-                className={`image-slot ${url ? 'filled' : 'empty'} ${dragSlot === slot ? 'drag' : ''}`}
+                className={`image-slot ${showImage ? 'filled' : 'empty'} ${dragSlot === slot ? 'drag' : ''}`}
                 onDragOver={(event) => {
                   event.preventDefault();
                   setDragSlot(slot);
@@ -93,11 +96,14 @@ export default function ProductImagesEditor({ product }: { product: ManagedProdu
                 onDragLeave={() => setDragSlot((current) => (current === slot ? null : current))}
                 onDrop={(event) => onDrop(slot, event)}
               >
-                {url ? (
+                {showImage && url ? (
                   <>
-                    <a href={url} target="_blank" rel="noreferrer" className="image-preview" title="Ver imagen completa">
-                      <img src={url} alt={`${product.name || 'Producto'} · ${label}`} loading="lazy" />
-                    </a>
+                    <img
+                      src={url}
+                      alt={`${product.name || 'Producto'} · ${label}`}
+                      loading="lazy"
+                      onError={() => setBrokenUrls((current) => ({ ...current, [url]: true }))}
+                    />
                     <button
                       className="action-btn delete"
                       type="button"
@@ -122,7 +128,7 @@ export default function ProductImagesEditor({ product }: { product: ManagedProdu
                 ) : (
                   <button className="image-empty" type="button" onClick={() => pick(slot)} disabled={busySlot !== null}>
                     <span aria-hidden>+</span>
-                    <small>Agregar imagen</small>
+                    <small>{broken ? 'Imagen no disponible · Reemplazar' : 'Agregar imagen'}</small>
                   </button>
                 )}
                 {busy ? (

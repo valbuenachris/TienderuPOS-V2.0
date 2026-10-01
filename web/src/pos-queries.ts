@@ -183,10 +183,10 @@ export function useTopProductsQuery(token: string | null, tenantId: string | nul
   });
 }
 
-export function useUsersQuery(token: string | null, tenantId: string | null) {
+export function useUsersQuery(token: string | null, tenantId: string | null, search = '') {
   return useQuery({
-    queryKey: ['users', tenantId],
-    queryFn: fetchUsers,
+    queryKey: ['users', tenantId, search],
+    queryFn: () => fetchUsers(search),
     enabled: Boolean(token && tenantId),
     retry: false
   });

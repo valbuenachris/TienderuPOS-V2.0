@@ -313,7 +313,30 @@ export const fetchReportSummary = (from: string, to: string) =>
 export const fetchTopProducts = (from: string, to: string) =>
   apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));
 
-export const fetchUsers = () => apiRequest<UserRecord[]>('/users');
+export const fetchUsers = (search = '') => apiRequest<UserRecord[]>(withQuery('/users', { q: search }));
+
+export interface UserPayload {
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: 'admin' | 'staff';
+  store_id?: number;
+  active?: boolean;
+  password?: string;
+}
+
+export const createUser = (payload: UserPayload) =>
+  apiRequest<UserRecord>('/users', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateUser = (id: number, payload: Partial<UserPayload>) =>
+  apiRequest<UserRecord>(`/users/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const setUserActive = (id: number, active: boolean) =>
+  apiRequest<UserRecord>(`/users/${id}/active`, { method: 'PATCH', body: JSON.stringify({ active }) });
+
+export const deleteUser = (id: number) =>
+  apiRequest<UserRecord>(`/users/${id}`, { method: 'DELETE' });
 
 export interface SupplierRecord {
   id: number;

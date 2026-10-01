@@ -1,9 +1,16 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, InternalServerErrorException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
+import { SupabaseService } from '../database/supabase.service';
 import { TableRow } from '../database/database.types';
 import { CreateProductDto, SetStockDto, UpdateProductDto } from './product.dto';
 
-type ProductAdminRow = Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'type' | 'reward_points'> & {
+export type ProductImageSlot = 1 | 2 | 3;
+
+type ProductAdminRow = Pick<
+  TableRow<'tec_products'>,
+  'id' | 'code' | 'name' | 'type' | 'reward_points' | 'image' | 'image_2' | 'image_3' | 'details'
+> & {
   price: string | null;
   cost: string | null;
   tax: string | null;
@@ -11,16 +18,48 @@ type ProductAdminRow = Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | '
   store_price: string | null;
 };
 type ProductIdRow = Pick<TableRow<'tec_products'>, 'id'>;
+type ProductImageRow = Pick<TableRow<'tec_products'>, 'id' | 'image' | 'image_2' | 'image_3'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
 type StockIdRow = Pick<TableRow<'tec_product_store_qty'>, 'id'>;
+
+const IMAGE_COLUMNS: Record<ProductImageSlot, 'image' | 'image_2' | 'image_3'> = {
+  1: 'image',
+  2: 'image_2',
+  3: 'image_3'
+};
+
+const ALLOWED_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp'
+};
+
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024;
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
+function cleanDetails(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  const clean = value.replace(/<[^>]*>/g, '').trim();
+  return clean.length > 0 ? clean.slice(0, 1000) : null;
+}
+
 @Injectable()
 export class ProductsService {
-  constructor(private readonly database: DatabaseService) {}
+  private readonly bucket: string;
+  private readonly publicBase: string;
+
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly supabase: SupabaseService,
+    config: ConfigService
+  ) {
+    this.bucket = config.get<string>('SUPABASE_PRODUCT_BUCKET') ?? 'productos';
+    const configured = config.get<string>('SUPABASE_PUBLIC_URL') ?? config.get<string>('SUPABASE_URL') ?? '';
+    this.publicBase = configured.replace(/\/+$/, '');
+  }
 
   async list(tenantId: string, storeId: number, search: string): Promise<ProductAdminRow[]> {
     const store = await this.database.query<StoreIdRow>(
@@ -32,6 +71,7 @@ export class ProductsService {
     const pattern = `%${escapeLike(search.trim().slice(0, 100))}%`;
     const result = await this.database.query<ProductAdminRow>(
       `SELECT p.id, p.code, p.name, p.type, p.reward_points,
+              p.image, p.image_2, p.image_3, p.details,
               p.price::text AS price, p.cost::text AS cost, p.tax::text AS tax,
               q.quantity AS store_quantity, q.price::text AS store_price
        FROM public.tec_products p
@@ -56,8 +96,8 @@ export class ProductsService {
       }
 
       const product = await client.query<ProductIdRow>(
-        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points)
-         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7)
+        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details)
+         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8)
          RETURNING id`,
         [
           tenantId,
@@ -66,7 +106,8 @@ export class ProductsService {
           input.price,
           input.cost ?? '0',
           input.tax ?? '0',
-          input.reward_points ?? 0
+          input.reward_points ?? 0,
+          cleanDetails(input.details)
         ]
       );
       const productId = product.rows[0]?.id;
@@ -92,9 +133,11 @@ export class ProductsService {
            price = COALESCE($5::numeric, price),
            cost = COALESCE($6::numeric, cost),
            tax = COALESCE($7::numeric, tax),
-           reward_points = COALESCE($8, reward_points)
+           reward_points = COALESCE($8, reward_points),
+           details = CASE WHEN $9::boolean THEN $10 ELSE details END
        WHERE tenant_id = $1 AND id = $2
-       RETURNING id, code, name, type, reward_points, price::text AS price, cost::text AS cost, tax::text AS tax`,
+       RETURNING id, code, name, type, details, reward_points, image, image_2, image_3,
+                 price::text AS price, cost::text AS cost, tax::text AS tax`,
       [
         tenantId,
         productId,
@@ -103,7 +146,9 @@ export class ProductsService {
         input.price ?? null,
         input.cost ?? null,
         input.tax ?? null,
-        input.reward_points ?? null
+        input.reward_points ?? null,
+        input.details !== undefined,
+        cleanDetails(input.details)
       ]
     );
     const updated = result.rows[0];
@@ -142,5 +187,69 @@ export class ProductsService {
 
       return { product_id: productId, store_id: input.store_id, quantity: input.quantity };
     });
+  }
+
+  async uploadImage(tenantId: string, productId: number, slot: ProductImageSlot, file: Express.Multer.File) {
+    const column = IMAGE_COLUMNS[slot];
+    const extension = ALLOWED_IMAGE_TYPES[file.mimetype];
+    if (!extension) throw new BadRequestException('Only JPG, PNG or WEBP images are allowed');
+    if (!file.buffer || file.buffer.length === 0) throw new BadRequestException('The uploaded file is empty');
+    if (file.size > MAX_IMAGE_BYTES) throw new BadRequestException('The image must be 2 MB or smaller');
+
+    const existing = await this.database.query<ProductImageRow>(
+      'SELECT id, image, image_2, image_3 FROM public.tec_products WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+      [tenantId, productId]
+    );
+    const product = existing.rows[0];
+    if (!product) throw new NotFoundException('Product not found in this tenant');
+    const previous = product[column];
+
+    const objectPath = `${productId}_${slot}_${Date.now()}.${extension}`;
+    const uploaded = await this.supabase.client.storage
+      .from(this.bucket)
+      .upload(objectPath, file.buffer, { contentType: file.mimetype, upsert: false });
+    if (uploaded.error) throw new InternalServerErrorException('Could not upload the product image');
+
+    const publicUrl = `${this.publicBase}/storage/v1/object/public/${this.bucket}/${objectPath}`;
+    await this.database.query(
+      `UPDATE public.tec_products SET ${column} = $3 WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, productId, publicUrl]
+    );
+    await this.removeStoredImage(previous);
+
+    return { slot, image_url: publicUrl };
+  }
+
+  async deleteImage(tenantId: string, productId: number, slot: ProductImageSlot) {
+    const column = IMAGE_COLUMNS[slot];
+    const existing = await this.database.query<ProductImageRow>(
+      'SELECT id, image, image_2, image_3 FROM public.tec_products WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+      [tenantId, productId]
+    );
+    const product = existing.rows[0];
+    if (!product) throw new NotFoundException('Product not found in this tenant');
+    const previous = product[column];
+
+    await this.database.query(
+      `UPDATE public.tec_products SET ${column} = NULL WHERE tenant_id = $1 AND id = $2`,
+      [tenantId, productId]
+    );
+    await this.removeStoredImage(previous);
+
+    return { slot, image_url: null };
+  }
+
+  private async removeStoredImage(value: string | null): Promise<void> {
+    if (!value) return;
+    const marker = `/storage/v1/object/public/${this.bucket}/`;
+    const index = value.indexOf(marker);
+    if (index === -1) return; // Legacy filename or external URL: leave it untouched.
+    const objectPath = value.slice(index + marker.length).split('?')[0];
+    if (!objectPath) return;
+    try {
+      await this.supabase.client.storage.from(this.bucket).remove([objectPath]);
+    } catch (_error: unknown) {
+      // Removing the previous file is best-effort; the product update already succeeded.
+    }
   }
 }

@@ -25,6 +25,7 @@ export type Database = {
         id: number; tenant_id: string | null; code: string | null; name: string | null;
         category_id: number | null; price: number | null; cost: number | null; tax: number | null;
         type: string | null; reward_points: number | null; image: string | null;
+        image_2: string | null; image_3: string | null; details: string | null;
       }>;
       tec_product_store_qty: Table<{
         id: number; tenant_id: string; product_id: number; store_id: number;

@@ -47,6 +47,11 @@ export class CreateProductDto {
   @Min(0)
   @Max(2147483647)
   quantity?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  details?: string;
 }
 
 export class UpdateProductDto {
@@ -81,6 +86,11 @@ export class UpdateProductDto {
   @Min(0)
   @Max(2147483647)
   reward_points?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  details?: string;
 }
 
 export class SetStockDto {

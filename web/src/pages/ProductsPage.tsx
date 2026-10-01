@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Panel } from '../components/ui';
+import ProductImagesEditor from '../components/ProductImagesEditor';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedProductsQuery } from '../pos-queries';
 import { createManagedProduct, setManagedProductStock, updateManagedProduct } from '../api';
@@ -22,6 +23,7 @@ export default function ProductsPage() {
   const [cost, setCost] = useState('');
   const [tax, setTax] = useState('');
   const [rewardPoints, setRewardPoints] = useState('0');
+  const [details, setDetails] = useState('');
   const [initialQuantity, setInitialQuantity] = useState('0');
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
@@ -37,7 +39,8 @@ export default function ProductsPage() {
       price: input.payload.price,
       cost: input.payload.cost,
       tax: input.payload.tax,
-      reward_points: input.payload.reward_points
+      reward_points: input.payload.reward_points,
+      details: input.payload.details
     });
   });
 
@@ -53,6 +56,7 @@ export default function ProductsPage() {
     setCost('');
     setTax('');
     setRewardPoints('0');
+    setDetails('');
     setInitialQuantity('0');
   }
 
@@ -64,6 +68,7 @@ export default function ProductsPage() {
     setCost(product.cost ?? '');
     setTax(product.tax ?? '');
     setRewardPoints(String(product.reward_points ?? 0));
+    setDetails(product.details ?? '');
     setNotice('');
   }
 
@@ -79,7 +84,8 @@ export default function ProductsPage() {
       price: price.trim(),
       cost: cost.trim() || undefined,
       tax: tax.trim() || undefined,
-      reward_points: Number(rewardPoints) || 0
+      reward_points: Number(rewardPoints) || 0,
+      details: details.trim().slice(0, 1000)
     };
     if (editingId === null) {
       payload.store_id = effectiveStoreId;
@@ -116,6 +122,7 @@ export default function ProductsPage() {
   }
 
   const products = productsQuery.data ?? [];
+  const editingProduct = editingId === null ? null : products.find((product) => product.id === editingId) ?? null;
 
   return (
     <>
@@ -174,6 +181,16 @@ export default function ProductsPage() {
             <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
             <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
             <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
+            <label>Descripción
+              <textarea
+                value={details}
+                onChange={(event) => setDetails(event.target.value.slice(0, 1000))}
+                rows={4}
+                maxLength={1000}
+                placeholder="Describe el producto, sus características, beneficios, uso…"
+              />
+              <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
+            </label>
             {editingId === null ? (
               <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
             ) : null}
@@ -181,6 +198,8 @@ export default function ProductsPage() {
               {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
             </button>
           </form>
+
+          {editingProduct ? <ProductImagesEditor product={editingProduct} /> : null}
 
           {stockProduct ? (
             <form className="form-grid stock-form" onSubmit={submitStock}>

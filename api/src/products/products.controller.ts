@@ -1,10 +1,25 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Post,
+  Put,
+  Query,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { CreateProductDto, SetStockDto, UpdateProductDto } from './product.dto';
-import { ProductsService } from './products.service';
+import { ProductsService, ProductImageSlot } from './products.service';
 
 function parseInteger(value: unknown, field: string): number {
   if (typeof value !== 'string' || !/^\d+$/.test(value)) {
@@ -21,6 +36,13 @@ function parseSearch(value: unknown): string {
   if (value === undefined) return '';
   if (typeof value !== 'string') throw new BadRequestException('q must be a string');
   return value.trim().slice(0, 100);
+}
+
+function parseSlot(value: unknown): ProductImageSlot {
+  if (value !== '1' && value !== '2' && value !== '3') {
+    throw new BadRequestException('slot must be 1, 2 or 3');
+  }
+  return Number(value) as ProductImageSlot;
 }
 
 @Controller('products')
@@ -46,5 +68,22 @@ export class ProductsController {
   @Put(':id/stock')
   setStock(@Req() request: PosRequest, @Param('id') id: string, @Body() body: SetStockDto) {
     return this.products.setStock(request.tenantId!, parseInteger(id, 'id'), body);
+  }
+
+  @Post(':id/images/:slot')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }))
+  uploadImage(
+    @Req() request: PosRequest,
+    @Param('id') id: string,
+    @Param('slot') slot: string,
+    @UploadedFile() file?: Express.Multer.File
+  ) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.products.uploadImage(request.tenantId!, parseInteger(id, 'id'), parseSlot(slot), file);
+  }
+
+  @Delete(':id/images/:slot')
+  deleteImage(@Req() request: PosRequest, @Param('id') id: string, @Param('slot') slot: string) {
+    return this.products.deleteImage(request.tenantId!, parseInteger(id, 'id'), parseSlot(slot));
   }
 }

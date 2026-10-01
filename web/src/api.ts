@@ -104,6 +104,10 @@ export interface ManagedProduct {
   tax: string | null;
   type: string | null;
   reward_points: number | null;
+  image: string | null;
+  image_2: string | null;
+  image_3: string | null;
+  details: string | null;
   store_quantity: number | null;
   store_price: string | null;
 }
@@ -115,6 +119,7 @@ export interface ManagedProductPayload {
   cost?: string;
   tax?: string;
   reward_points?: number;
+  details?: string;
   store_id?: number;
   quantity?: number;
 }
@@ -210,7 +215,7 @@ function withQuery(path: string, params: Record<string, string | number | undefi
 export async function apiRequest<T>(path: string, init: RequestInit = {}): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  if (init.body) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData)) headers.set('Content-Type', 'application/json');
   const token = getToken();
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
@@ -271,6 +276,18 @@ export const setManagedProductStock = (id: number, payload: { store_id: number; 
     `/products/${id}/stock`,
     { method: 'PUT', body: JSON.stringify(payload) }
   );
+
+export const uploadProductImage = (productId: number, slot: 1 | 2 | 3, file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return apiRequest<{ slot: number; image_url: string }>(`/products/${productId}/images/${slot}`, {
+    method: 'POST',
+    body: form
+  });
+};
+
+export const deleteProductImage = (productId: number, slot: 1 | 2 | 3) =>
+  apiRequest<{ slot: number; image_url: null }>(`/products/${productId}/images/${slot}`, { method: 'DELETE' });
 
 export const fetchManagedCustomers = (search: string) =>
   apiRequest<ManagedCustomer[]>(withQuery('/customers', { q: search }));

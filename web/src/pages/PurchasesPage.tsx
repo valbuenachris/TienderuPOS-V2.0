@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedProductsQuery, usePurchasesQuery, useSuppliersQuery } from '../pos-queries';
 import { createPurchase } from '../api';
@@ -31,13 +31,14 @@ export default function PurchasesPage() {
   const [note, setNote] = useState('');
   const [rows, setRows] = useState<PurchaseRow[]>([{ key: Date.now(), productId: '', quantity: '1', cost: '', salePrice: '' }]);
   const [notice, setNotice] = useState('');
+  const [page, setPage] = useState(1);
 
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
-  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, '');
-  const suppliersQuery = useSuppliersQuery(token, tenantId, '');
-  const purchasesQuery = usePurchasesQuery(token, tenantId);
-  const products = productsQuery.data ?? [];
-  const suppliers = suppliersQuery.data ?? [];
+  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, '', 1, 100);
+  const suppliersQuery = useSuppliersQuery(token, tenantId, '', 1, 100);
+  const purchasesQuery = usePurchasesQuery(token, tenantId, undefined, undefined, page, 20);
+  const products = productsQuery.data?.data ?? [];
+  const suppliers = suppliersQuery.data?.data ?? [];
 
   const saveMutation = useApiMutation((payload: PurchasePayload) => createPurchase(payload));
 
@@ -107,7 +108,8 @@ export default function PurchasesPage() {
     });
   }
 
-  const purchases = purchasesQuery.data ?? [];
+  const purchases = purchasesQuery.data?.data ?? [];
+  const meta = purchasesQuery.data?.meta;
 
   return (
     <>
@@ -189,6 +191,12 @@ export default function PurchasesPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={meta?.totalPages ?? 0}
+            total={meta?.total ?? 0}
+            onChange={setPage}
+          />
         </Panel>
       </div>
     </>

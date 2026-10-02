@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { parsePagination } from '../common/pagination';
 import { CreateCustomerDto, UpdateCustomerDto } from './customer.dto';
 import { CustomersService } from './customers.service';
 
@@ -28,9 +29,20 @@ export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
   @Get()
-  list(@Req() request: PosRequest, @Query('q') search?: string, @Query('store_id') storeId?: string) {
+  list(
+    @Req() request: PosRequest,
+    @Query('q') search?: string,
+    @Query('store_id') storeId?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     const cleanSearch = search === undefined ? '' : search.trim().slice(0, 100);
-    return this.customers.list(request.tenantId!, cleanSearch, optionalInteger(storeId, 'store_id'));
+    return this.customers.list(
+      request.tenantId!,
+      cleanSearch,
+      optionalInteger(storeId, 'store_id'),
+      parsePagination(page, limit)
+    );
   }
 
   @Post()

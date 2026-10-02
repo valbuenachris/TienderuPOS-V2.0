@@ -1,6 +1,18 @@
 const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
 const TOKEN_KEY = 'pos-gres-v2-token';
 
+export interface PaginationMeta {
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+}
+
+export interface Paginated<T> {
+  data: T[];
+  meta: PaginationMeta;
+}
+
 export interface PosUser {
   id: number;
   tenant_id: string;
@@ -254,14 +266,14 @@ export const fetchProducts = (storeId: number, search: string) => {
 export const createSale = (payload: CreateSalePayload) =>
   apiRequest<SaleResult>('/sales', { method: 'POST', body: JSON.stringify(payload) });
 
-export const fetchSales = (from?: string, to?: string, limit = 50, offset = 0) =>
-  apiRequest<SaleListRow[]>(withQuery('/sales', { from, to, limit, offset }));
+export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
+  apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit }));
 
 export const fetchDailyReport = (date: string) =>
   apiRequest<DailyReport>(withQuery('/sales/daily', { date }));
 
-export const fetchManagedProducts = (storeId: number, search: string) =>
-  apiRequest<ManagedProduct[]>(withQuery('/products', { store_id: storeId, q: search }));
+export const fetchManagedProducts = (storeId: number, search: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<ManagedProduct>>(withQuery('/products', { store_id: storeId, q: search, page, limit }));
 
 export const createManagedProduct = (payload: ManagedProductPayload) =>
   apiRequest<{ id: number }>('/products', { method: 'POST', body: JSON.stringify(payload) });
@@ -289,8 +301,8 @@ export const uploadProductImage = (productId: number, slot: 1 | 2 | 3, file: Fil
 export const deleteProductImage = (productId: number, slot: 1 | 2 | 3) =>
   apiRequest<{ slot: number; image_url: null }>(`/products/${productId}/images/${slot}`, { method: 'DELETE' });
 
-export const fetchManagedCustomers = (search: string) =>
-  apiRequest<ManagedCustomer[]>(withQuery('/customers', { q: search }));
+export const fetchManagedCustomers = (search: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<ManagedCustomer>>(withQuery('/customers', { q: search, page, limit }));
 
 export const createManagedCustomer = (payload: ManagedCustomerPayload) =>
   apiRequest<ManagedCustomer>('/customers', { method: 'POST', body: JSON.stringify(payload) });
@@ -298,8 +310,8 @@ export const createManagedCustomer = (payload: ManagedCustomerPayload) =>
 export const updateManagedCustomer = (id: number, payload: ManagedCustomerPayload) =>
   apiRequest<ManagedCustomer>(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 
-export const fetchExpenses = (from?: string, to?: string) =>
-  apiRequest<ExpenseRecord[]>(withQuery('/expenses', { from, to, limit: 200 }));
+export const fetchExpenses = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
+  apiRequest<Paginated<ExpenseRecord>>(withQuery('/expenses', { from, to, page, limit }));
 
 export const createExpense = (payload: ExpensePayload) =>
   apiRequest<ExpenseRecord>('/expenses', { method: 'POST', body: JSON.stringify(payload) });
@@ -313,7 +325,8 @@ export const fetchReportSummary = (from: string, to: string) =>
 export const fetchTopProducts = (from: string, to: string) =>
   apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));
 
-export const fetchUsers = (search = '') => apiRequest<UserRecord[]>(withQuery('/users', { q: search }));
+export const fetchUsers = (search = '', page = 1, limit = 20) =>
+  apiRequest<Paginated<UserRecord>>(withQuery('/users', { q: search, page, limit }));
 
 export interface UserPayload {
   username: string;
@@ -422,8 +435,8 @@ export interface RegisterCloseResult {
   totals: RegisterSummary['payments'];
 }
 
-export const fetchSuppliers = (search: string) =>
-  apiRequest<SupplierRecord[]>(withQuery('/suppliers', { q: search }));
+export const fetchSuppliers = (search: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<SupplierRecord>>(withQuery('/suppliers', { q: search, page, limit }));
 
 export const createSupplier = (payload: SupplierPayload) =>
   apiRequest<SupplierRecord>('/suppliers', { method: 'POST', body: JSON.stringify(payload) });
@@ -431,8 +444,8 @@ export const createSupplier = (payload: SupplierPayload) =>
 export const updateSupplier = (id: number, payload: SupplierPayload) =>
   apiRequest<SupplierRecord>(`/suppliers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 
-export const fetchPurchases = (from?: string, to?: string) =>
-  apiRequest<PurchaseListRow[]>(withQuery('/purchases', { from, to, limit: 100 }));
+export const fetchPurchases = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
+  apiRequest<Paginated<PurchaseListRow>>(withQuery('/purchases', { from, to, page, limit }));
 
 export const createPurchase = (payload: PurchasePayload) =>
   apiRequest<{ id: number; reference: string; total: string; store_id: number; supplier_id: number | null; items: number }>(

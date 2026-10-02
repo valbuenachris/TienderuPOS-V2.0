@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { parsePagination } from '../common/pagination';
 import { CreateExpenseDto, UpdateExpenseDto } from './expense.dto';
 import { ExpensesService } from './expenses.service';
 
@@ -13,18 +14,6 @@ function parseInteger(value: unknown, field: string): number {
   const parsed = Number(value);
   if (!Number.isSafeInteger(parsed) || parsed < 1 || parsed > 2147483647) {
     throw new BadRequestException(`${field} is invalid`);
-  }
-  return parsed;
-}
-
-function parsePage(value: unknown, fallback: number, max: number): number {
-  if (value === undefined) return fallback;
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new BadRequestException('Pagination values must be integers');
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > max) {
-    throw new BadRequestException('Pagination value is outside the allowed range');
   }
   return parsed;
 }
@@ -47,15 +36,14 @@ export class ExpensesController {
     @Req() request: PosRequest,
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
   ) {
     return this.expenses.list(
       request.tenantId!,
       parseDate(from),
       parseDate(to),
-      parsePage(limit, 100, 500),
-      parsePage(offset, 0, 1000000)
+      parsePagination(page, limit)
     );
   }
 

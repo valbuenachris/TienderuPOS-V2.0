@@ -2,20 +2,9 @@ import { BadRequestException, Body, Controller, Get, Post, Query, Req, UseGuards
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { parsePagination } from '../common/pagination';
 import { CreateSaleDto } from './sale.dto';
 import { SalesService } from './sales.service';
-
-function parsePage(value: unknown, fallback: number, max: number): number {
-  if (value === undefined) return fallback;
-  if (typeof value !== 'string' || !/^\d+$/.test(value)) {
-    throw new BadRequestException('Pagination values must be integers');
-  }
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > max) {
-    throw new BadRequestException('Pagination value is outside the allowed range');
-  }
-  return parsed;
-}
 
 function parseDate(value?: unknown): string | undefined {
   if (value === undefined) return undefined;
@@ -39,16 +28,15 @@ export class SalesController {
     @Req() request: PosRequest,
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('limit') limit?: string,
-    @Query('offset') offset?: string
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
   ) {
     return this.sales.list(
       request.tenantId!,
       request.posUser!,
       parseDate(from),
       parseDate(to),
-      parsePage(limit, 50, 100),
-      parsePage(offset, 0, 1000000)
+      parsePagination(page, limit, 20, 100)
     );
   }
 

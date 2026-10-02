@@ -3,6 +3,7 @@ import Decimal from 'decimal.js';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { PosUser } from '../auth/auth.types';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { CreateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
@@ -264,7 +265,13 @@ export class SalesService {
     };
   }
 
-  async list(tenantId: string, user: PosUser, from?: string, to?: string, limit = 50, offset = 0) {
+  async list(
+    tenantId: string,
+    user: PosUser,
+    from: string | undefined,
+    to: string | undefined,
+    pagination: PaginationQuery
+  ): Promise<Paginated<SalesListRow>> {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
@@ -276,12 +283,13 @@ export class SalesService {
         values.push(user.id);
         ownerFilter = ` AND created_by = $${values.length}`;
       }
-      values.push(limit, offset);
-      const result = await this.database.query<SalesListRow>(
+      values.push(pagination.limit, pagination.offset);
+      const result = await this.database.query<SalesListRow & { total_count: number }>(
         `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
                 grand_total::text AS grand_total, paid::text AS paid, total_items,
                 total_quantity::text AS total_quantity, status, created_at, created_by,
-                store_id, total_reward_points, status_delivery
+                store_id, total_reward_points, status_delivery,
+                COUNT(*) OVER() AS total_count
          FROM public.tec_sales
          WHERE tenant_id = $1
            AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
@@ -291,7 +299,9 @@ export class SalesService {
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
         values
       );
-      return result.rows;
+      const total = result.rows[0]?.total_count ?? 0;
+      const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+      return buildPaginated(data, total, pagination);
     }
 
     const values: unknown[] = [tenantId];
@@ -300,12 +310,13 @@ export class SalesService {
       values.push(user.id);
       ownerFilter = ` AND created_by = $${values.length}`;
     }
-    values.push(limit, offset);
-    const result = await this.database.query<SalesListRow>(
+    values.push(pagination.limit, pagination.offset);
+    const result = await this.database.query<SalesListRow & { total_count: number }>(
       `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
               grand_total::text AS grand_total, paid::text AS paid, total_items,
               total_quantity::text AS total_quantity, status, created_at, created_by,
-              store_id, total_reward_points, status_delivery
+              store_id, total_reward_points, status_delivery,
+              COUNT(*) OVER() AS total_count
        FROM public.tec_sales
        WHERE tenant_id = $1
        ${ownerFilter}
@@ -313,6 +324,8 @@ export class SalesService {
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 }

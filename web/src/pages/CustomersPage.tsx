@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedCustomersQuery } from '../pos-queries';
 import { createManagedCustomer, updateManagedCustomer } from '../api';
@@ -11,13 +11,14 @@ export default function CustomersPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, stores } = useSession();
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
   const [storeId, setStoreId] = useState<string>('');
-  const customersQuery = useManagedCustomersQuery(token, tenantId, search);
+  const customersQuery = useManagedCustomersQuery(token, tenantId, search, page, 20);
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: ManagedCustomerPayload }) =>
     input.id === null ? createManagedCustomer(input.payload) : updateManagedCustomer(input.id, input.payload)
@@ -58,7 +59,8 @@ export default function CustomersPage() {
     });
   }
 
-  const customers = customersQuery.data ?? [];
+  const customers = customersQuery.data?.data ?? [];
+  const meta = customersQuery.data?.meta;
 
   return (
     <>
@@ -67,7 +69,7 @@ export default function CustomersPage() {
       <div className="split-layout">
         <Panel className="stack">
           <label>Buscar
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre del cliente" />
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre del cliente" />
           </label>
           {customersQuery.isError ? <Notice tone="error">No fue posible cargar los clientes.</Notice> : null}
           <div className="table-wrap">
@@ -91,6 +93,12 @@ export default function CustomersPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={meta?.totalPages ?? 0}
+            total={meta?.total ?? 0}
+            onChange={setPage}
+          />
         </Panel>
 
         <Panel className="stack">

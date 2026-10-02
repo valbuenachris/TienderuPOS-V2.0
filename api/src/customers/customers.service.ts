@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreateCustomerDto, UpdateCustomerDto } from './customer.dto';
@@ -14,7 +15,12 @@ function escapeLike(value: string): string {
 export class CustomersService {
   constructor(private readonly database: DatabaseService) {}
 
-  async list(tenantId: string, search: string, storeId?: number): Promise<CustomerAdminRow[]> {
+  async list(
+    tenantId: string,
+    search: string,
+    storeId: number | undefined,
+    pagination: PaginationQuery
+  ): Promise<Paginated<CustomerAdminRow>> {
     const pattern = `%${escapeLike(search.trim().slice(0, 100))}%`;
     const values: unknown[] = [tenantId, pattern];
     let storeFilter = '';
@@ -22,15 +28,18 @@ export class CustomersService {
       values.push(storeId);
       storeFilter = ` AND (store_id IS NULL OR store_id = $${values.length})`;
     }
-    const result = await this.database.query<CustomerAdminRow>(
-      `SELECT id, name, email, phone, store_id
+    values.push(pagination.limit, pagination.offset);
+    const result = await this.database.query<CustomerAdminRow & { total_count: number }>(
+      `SELECT id, name, email, phone, store_id, COUNT(*) OVER() AS total_count
        FROM public.tec_customers
        WHERE tenant_id = $1 AND name ILIKE $2 ${storeFilter}
        ORDER BY name
-       LIMIT 200`,
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 
   async create(tenantId: string, input: CreateCustomerDto): Promise<CustomerAdminRow> {

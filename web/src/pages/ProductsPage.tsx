@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import ProductImagesEditor from '../components/ProductImagesEditor';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedProductsQuery } from '../pos-queries';
@@ -15,6 +15,7 @@ export default function ProductsPage() {
   const currency = settings?.currency_prefix || 'COP';
   const [storeId, setStoreId] = useState<number | null>(null);
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [code, setCode] = useState('');
@@ -27,9 +28,10 @@ export default function ProductsPage() {
   const [initialQuantity, setInitialQuantity] = useState('0');
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
+  const [modalOpen, setModalOpen] = useState(false);
 
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
-  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, search);
+  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, search, page, 20);
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: ManagedProductPayload }) => {
     if (input.id === null) return createManagedProduct(input.payload);
@@ -49,6 +51,7 @@ export default function ProductsPage() {
   );
 
   function resetForm() {
+    setModalOpen(false);
     setEditingId(null);
     setCode('');
     setName('');
@@ -58,6 +61,11 @@ export default function ProductsPage() {
     setRewardPoints('0');
     setDetails('');
     setInitialQuantity('0');
+  }
+
+  function openCreate() {
+    resetForm();
+    setModalOpen(true);
   }
 
   function startEdit(product: ManagedProduct) {
@@ -70,6 +78,7 @@ export default function ProductsPage() {
     setRewardPoints(String(product.reward_points ?? 0));
     setDetails(product.details ?? '');
     setNotice('');
+    setModalOpen(true);
   }
 
   function submitProduct(event: FormEvent<HTMLFormElement>) {
@@ -121,23 +130,28 @@ export default function ProductsPage() {
     );
   }
 
-  const products = productsQuery.data ?? [];
+  const products = productsQuery.data?.data ?? [];
+  const meta = productsQuery.data?.meta;
   const editingProduct = editingId === null ? null : products.find((product) => product.id === editingId) ?? null;
 
   return (
     <>
-      <PageHeader eyebrow="CATÁLOGO" title="Productos" />
+      <PageHeader
+        eyebrow="CATÁLOGO"
+        title="Productos"
+        actions={<button className="primary" onClick={openCreate}>+ Crear producto</button>}
+      />
       {notice ? <Notice tone={/no fue|error|inválid|invalid|required/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
       <div className="split-layout">
         <Panel className="stack">
           <div className="toolbar">
             <label>Tienda
-              <select value={effectiveStoreId ?? ''} onChange={(event) => setStoreId(Number(event.target.value) || null)}>
+              <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }}>
                 {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
               </select>
             </label>
             <label>Buscar
-              <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre o código" />
+              <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre o código" />
             </label>
           </div>
           {productsQuery.isError ? <Notice tone="error">No fue posible cargar los productos.</Notice> : null}
@@ -167,42 +181,17 @@ export default function ProductsPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={meta?.totalPages ?? 0}
+            total={meta?.total ?? 0}
+            onChange={setPage}
+          />
         </Panel>
 
-        <Panel className="stack">
-          <div className="section-heading">
-            <div><p className="eyebrow">{editingId === null ? 'NUEVO' : 'EDITANDO'}</p><h2>{editingId === null ? 'Crear producto' : `Producto #${editingId}`}</h2></div>
-            {editingId !== null ? <button className="quiet" onClick={resetForm}>Cancelar</button> : null}
-          </div>
-          <form className="form-grid" onSubmit={submitProduct}>
-            <label>Código<input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></label>
-            <label>Nombre<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
-            <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
-            <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
-            <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
-            <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
-            <label>Descripción
-              <textarea
-                value={details}
-                onChange={(event) => setDetails(event.target.value.slice(0, 1000))}
-                rows={4}
-                maxLength={1000}
-                placeholder="Describe el producto, sus características, beneficios, uso…"
-              />
-              <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
-            </label>
-            {editingId === null ? (
-              <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
-            ) : null}
-            <button className="primary" type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
-            </button>
-          </form>
-
-          {editingProduct ? <ProductImagesEditor product={editingProduct} /> : null}
-
-          {stockProduct ? (
-            <form className="form-grid stock-form" onSubmit={submitStock}>
+        {stockProduct ? (
+          <Panel className="stack">
+            <form className="form-grid" onSubmit={submitStock}>
               <p className="eyebrow">AJUSTE DE STOCK · {stockProduct.name ?? stockProduct.code ?? `#${stockProduct.id}`}</p>
               <label>Cantidad<input value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} inputMode="numeric" /></label>
               <div className="form-actions">
@@ -210,9 +199,49 @@ export default function ProductsPage() {
                 <button className="quiet" type="button" onClick={() => setStockProduct(null)}>Cancelar</button>
               </div>
             </form>
-          ) : null}
-        </Panel>
+          </Panel>
+        ) : null}
       </div>
+
+      {modalOpen ? (
+        <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) resetForm(); }}>
+          <section className="modal-card">
+            <div className="modal-header">
+              <div>
+                <p className="eyebrow">{editingId === null ? 'NUEVO' : 'EDITANDO'}</p>
+                <h2>{editingId === null ? 'Crear producto' : `Producto #${editingId}`}</h2>
+              </div>
+              <button className="quiet" type="button" onClick={resetForm} aria-label="Cerrar">✕</button>
+            </div>
+            <form className="form-grid" onSubmit={submitProduct}>
+              <label>Código<input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></label>
+              <label>Nombre<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
+              <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
+              <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
+              <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
+              <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
+              <label>Descripción
+                <textarea
+                  value={details}
+                  onChange={(event) => setDetails(event.target.value.slice(0, 1000))}
+                  rows={4}
+                  maxLength={1000}
+                  placeholder="Describe el producto, sus características, beneficios, uso…"
+                />
+                <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
+              </label>
+              {editingId === null ? (
+                <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
+              ) : null}
+              <button className="primary" type="submit" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
+              </button>
+            </form>
+
+            {editingProduct ? <ProductImagesEditor product={editingProduct} /> : null}
+          </section>
+        </div>
+      ) : null}
     </>
   );
 }

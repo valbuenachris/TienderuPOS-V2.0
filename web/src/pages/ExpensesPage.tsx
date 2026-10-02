@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useExpensesQuery } from '../pos-queries';
 import { createExpense, updateExpense } from '../api';
@@ -19,13 +19,14 @@ export default function ExpensesPage() {
   const [from, setFrom] = useState('');
   const [to, setTo] = useState('');
   const [applied, setApplied] = useState<{ from?: string; to?: string }>({});
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [date, setDate] = useState(today());
   const [reference, setReference] = useState('');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const expensesQuery = useExpensesQuery(token, tenantId, applied.from, applied.to);
+  const expensesQuery = useExpensesQuery(token, tenantId, applied.from, applied.to, page, 20);
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: ExpensePayload }) =>
     input.id === null ? createExpense(input.payload) : updateExpense(input.id, input.payload)
@@ -66,7 +67,8 @@ export default function ExpensesPage() {
     });
   }
 
-  const expenses = expensesQuery.data ?? [];
+  const expenses = expensesQuery.data?.data ?? [];
+  const meta = expensesQuery.data?.meta;
   const total = expenses.reduce((sum, expense) => sum + Number(expense.amount ?? 0), 0);
 
   return (
@@ -78,7 +80,7 @@ export default function ExpensesPage() {
           <div className="toolbar">
             <label>Desde<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
             <label>Hasta<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
-            <button className="primary" onClick={() => setApplied({ from: from || undefined, to: to || undefined })}>Aplicar</button>
+            <button className="primary" onClick={() => { setPage(1); setApplied({ from: from || undefined, to: to || undefined }); }}>Aplicar</button>
           </div>
           {expensesQuery.isError ? <Notice tone="error">No fue posible cargar los gastos.</Notice> : null}
           <div className="table-wrap">
@@ -101,10 +103,16 @@ export default function ExpensesPage() {
                 ) : null}
               </tbody>
               <tfoot>
-                <tr><th colSpan={2}>Total</th><th>{formatMoney(total, currency)}</th><th colSpan={2} /></tr>
+                <tr><th colSpan={2}>Total (página)</th><th>{formatMoney(total, currency)}</th><th colSpan={2} /></tr>
               </tfoot>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={meta?.totalPages ?? 0}
+            total={meta?.total ?? 0}
+            onChange={setPage}
+          />
         </Panel>
 
         <Panel className="stack">

@@ -29,3 +29,28 @@ export function Field({ label, children }: { label: string; children: ReactNode 
 export function Panel({ children, className = '' }: { children: ReactNode; className?: string }) {
   return <section className={`panel ${className}`.trim()}>{children}</section>;
 }
+
+export function Pagination({
+  page,
+  totalPages,
+  total,
+  onChange
+}: {
+  page: number;
+  totalPages: number;
+  total: number;
+  onChange: (page: number) => void;
+}) {
+  const lastPage = Math.max(totalPages, 1);
+  return (
+    <div className="pagination">
+      <button className="quiet" type="button" disabled={page <= 1} onClick={() => onChange(page - 1)}>
+        ← Anterior
+      </button>
+      <span>Página {page} de {lastPage} · {total} registros</span>
+      <button className="quiet" type="button" disabled={page >= lastPage} onClick={() => onChange(page + 1)}>
+        Siguiente →
+      </button>
+    </div>
+  );
+}

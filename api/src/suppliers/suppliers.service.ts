@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreateSupplierDto, UpdateSupplierDto } from './supplier.dto';
@@ -13,17 +14,19 @@ function escapeLike(value: string): string {
 export class SuppliersService {
   constructor(private readonly database: DatabaseService) {}
 
-  async list(tenantId: string, search: string): Promise<SupplierRow[]> {
+  async list(tenantId: string, search: string, pagination: PaginationQuery): Promise<Paginated<SupplierRow>> {
     const pattern = `%${escapeLike(search.trim().slice(0, 100))}%`;
-    const result = await this.database.query<SupplierRow>(
-      `SELECT id, name, cf1, cf2, phone, email
+    const result = await this.database.query<SupplierRow & { total_count: number }>(
+      `SELECT id, name, cf1, cf2, phone, email, COUNT(*) OVER() AS total_count
        FROM public.tec_suppliers
        WHERE tenant_id = $1 AND name ILIKE $2
        ORDER BY name
-       LIMIT 200`,
-      [tenantId, pattern]
+       LIMIT $3 OFFSET $4`,
+      [tenantId, pattern, pagination.limit, pagination.offset]
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 
   async create(tenantId: string, input: CreateSupplierDto): Promise<SupplierRow> {

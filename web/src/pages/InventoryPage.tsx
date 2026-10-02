@@ -1,14 +1,16 @@
 import { useState } from 'react';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useManagedProductsQuery } from '../pos-queries';
 
 export default function InventoryPage() {
   const { token, tenantId, stores } = useSession();
   const [storeId, setStoreId] = useState<number | null>(null);
+  const [page, setPage] = useState(1);
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
-  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, '');
-  const products = [...(productsQuery.data ?? [])].sort((a, b) => (a.store_quantity ?? 0) - (b.store_quantity ?? 0));
+  const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, '', page, 20);
+  const products = [...(productsQuery.data?.data ?? [])].sort((a, b) => (a.store_quantity ?? 0) - (b.store_quantity ?? 0));
+  const meta = productsQuery.data?.meta;
 
   return (
     <>
@@ -16,7 +18,7 @@ export default function InventoryPage() {
         eyebrow="EXISTENCIAS"
         title="Inventario"
         actions={(
-          <select value={effectiveStoreId ?? ''} onChange={(event) => setStoreId(Number(event.target.value) || null)} aria-label="Tienda">
+          <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }} aria-label="Tienda">
             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
           </select>
         )}
@@ -48,6 +50,12 @@ export default function InventoryPage() {
             </tbody>
           </table>
         </div>
+        <Pagination
+          page={page}
+          totalPages={meta?.totalPages ?? 0}
+          total={meta?.total ?? 0}
+          onChange={setPage}
+        />
       </Panel>
     </>
   );

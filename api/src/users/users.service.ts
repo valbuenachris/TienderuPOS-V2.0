@@ -3,6 +3,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { ConfigService } from '@nestjs/config';
 import { hashPassword } from '../auth/password.util';
 import { PosUser } from '../auth/auth.types';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 
@@ -46,20 +47,22 @@ export class UsersService {
     this.bcryptRounds = Number(config.get('BCRYPT_ROUNDS') ?? 12);
   }
 
-  async list(tenantId: string, search = ''): Promise<UserListRow[]> {
+  async list(tenantId: string, search: string, pagination: PaginationQuery): Promise<Paginated<UserListRow>> {
     const pattern = `%${escapeLike(search.trim().slice(0, 100))}%`;
-    const result = await this.database.query<UserListRow>(
-      `SELECT ${USER_LIST_FIELDS}
+    const result = await this.database.query<UserListRow & { total_count: number }>(
+      `SELECT ${USER_LIST_FIELDS}, COUNT(*) OVER() AS total_count
        FROM public.tec_users u
        LEFT JOIN public.tec_groups g
          ON g.id = u.group_id AND (g.tenant_id = $1 OR g.tenant_id IS NULL)
        WHERE u.tenant_id = $1
          AND (u.username ILIKE $2 OR u.email ILIKE $2 OR u.first_name ILIKE $2 OR u.last_name ILIKE $2)
        ORDER BY u.username
-       LIMIT 200`,
-      [tenantId, pattern]
+       LIMIT $3 OFFSET $4`,
+      [tenantId, pattern, pagination.limit, pagination.offset]
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 
   async create(tenantId: string, input: CreateUserDto): Promise<UserListRow> {

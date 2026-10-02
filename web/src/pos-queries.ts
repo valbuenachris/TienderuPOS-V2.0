@@ -108,14 +108,14 @@ export function useProductsQuery(
 export function useSalesQuery(
   token: string | null,
   tenantId: string | null,
-  from?: string,
-  to?: string,
-  limit = 50,
-  offset = 0
+  from: string | undefined,
+  to: string | undefined,
+  page = 1,
+  limit = 20
 ) {
   return useQuery({
-    queryKey: ['sales', tenantId, from ?? '', to ?? '', limit, offset],
-    queryFn: () => fetchSales(from, to, limit, offset),
+    queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit],
+    queryFn: () => fetchSales(from, to, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });
@@ -134,32 +134,47 @@ export function useManagedProductsQuery(
   token: string | null,
   tenantId: string | null,
   storeId: number | null,
-  search: string
+  search: string,
+  page = 1,
+  limit = 20
 ) {
   return useQuery({
-    queryKey: ['managed-products', tenantId, storeId, search],
+    queryKey: ['managed-products', tenantId, storeId, search, page, limit],
     queryFn: () => {
       if (storeId === null) throw new Error('A store is required to load products');
-      return fetchManagedProducts(storeId, search);
+      return fetchManagedProducts(storeId, search, page, limit);
     },
     enabled: Boolean(token && tenantId && storeId),
     retry: false
   });
 }
 
-export function useManagedCustomersQuery(token: string | null, tenantId: string | null, search: string) {
+export function useManagedCustomersQuery(
+  token: string | null,
+  tenantId: string | null,
+  search: string,
+  page = 1,
+  limit = 20
+) {
   return useQuery({
-    queryKey: ['managed-customers', tenantId, search],
-    queryFn: () => fetchManagedCustomers(search),
+    queryKey: ['managed-customers', tenantId, search, page, limit],
+    queryFn: () => fetchManagedCustomers(search, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });
 }
 
-export function useExpensesQuery(token: string | null, tenantId: string | null, from?: string, to?: string) {
+export function useExpensesQuery(
+  token: string | null,
+  tenantId: string | null,
+  from: string | undefined,
+  to: string | undefined,
+  page = 1,
+  limit = 20
+) {
   return useQuery({
-    queryKey: ['expenses', tenantId, from ?? '', to ?? ''],
-    queryFn: () => fetchExpenses(from, to),
+    queryKey: ['expenses', tenantId, from ?? '', to ?? '', page, limit],
+    queryFn: () => fetchExpenses(from, to, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });
@@ -183,10 +198,10 @@ export function useTopProductsQuery(token: string | null, tenantId: string | nul
   });
 }
 
-export function useUsersQuery(token: string | null, tenantId: string | null, search = '') {
+export function useUsersQuery(token: string | null, tenantId: string | null, search = '', page = 1, limit = 20) {
   return useQuery({
-    queryKey: ['users', tenantId, search],
-    queryFn: () => fetchUsers(search),
+    queryKey: ['users', tenantId, search, page, limit],
+    queryFn: () => fetchUsers(search, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });
@@ -208,19 +223,32 @@ export const expenseMutations = {
   update: updateExpense
 };
 
-export function useSuppliersQuery(token: string | null, tenantId: string | null, search: string) {
+export function useSuppliersQuery(
+  token: string | null,
+  tenantId: string | null,
+  search: string,
+  page = 1,
+  limit = 20
+) {
   return useQuery({
-    queryKey: ['suppliers', tenantId, search],
-    queryFn: () => fetchSuppliers(search),
+    queryKey: ['suppliers', tenantId, search, page, limit],
+    queryFn: () => fetchSuppliers(search, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });
 }
 
-export function usePurchasesQuery(token: string | null, tenantId: string | null, from?: string, to?: string) {
+export function usePurchasesQuery(
+  token: string | null,
+  tenantId: string | null,
+  from: string | undefined,
+  to: string | undefined,
+  page = 1,
+  limit = 20
+) {
   return useQuery({
-    queryKey: ['purchases', tenantId, from ?? '', to ?? ''],
-    queryFn: () => fetchPurchases(from, to),
+    queryKey: ['purchases', tenantId, from ?? '', to ?? '', page, limit],
+    queryFn: () => fetchPurchases(from, to, page, limit),
     enabled: Boolean(token && tenantId),
     retry: false
   });

@@ -12,7 +12,7 @@ export default function DashboardPage() {
   const { token, tenantId, settings, isAdmin } = useSession();
   const date = today();
   const daily = useDailyReportQuery(token, tenantId, date);
-  const recent = useSalesQuery(token, tenantId, undefined, undefined, 5, 0);
+  const recent = useSalesQuery(token, tenantId, undefined, undefined, 1, 5);
   const currency = settings?.currency_prefix || 'COP';
   const report = daily.data;
 
@@ -59,7 +59,7 @@ export default function DashboardPage() {
               <tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Total</th><th>Estado</th></tr>
             </thead>
             <tbody>
-              {(recent.data ?? []).map((sale) => (
+              {(recent.data?.data ?? []).map((sale) => (
                 <tr key={sale.id}>
                   <td>{sale.id}</td>
                   <td>{formatDate(sale.created_at)}</td>
@@ -68,7 +68,7 @@ export default function DashboardPage() {
                   <td><span className={`badge ${sale.status ?? ''}`}>{sale.status || '—'}</span></td>
                 </tr>
               ))}
-              {(recent.data ?? []).length === 0 && !recent.isPending ? (
+              {(recent.data?.data ?? []).length === 0 && !recent.isPending ? (
                 <tr><td colSpan={5} className="empty">Todavía no hay ventas registradas.</td></tr>
               ) : null}
             </tbody>

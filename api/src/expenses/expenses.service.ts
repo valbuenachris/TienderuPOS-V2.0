@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreateExpenseDto, UpdateExpenseDto } from './expense.dto';
@@ -11,7 +12,12 @@ type ExpenseRow = Omit<Pick<TableRow<'tec_expenses'>, 'id' | 'tenant_id' | 'date
 export class ExpensesService {
   constructor(private readonly database: DatabaseService) {}
 
-  async list(tenantId: string, from?: string, to?: string, limit = 100, offset = 0): Promise<ExpenseRow[]> {
+  async list(
+    tenantId: string,
+    from: string | undefined,
+    to: string | undefined,
+    pagination: PaginationQuery
+  ): Promise<Paginated<ExpenseRow>> {
     if ((from && !to) || (!from && to)) {
       throw new BadRequestException('from and to must be supplied together');
     }
@@ -23,16 +29,19 @@ export class ExpensesService {
       values.push(from, to);
       dateFilter = ` AND date >= $2::date AND date < ($3::date + INTERVAL '1 day')`;
     }
-    values.push(limit, offset);
-    const result = await this.database.query<ExpenseRow>(
-      `SELECT id, tenant_id, date, reference, amount::text AS amount, note, created_by
+    values.push(pagination.limit, pagination.offset);
+    const result = await this.database.query<ExpenseRow & { total_count: number }>(
+      `SELECT id, tenant_id, date, reference, amount::text AS amount, note, created_by,
+              COUNT(*) OVER() AS total_count
        FROM public.tec_expenses
        WHERE tenant_id = $1 ${dateFilter}
        ORDER BY date DESC, id DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 
   async create(tenantId: string, userId: number, input: CreateExpenseDto): Promise<ExpenseRow> {

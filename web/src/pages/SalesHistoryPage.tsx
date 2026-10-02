@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useSalesQuery } from '../pos-queries';
 import { formatDate, formatMoney } from '../format';
@@ -18,16 +18,17 @@ export default function SalesHistoryPage() {
   const [from, setFrom] = useState(() => isoDaysAgo(7));
   const [to, setTo] = useState(() => today());
   const [applied, setApplied] = useState(() => ({ from: isoDaysAgo(7), to: today() }));
-  const [offset, setOffset] = useState(0);
-  const limit = 50;
-  const sales = useSalesQuery(token, tenantId, applied.from, applied.to, limit, offset);
+  const [page, setPage] = useState(1);
+  const limit = 20;
+  const sales = useSalesQuery(token, tenantId, applied.from, applied.to, page, limit);
 
   function applyFilters() {
-    setOffset(0);
+    setPage(1);
     setApplied({ from, to });
   }
 
-  const rows = sales.data ?? [];
+  const rows = sales.data?.data ?? [];
+  const meta = sales.data?.meta;
 
   return (
     <>
@@ -63,11 +64,12 @@ export default function SalesHistoryPage() {
             </tbody>
           </table>
         </div>
-        <div className="pagination">
-          <button className="quiet" disabled={offset === 0} onClick={() => setOffset(Math.max(0, offset - limit))}>← Anterior</button>
-          <span>Desde {offset + 1}</span>
-          <button className="quiet" disabled={rows.length < limit} onClick={() => setOffset(offset + limit)}>Siguiente →</button>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={meta?.totalPages ?? 0}
+          total={meta?.total ?? 0}
+          onChange={setPage}
+        />
       </Panel>
     </>
   );

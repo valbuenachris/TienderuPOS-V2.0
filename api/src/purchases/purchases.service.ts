@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PosUser } from '../auth/auth.types';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreatePurchaseDto } from './purchase.dto';
@@ -41,7 +42,12 @@ const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
 export class PurchasesService {
   constructor(private readonly database: DatabaseService) {}
 
-  async list(tenantId: string, from?: string, to?: string, limit = 50, offset = 0): Promise<PurchaseListRow[]> {
+  async list(
+    tenantId: string,
+    from: string | undefined,
+    to: string | undefined,
+    pagination: PaginationQuery
+  ): Promise<Paginated<PurchaseListRow>> {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
 
@@ -51,10 +57,11 @@ export class PurchasesService {
       values.push(from, to);
       dateFilter = ` AND p.date >= $2::date AND p.date < ($3::date + INTERVAL '1 day')`;
     }
-    values.push(limit, offset);
-    const result = await this.database.query<PurchaseListRow>(
+    values.push(pagination.limit, pagination.offset);
+    const result = await this.database.query<PurchaseListRow & { total_count: number }>(
       `SELECT p.id, p.reference, p.date, p.note, p.total::text AS total, p.received,
-              p.supplier_id, s.name AS supplier_name, p.store_id, p.created_by
+              p.supplier_id, s.name AS supplier_name, p.store_id, p.created_by,
+              COUNT(*) OVER() AS total_count
        FROM public.tec_purchases p
        LEFT JOIN public.tec_suppliers s ON s.id = p.supplier_id AND s.tenant_id = p.tenant_id
        WHERE p.tenant_id = $1 ${dateFilter}
@@ -62,7 +69,9 @@ export class PurchasesService {
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
     );
-    return result.rows;
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
   }
 
   async detail(tenantId: string, purchaseId: number) {

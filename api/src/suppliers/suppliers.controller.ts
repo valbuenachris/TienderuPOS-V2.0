@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { parsePagination } from '../common/pagination';
 import { CreateSupplierDto, UpdateSupplierDto } from './supplier.dto';
 import { SuppliersService } from './suppliers.service';
 
@@ -23,9 +24,14 @@ export class SuppliersController {
   constructor(private readonly suppliers: SuppliersService) {}
 
   @Get()
-  list(@Req() request: PosRequest, @Query('q') search?: string) {
+  list(
+    @Req() request: PosRequest,
+    @Query('q') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
     const cleanSearch = search === undefined ? '' : search.trim().slice(0, 100);
-    return this.suppliers.list(request.tenantId!, cleanSearch);
+    return this.suppliers.list(request.tenantId!, cleanSearch, parsePagination(page, limit));
   }
 
   @Post()

@@ -18,6 +18,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { parsePagination } from '../common/pagination';
 import { CreateProductDto, SetStockDto, UpdateProductDto } from './product.dto';
 import { ProductsService, ProductImageSlot } from './products.service';
 
@@ -51,8 +52,19 @@ export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 
   @Get()
-  list(@Req() request: PosRequest, @Query('store_id') storeId?: string, @Query('q') search?: string) {
-    return this.products.list(request.tenantId!, parseInteger(storeId, 'store_id'), parseSearch(search));
+  list(
+    @Req() request: PosRequest,
+    @Query('store_id') storeId?: string,
+    @Query('q') search?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.products.list(
+      request.tenantId!,
+      parseInteger(storeId, 'store_id'),
+      parseSearch(search),
+      parsePagination(page, limit)
+    );
   }
 
   @Post()

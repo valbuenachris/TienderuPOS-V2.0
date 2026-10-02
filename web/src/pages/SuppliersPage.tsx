@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useSuppliersQuery } from '../pos-queries';
 import { createSupplier, updateSupplier } from '../api';
@@ -11,6 +11,7 @@ export default function SuppliersPage() {
   const queryClient = useQueryClient();
   const { token, tenantId } = useSession();
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
@@ -18,7 +19,7 @@ export default function SuppliersPage() {
   const [cf2, setCf2] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const suppliersQuery = useSuppliersQuery(token, tenantId, search);
+  const suppliersQuery = useSuppliersQuery(token, tenantId, search, page, 20);
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: SupplierPayload }) =>
     input.id === null ? createSupplier(input.payload) : updateSupplier(input.id, input.payload)
@@ -62,7 +63,8 @@ export default function SuppliersPage() {
     });
   }
 
-  const suppliers = suppliersQuery.data ?? [];
+  const suppliers = suppliersQuery.data?.data ?? [];
+  const meta = suppliersQuery.data?.meta;
 
   return (
     <>
@@ -71,7 +73,7 @@ export default function SuppliersPage() {
       <div className="split-layout">
         <Panel className="stack">
           <label>Buscar
-            <input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nombre del proveedor" />
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre del proveedor" />
           </label>
           {suppliersQuery.isError ? <Notice tone="error">No fue posible cargar los proveedores.</Notice> : null}
           <div className="table-wrap">
@@ -95,6 +97,12 @@ export default function SuppliersPage() {
               </tbody>
             </table>
           </div>
+          <Pagination
+            page={page}
+            totalPages={meta?.totalPages ?? 0}
+            total={meta?.total ?? 0}
+            onChange={setPage}
+          />
         </Panel>
 
         <Panel className="stack">

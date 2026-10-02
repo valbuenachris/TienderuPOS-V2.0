@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Panel } from '../components/ui';
+import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useUsersQuery } from '../pos-queries';
 import { createUser, deleteUser, setUserActive, updateUser } from '../api';
@@ -33,8 +33,6 @@ const EMPTY_FORM: UserFormState = {
   active: true
 };
 
-const PAGE_SIZE = 10;
-
 function roleOf(user: UserRecord): Role {
   return user.group_name?.toLowerCase() === 'admin' ? 'admin' : 'staff';
 }
@@ -55,7 +53,7 @@ export default function UsersPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, user: currentUser, stores } = useSession();
   const [search, setSearch] = useState('');
-  const [page, setPage] = useState(0);
+  const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -63,11 +61,9 @@ export default function UsersPage() {
   const [form, setForm] = useState<UserFormState>(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
 
-  const usersQuery = useUsersQuery(token, tenantId, search);
-  const users = usersQuery.data ?? [];
-  const pageCount = Math.max(1, Math.ceil(users.length / PAGE_SIZE));
-  const currentPage = Math.min(page, pageCount - 1);
-  const pageUsers = users.slice(currentPage * PAGE_SIZE, currentPage * PAGE_SIZE + PAGE_SIZE);
+  const usersQuery = useUsersQuery(token, tenantId, search, page, 10);
+  const users = usersQuery.data?.data ?? [];
+  const meta = usersQuery.data?.meta;
   const strength = passwordStrength(form.password);
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: UserPayload | Partial<UserPayload> }) =>
@@ -202,7 +198,7 @@ export default function UsersPage() {
               value={search}
               onChange={(event) => {
                 setSearch(event.target.value);
-                setPage(0);
+                setPage(1);
               }}
               placeholder="Usuario, nombre o correo"
             />
@@ -215,7 +211,7 @@ export default function UsersPage() {
               <tr><th>Usuario</th><th>Nombre</th><th>Correo</th><th>Grupo</th><th>Tienda</th><th>Activo</th><th /></tr>
             </thead>
             <tbody>
-              {pageUsers.map((target) => (
+              {users.map((target) => (
                 <tr key={target.id}>
                   <td>{target.username || '—'}</td>
                   <td>{[target.first_name, target.last_name].filter(Boolean).join(' ') || '—'}</td>
@@ -251,17 +247,18 @@ export default function UsersPage() {
                   </td>
                 </tr>
               ))}
-              {pageUsers.length === 0 && !usersQuery.isPending ? (
+              {users.length === 0 && !usersQuery.isPending ? (
                 <tr><td colSpan={7} className="empty">No hay usuarios que coincidan.</td></tr>
               ) : null}
             </tbody>
           </table>
         </div>
-        <div className="pagination">
-          <button className="quiet" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}>← Anterior</button>
-          <span>Página {currentPage + 1} de {pageCount}</span>
-          <button className="quiet" disabled={currentPage >= pageCount - 1} onClick={() => setPage(currentPage + 1)}>Siguiente →</button>
-        </div>
+        <Pagination
+          page={page}
+          totalPages={meta?.totalPages ?? 0}
+          total={meta?.total ?? 0}
+          onChange={setPage}
+        />
       </Panel>
 
       {modalOpen ? (

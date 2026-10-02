@@ -63,6 +63,7 @@ export interface SaleResult {
   paid_by?: string | null;
   amount_received?: string | null;
   change_amount?: string | null;
+  total_reward_points?: number | null;
   created_at?: string | null;
   items: Array<{
     product_id: number;

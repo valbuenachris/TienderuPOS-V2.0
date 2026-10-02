@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice } from '../components/ui';
+import { Modal, Notice } from '../components/ui';
 import CustomerSearch from '../components/CustomerSearch';
 import SaleConfirmationModal from '../components/SaleConfirmationModal';
 import type { SaleConfirmationData, SaleConfirmationPayload } from '../components/SaleConfirmationModal';
+import SaleTicket from '../components/SaleTicket';
 import { useSession } from '../app/session';
 import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
 import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
@@ -41,6 +42,7 @@ export default function PosPage() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [lastSale, setLastSale] = useState<SaleResult | null>(null);
 
@@ -50,6 +52,8 @@ export default function PosPage() {
 
   const currency = settings?.currency_prefix || 'COP';
   const currentStoreName = stores.find((store) => store.id === storeId)?.name || settings?.site_name || 'Tienda';
+  const cashierName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || '';
+  const lastSaleStoreName = lastSale ? stores.find((store) => store.id === lastSale.store_id)?.name ?? currentStoreName : currentStoreName;
   const paymentMethods: Array<{ value: PaymentMode; label: string }> = [
     { value: 'cash', label: PAYMENT_METHOD_LABELS.cash },
     { value: 'CC', label: PAYMENT_METHOD_LABELS.CC },
@@ -235,7 +239,10 @@ export default function PosPage() {
           {lastSale ? (
             <div className="receipt">
               <span>Última venta: <strong>#{lastSale.id}</strong> · {formatMoney(lastSale.grand_total, currency)}</span>
-              <button className="quiet" type="button" onClick={() => window.print()}>Imprimir ticket</button>
+              <div className="receipt-actions">
+                <button className="quiet" type="button" onClick={() => setTicketPreviewOpen(true)}>Ver ticket</button>
+                <button className="quiet" type="button" onClick={() => window.print()}>Imprimir ticket</button>
+              </div>
             </div>
           ) : null}
         </div>
@@ -252,31 +259,32 @@ export default function PosPage() {
       ) : null}
 
       {lastSale ? (
-        <div className="print-receipt" aria-hidden>
-          <div className="print-center"><strong>{settings?.site_name || 'POS'}</strong></div>
-          <div>Ticket #{lastSale.id}</div>
-          <div>{lastSale.created_at ? new Date(lastSale.created_at).toLocaleString('es-CO') : ''}</div>
-          <div>Cliente: {lastSale.customer_name || 'Cliente ocasional'}</div>
-          <div>--------------------------------</div>
-          {lastSale.items.map((item) => (
-            <div className="print-line" key={item.product_id}>
-              <span>{item.quantity} x {item.name || item.code || `#${item.product_id}`}</span>
-              <span>{formatMoney(item.subtotal, currency)}</span>
-            </div>
-          ))}
-          <div>--------------------------------</div>
-          <div className="print-line"><span>Subtotal</span><span>{formatMoney(lastSale.total, currency)}</span></div>
-          <div className="print-line"><span>Impuestos</span><span>{formatMoney(lastSale.tax_total, currency)}</span></div>
-          <div className="print-line print-total"><span>TOTAL</span><span>{formatMoney(lastSale.grand_total, currency)}</span></div>
-          <div className="print-line"><span>Pagado ({lastSale.paid_by ? paymentMethods.find((method) => method.value === lastSale.paid_by)?.label ?? lastSale.paid_by : 'pendiente'})</span><span>{formatMoney(lastSale.paid, currency)}</span></div>
-          {lastSale.paid_by === 'cash' && lastSale.amount_received ? (
-            <>
-              <div className="print-line"><span>Recibido</span><span>{formatMoney(lastSale.amount_received, currency)}</span></div>
-              <div className="print-line"><span>Cambio</span><span>{formatMoney(lastSale.change_amount ?? '0', currency)}</span></div>
-            </>
-          ) : null}
-          <div className="print-center print-thanks">¡Gracias por su compra!</div>
-        </div>
+        <SaleTicket
+          sale={lastSale}
+          currency={currency}
+          siteName={settings?.site_name}
+          storeName={lastSaleStoreName}
+          cashierName={cashierName}
+        />
+      ) : null}
+
+      {ticketPreviewOpen && lastSale ? (
+        <Modal
+          open
+          title="Vista del ticket"
+          eyebrow="TICKET"
+          className="ticket-modal"
+          onClose={() => setTicketPreviewOpen(false)}
+        >
+          <SaleTicket
+            sale={lastSale}
+            currency={currency}
+            siteName={settings?.site_name}
+            storeName={lastSaleStoreName}
+            cashierName={cashierName}
+            preview
+          />
+        </Modal>
       ) : null}
     </div>
   );

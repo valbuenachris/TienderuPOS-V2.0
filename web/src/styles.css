@@ -361,7 +361,55 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .purchase-total { display: flex; align-items: baseline; justify-content: space-between; margin: 6px 0; }
 .purchase-total strong { font-size: 20px; font-weight: 800; }
 
-.print-receipt { display: none; }
+.sale-ticket {
+  width: 58mm;
+  max-width: 100%;
+  margin: 0 auto;
+  padding: 10px 2mm;
+  background: #fff;
+  color: #111;
+  font-family: "Courier New", ui-monospace, monospace;
+  font-size: 11px;
+  line-height: 1.35;
+}
+.sale-ticket.print-receipt { display: none; }
+.sale-ticket-preview { border: 1px solid #e2e9e3; border-radius: 10px; box-shadow: 0 6px 18px #18391f12; }
+.ticket-modal { width: min(100%, 340px); }
+.ticket-header { display: grid; gap: 2px; text-align: center; }
+.ticket-logo { font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
+.ticket-store { font-size: 11px; font-weight: 700; }
+.ticket-ticket-no { margin-top: 4px; font-size: 14px; font-weight: 800; }
+.ticket-meta-line { font-size: 10px; color: #444; overflow-wrap: anywhere; }
+.ticket-rule { border-top: 1px dashed #9ca3af; margin: 6px 0; }
+.ticket-items-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: #444;
+}
+.ticket-item { margin-top: 4px; }
+.ticket-item-main { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+.ticket-item-name { overflow-wrap: anywhere; }
+.ticket-item-amount { white-space: nowrap; }
+.ticket-item-sub { font-size: 10px; color: #444; overflow-wrap: anywhere; }
+.ticket-totals { display: grid; gap: 2px; }
+.ticket-totals div { display: flex; justify-content: space-between; gap: 8px; }
+.ticket-grand-total { margin-top: 4px; padding-top: 4px; border-top: 1px solid #111; font-size: 14px; font-weight: 800; }
+.ticket-payment { display: grid; gap: 2px; font-size: 10px; }
+.ticket-payment div { display: flex; justify-content: space-between; gap: 8px; }
+.ticket-payment div span:first-child { color: #444; }
+.ticket-points { margin-top: 5px; text-align: center; font-size: 10px; font-weight: 700; }
+.ticket-footer { display: grid; justify-items: center; gap: 3px; text-align: center; }
+.ticket-qr { width: 96px; height: 96px; image-rendering: pixelated; }
+.ticket-qr.placeholder { display: grid; place-items: center; border: 1px dashed #cbd5cb; color: #9aa79e; font-size: 10px; }
+.ticket-qr-label { font-size: 9px; color: #444; }
+.ticket-thanks { margin-top: 3px; font-size: 12px; font-weight: 800; }
+.ticket-legal { font-size: 9px; color: #555; overflow-wrap: anywhere; }
+.receipt-actions { display: flex; align-items: center; gap: 8px; }
 
 @media (max-width: 900px) {
   .purchase-row { grid-template-columns: 1fr 1fr; }
@@ -371,23 +419,21 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
   body { background: #fff; }
   body * { visibility: hidden; }
   .print-receipt, .print-receipt * { visibility: visible; }
-  .print-receipt {
+  .sale-ticket.print-receipt {
     display: block;
     position: absolute;
     left: 0;
     top: 0;
     width: 54mm;
+    margin: 0;
     padding: 0 2mm;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
     background: #fff;
     color: #000;
-    font-family: "Courier New", ui-monospace, monospace;
-    font-size: 11px;
-    line-height: 1.35;
   }
-  .print-center { text-align: center; }
-  .print-line { display: flex; justify-content: space-between; gap: 4px; }
-  .print-total { font-weight: 700; }
-  .print-thanks { margin-top: 6px; }
+  .ticket-qr { width: 84px; height: 84px; }
   @page { size: 58mm auto; margin: 3mm 2mm; }
 }
 

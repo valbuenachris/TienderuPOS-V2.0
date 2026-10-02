@@ -16,6 +16,7 @@ import {
   fetchRegisterSummary,
   fetchRegisters,
   fetchReportSummary,
+  fetchReportCalendar,
   fetchSales,
   fetchSettings,
   fetchStores,
@@ -29,6 +30,7 @@ import {
   updateManagedCustomer,
   updateManagedProduct
 } from './api';
+import type { ReportCalendarGroup } from './api';
 
 export function useApiMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
   return useMutation<TResult, Error, TInput>({ mutationFn });
@@ -111,12 +113,13 @@ export function useSalesQuery(
   from: string | undefined,
   to: string | undefined,
   page = 1,
-  limit = 20
+  limit = 20,
+  enabled = true
 ) {
   return useQuery({
     queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit],
     queryFn: () => fetchSales(from, to, page, limit),
-    enabled: Boolean(token && tenantId),
+    enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
 }
@@ -185,6 +188,22 @@ export function useReportSummaryQuery(token: string | null, tenantId: string | n
     queryKey: ['report-summary', tenantId, from, to],
     queryFn: () => fetchReportSummary(from, to),
     enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useReportCalendarQuery(
+  token: string | null,
+  tenantId: string | null,
+  from: string,
+  to: string,
+  group: ReportCalendarGroup,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['report-calendar', tenantId, from, to, group],
+    queryFn: () => fetchReportCalendar(from, to, group),
+    enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
 }

@@ -28,6 +28,12 @@ function defaultDate(offsetDays: number): string {
   return new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 }
 
+function parseGroup(value: unknown): 'day' | 'month' {
+  if (value === undefined || value === 'day') return 'day';
+  if (value === 'month') return 'month';
+  throw new BadRequestException('group must be day or month');
+}
+
 @Controller('reports')
 @UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
 export class ReportsController {
@@ -39,6 +45,21 @@ export class ReportsController {
       request.tenantId!,
       from === undefined ? defaultDate(-29) : parseDate(from, 'from'),
       to === undefined ? defaultDate(0) : parseDate(to, 'to')
+    );
+  }
+
+  @Get('calendar')
+  calendar(
+    @Req() request: PosRequest,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('group') group?: string
+  ) {
+    return this.reports.calendar(
+      request.tenantId!,
+      from === undefined ? defaultDate(-29) : parseDate(from, 'from'),
+      to === undefined ? defaultDate(0) : parseDate(to, 'to'),
+      parseGroup(group)
     );
   }
 

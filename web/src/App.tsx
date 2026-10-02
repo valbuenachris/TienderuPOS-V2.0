@@ -5,9 +5,11 @@ import { SessionProvider, useSession } from './app/session';
 import DashboardPage from './pages/DashboardPage';
 import CashRegisterPage from './pages/CashRegisterPage';
 import CustomersPage from './pages/CustomersPage';
+import DailySalesReport from './pages/DailySalesReport';
 import ExpensesPage from './pages/ExpensesPage';
 import InventoryPage from './pages/InventoryPage';
 import LoginPage from './pages/LoginPage';
+import MonthlySalesReport from './pages/MonthlySalesReport';
 import PosPage from './pages/PosPage';
 import ProductsPage from './pages/ProductsPage';
 import PurchasesPage from './pages/PurchasesPage';
@@ -51,6 +53,8 @@ export default function App() {
             <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
             <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
             <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />
+            <Route path="/reportes/ventas-diarias" element={<AdminOnly><DailySalesReport /></AdminOnly>} />
+            <Route path="/reportes/ventas-mensuales" element={<AdminOnly><MonthlySalesReport /></AdminOnly>} />
             <Route path="/gastos" element={<AdminOnly><ExpensesPage /></AdminOnly>} />
             <Route path="/caja" element={<CashRegisterPage />} />
             <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />

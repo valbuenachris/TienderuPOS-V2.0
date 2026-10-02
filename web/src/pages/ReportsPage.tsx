@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import {
   Bar,
   BarChart,
@@ -82,7 +83,16 @@ export default function ReportsPage() {
 
   return (
     <>
-      <PageHeader eyebrow="ANÁLISIS" title="Reportes" />
+      <PageHeader
+        eyebrow="ANÁLISIS"
+        title="Reportes"
+        actions={(
+          <div className="page-actions">
+            <Link className="primary link-button" to="/reportes/ventas-diarias">Ventas diarias</Link>
+            <Link className="primary link-button" to="/reportes/ventas-mensuales">Ventas mensuales</Link>
+          </div>
+        )}
+      />
       <Panel className="stack full-width">
         <div className="toolbar">
           <div className="quick-filters">

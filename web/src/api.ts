@@ -351,6 +351,31 @@ export const fetchReportSummary = (from: string, to: string) =>
 export const fetchTopProducts = (from: string, to: string) =>
   apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));
 
+export type ReportCalendarGroup = 'day' | 'month';
+
+export interface ReportCalendarPoint {
+  key: string;
+  sales_total: string;
+  sales_count: number;
+  purchases_total: string;
+  purchases_count: number;
+  expenses_total: string;
+  expenses_count: number;
+  pending_total: string;
+  net_profit: string;
+}
+
+export interface ReportCalendar {
+  from: string;
+  to: string;
+  group: ReportCalendarGroup;
+  points: ReportCalendarPoint[];
+  totals: Omit<ReportCalendarPoint, 'key'>;
+}
+
+export const fetchReportCalendar = (from: string, to: string, group: ReportCalendarGroup) =>
+  apiRequest<ReportCalendar>(withQuery('/reports/calendar', { from, to, group }));
+
 export const fetchUsers = (search = '', page = 1, limit = 20) =>
   apiRequest<Paginated<UserRecord>>(withQuery('/users', { q: search, page, limit }));
 

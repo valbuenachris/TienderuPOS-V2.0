@@ -41,6 +41,27 @@ type TopProductRow = {
   subtotal: string;
 };
 
+export type CalendarGroup = 'day' | 'month';
+
+type BucketAggRow = {
+  bucket: string;
+  count: number;
+  total: string;
+  pending?: string;
+};
+
+type CalendarPoint = {
+  key: string;
+  sales_total: string;
+  sales_count: number;
+  purchases_total: string;
+  purchases_count: number;
+  expenses_total: string;
+  expenses_count: number;
+  pending_total: string;
+  net_profit: string;
+};
+
 const RANGE_START = `$2::date::timestamp AT TIME ZONE 'UTC'`;
 const RANGE_END = `($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC'`;
 
@@ -52,6 +73,18 @@ function monthKeys(from: string, to: string): string[] {
   while (cursor <= end) {
     keys.push(`${cursor.getUTCFullYear()}-${String(cursor.getUTCMonth() + 1).padStart(2, '0')}`);
     cursor.setUTCMonth(cursor.getUTCMonth() + 1);
+  }
+  return keys;
+}
+
+function bucketKeys(from: string, to: string, group: CalendarGroup): string[] {
+  if (group === 'month') return monthKeys(from, to);
+  const keys: string[] = [];
+  const cursor = new Date(`${from}T00:00:00.000Z`);
+  const end = new Date(`${to}T00:00:00.000Z`);
+  while (cursor <= end) {
+    keys.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
   }
   return keys;
 }
@@ -185,6 +218,128 @@ export class ReportsService {
       expenses_total: expensesTotal,
       net_profit: netProfit,
       monthly: [...monthMap.values()]
+    };
+  }
+
+  async calendar(tenantId: string, from: string, to: string, group: CalendarGroup) {
+    this.assertRange(from, to);
+    const format = group === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM';
+    const salesBucket = `TO_CHAR(created_at AT TIME ZONE 'UTC', '${format}')`;
+    const dateBucket = `TO_CHAR(date, '${format}')`;
+
+    const [sales, purchases, expenses] = await Promise.all([
+      this.database.query<BucketAggRow>(
+        `SELECT ${salesBucket} AS bucket,
+                COUNT(*)::integer AS count,
+                COALESCE(SUM(grand_total), 0)::text AS total,
+                COALESCE(SUM(grand_total - COALESCE(paid, 0)), 0)::text AS pending
+         FROM public.tec_sales
+         WHERE tenant_id = $1
+           AND created_at >= ${RANGE_START}
+           AND created_at < ${RANGE_END}
+         GROUP BY 1`,
+        [tenantId, from, to]
+      ),
+      this.database.query<BucketAggRow>(
+        `SELECT ${dateBucket} AS bucket,
+                COUNT(*)::integer AS count,
+                COALESCE(SUM(total), 0)::text AS total
+         FROM public.tec_purchases
+         WHERE tenant_id = $1
+           AND date >= $2::date
+           AND date < ${RANGE_END}
+         GROUP BY 1`,
+        [tenantId, from, to]
+      ),
+      this.database.query<BucketAggRow>(
+        `SELECT ${dateBucket} AS bucket,
+                COUNT(*)::integer AS count,
+                COALESCE(SUM(amount), 0)::text AS total
+         FROM public.tec_expenses
+         WHERE tenant_id = $1
+           AND date >= $2::date
+           AND date < ${RANGE_END}
+         GROUP BY 1`,
+        [tenantId, from, to]
+      )
+    ]);
+
+    const points = new Map<string, CalendarPoint>();
+    for (const key of bucketKeys(from, to, group)) {
+      points.set(key, {
+        key,
+        sales_total: '0.00',
+        sales_count: 0,
+        purchases_total: '0.00',
+        purchases_count: 0,
+        expenses_total: '0.00',
+        expenses_count: 0,
+        pending_total: '0.00',
+        net_profit: '0.00'
+      });
+    }
+
+    for (const row of sales.rows) {
+      const point = points.get(row.bucket);
+      if (!point) continue;
+      point.sales_total = row.total;
+      point.sales_count = row.count;
+      point.pending_total = row.pending ?? '0.00';
+    }
+    for (const row of purchases.rows) {
+      const point = points.get(row.bucket);
+      if (!point) continue;
+      point.purchases_total = row.total;
+      point.purchases_count = row.count;
+    }
+    for (const row of expenses.rows) {
+      const point = points.get(row.bucket);
+      if (!point) continue;
+      point.expenses_total = row.total;
+      point.expenses_count = row.count;
+    }
+
+    const totals = {
+      sales_total: new Decimal(0),
+      sales_count: 0,
+      purchases_total: new Decimal(0),
+      purchases_count: 0,
+      expenses_total: new Decimal(0),
+      expenses_count: 0,
+      pending_total: new Decimal(0),
+      net_profit: new Decimal(0)
+    };
+    for (const point of points.values()) {
+      point.net_profit = new Decimal(point.sales_total)
+        .minus(point.purchases_total)
+        .minus(point.expenses_total)
+        .toDecimalPlaces(2, Decimal.ROUND_HALF_UP)
+        .toFixed(2);
+      totals.sales_total = totals.sales_total.plus(point.sales_total);
+      totals.sales_count += point.sales_count;
+      totals.purchases_total = totals.purchases_total.plus(point.purchases_total);
+      totals.purchases_count += point.purchases_count;
+      totals.expenses_total = totals.expenses_total.plus(point.expenses_total);
+      totals.expenses_count += point.expenses_count;
+      totals.pending_total = totals.pending_total.plus(point.pending_total);
+      totals.net_profit = totals.net_profit.plus(point.net_profit);
+    }
+
+    return {
+      from,
+      to,
+      group,
+      points: [...points.values()],
+      totals: {
+        sales_total: totals.sales_total.toFixed(2),
+        sales_count: totals.sales_count,
+        purchases_total: totals.purchases_total.toFixed(2),
+        purchases_count: totals.purchases_count,
+        expenses_total: totals.expenses_total.toFixed(2),
+        expenses_count: totals.expenses_count,
+        pending_total: totals.pending_total.toFixed(2),
+        net_profit: totals.net_profit.toFixed(2)
+      }
     };
   }
 

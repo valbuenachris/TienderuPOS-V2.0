@@ -591,3 +591,52 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .stat-card--ganancia.negative { border-color: #c2410c; background: #fff7f5; }
 .stat-card--ganancia.negative .stat-value { color: #c2410c; }
 .stat-card--ganancia strong { font-size: clamp(20px, 1.7vw, 24px); }
+
+.breadcrumb { margin: 0 0 10px; color: #8b968e; font-size: 12px; }
+.breadcrumb a { color: #147d4a; font-weight: 600; text-decoration: none; }
+.calendar-nav { display: flex; align-items: center; gap: 12px; }
+.calendar-nav strong { font-size: 15px; }
+.calendar-scroll { overflow-x: auto; }
+.calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(90px, 1fr)); gap: 8px; min-width: 680px; }
+.calendar-weekday { text-align: center; font-size: 11px; font-weight: 700; color: #68736b; padding: 4px 0; }
+.calendar-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 92px;
+  padding: 8px;
+  border: 1px solid #e2e9e3;
+  border-radius: 12px;
+  background: #fff;
+  color: #18251c;
+  text-align: left;
+  cursor: pointer;
+}
+.calendar-cell:hover { border-color: #69b58a; background: #f4fbf6; }
+.calendar-cell.outside { opacity: .45; }
+.calendar-cell.today { border-color: #147d4a; box-shadow: 0 0 0 2px #147d4a22; }
+.day-number { align-self: flex-end; font-size: 12px; font-weight: 700; color: #536057; }
+.day-sales { font-size: 12px; font-weight: 700; color: #2563eb; overflow-wrap: anywhere; }
+.day-meta { font-size: 10px; color: #8b968e; overflow-wrap: anywhere; }
+.month-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.month-cell {
+  display: grid;
+  gap: 6px;
+  min-height: 104px;
+  align-content: start;
+  padding: 14px;
+  border: 1px solid #e2e9e3;
+  border-radius: 14px;
+  background: #fff;
+  color: #18251c;
+  text-align: left;
+  cursor: pointer;
+}
+.month-cell:hover { border-color: #69b58a; background: #f4fbf6; }
+.month-name { font-size: 14px; font-weight: 700; }
+@media (max-width: 1200px) {
+  .month-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 640px) {
+  .month-grid { grid-template-columns: minmax(0, 1fr); }
+}

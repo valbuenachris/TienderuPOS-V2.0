@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
+import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import ProductImagesEditor from '../components/ProductImagesEditor';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedProductsQuery } from '../pos-queries';
@@ -136,112 +136,112 @@ export default function ProductsPage() {
 
   return (
     <>
-      <PageHeader
-        eyebrow="CATÁLOGO"
-        title="Productos"
-        actions={<button className="primary" onClick={openCreate}>+ Crear producto</button>}
-      />
+      <PageHeader eyebrow="CATÁLOGO" title="Productos" />
       {notice ? <Notice tone={/no fue|error|inválid|invalid|required/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
-      <div className="split-layout">
-        <Panel className="stack">
-          <div className="toolbar">
-            <label>Tienda
-              <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }}>
-                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-              </select>
-            </label>
-            <label>Buscar
-              <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre o código" />
-            </label>
-          </div>
-          {productsQuery.isError ? <Notice tone="error">No fue posible cargar los productos.</Notice> : null}
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>Código</th><th>Nombre</th><th>Precio</th><th>Costo</th><th>Imp.</th><th>Stock</th><th /></tr>
-              </thead>
-              <tbody>
-                {products.map((product) => (
-                  <tr key={product.id}>
-                    <td>{product.code || `#${product.id}`}</td>
-                    <td>{product.name || '—'}</td>
-                    <td>{formatMoney(product.price, currency)}</td>
-                    <td>{formatMoney(product.cost, currency)}</td>
-                    <td>{product.tax ?? '0'}%</td>
-                    <td>{product.store_quantity ?? 0}</td>
-                    <td className="row-actions">
-                      <button className="quiet" onClick={() => startEdit(product)}>Editar</button>
-                      <button className="quiet" onClick={() => { setStockProduct(product); setStockQuantity(String(product.store_quantity ?? 0)); }}>Stock</button>
-                    </td>
-                  </tr>
-                ))}
-                {products.length === 0 && !productsQuery.isPending ? (
-                  <tr><td colSpan={7} className="empty">No hay productos para esta tienda.</td></tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={page}
-            totalPages={meta?.totalPages ?? 0}
-            total={meta?.total ?? 0}
-            onChange={setPage}
-          />
-        </Panel>
-
-        {stockProduct ? (
-          <Panel className="stack">
-            <form className="form-grid" onSubmit={submitStock}>
-              <p className="eyebrow">AJUSTE DE STOCK · {stockProduct.name ?? stockProduct.code ?? `#${stockProduct.id}`}</p>
-              <label>Cantidad<input value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} inputMode="numeric" /></label>
-              <div className="form-actions">
-                <button className="primary" type="submit" disabled={stockMutation.isPending}>Guardar stock</button>
-                <button className="quiet" type="button" onClick={() => setStockProduct(null)}>Cancelar</button>
-              </div>
-            </form>
-          </Panel>
-        ) : null}
-      </div>
-
-      {modalOpen ? (
-        <div className="modal-backdrop" onClick={(event) => { if (event.target === event.currentTarget) resetForm(); }}>
-          <section className="modal-card">
-            <div className="modal-header">
-              <div>
-                <p className="eyebrow">{editingId === null ? 'NUEVO' : 'EDITANDO'}</p>
-                <h2>{editingId === null ? 'Crear producto' : `Producto #${editingId}`}</h2>
-              </div>
-              <button className="quiet" type="button" onClick={resetForm} aria-label="Cerrar">✕</button>
-            </div>
-            <form className="form-grid" onSubmit={submitProduct}>
-              <label>Código<input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></label>
-              <label>Nombre<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
-              <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
-              <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
-              <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
-              <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
-              <label>Descripción
-                <textarea
-                  value={details}
-                  onChange={(event) => setDetails(event.target.value.slice(0, 1000))}
-                  rows={4}
-                  maxLength={1000}
-                  placeholder="Describe el producto, sus características, beneficios, uso…"
-                />
-                <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
-              </label>
-              {editingId === null ? (
-                <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
-              ) : null}
-              <button className="primary" type="submit" disabled={saveMutation.isPending}>
-                {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
-              </button>
-            </form>
-
-            {editingProduct ? <ProductImagesEditor product={editingProduct} /> : null}
-          </section>
+      <Panel className="stack full-width">
+        <div className="toolbar">
+          <label>Tienda
+            <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }}>
+              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+            </select>
+          </label>
+          <label>Buscar
+            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre o código" />
+          </label>
+          <button className="primary" type="button" onClick={openCreate}>+ Crear producto</button>
         </div>
-      ) : null}
+        {productsQuery.isError ? <Notice tone="error">No fue posible cargar los productos.</Notice> : null}
+        <div className="table-wrap">
+          <table className="data-table products-table">
+            <colgroup>
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '34%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '14%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '8%' }} />
+              <col style={{ width: '10%' }} />
+            </colgroup>
+            <thead>
+              <tr><th>Código</th><th>Nombre</th><th>Precio</th><th>Costo</th><th>Imp.</th><th>Stock</th><th /></tr>
+            </thead>
+            <tbody>
+              {products.map((product) => (
+                <tr key={product.id}>
+                  <td>{product.code || `#${product.id}`}</td>
+                  <td>{product.name || '—'}</td>
+                  <td>{formatMoney(product.price, currency)}</td>
+                  <td>{formatMoney(product.cost, currency)}</td>
+                  <td>{product.tax ?? '0'}%</td>
+                  <td>{product.store_quantity ?? 0}</td>
+                  <td className="row-actions">
+                    <button className="quiet" onClick={() => startEdit(product)}>Editar</button>
+                    <button className="quiet" onClick={() => { setStockProduct(product); setStockQuantity(String(product.store_quantity ?? 0)); }}>Stock</button>
+                  </td>
+                </tr>
+              ))}
+              {products.length === 0 && !productsQuery.isPending ? (
+                <tr><td colSpan={7} className="empty">No hay productos para esta tienda.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          page={page}
+          totalPages={meta?.totalPages ?? 0}
+          total={meta?.total ?? 0}
+          onChange={setPage}
+        />
+      </Panel>
+
+      <Modal
+        open={modalOpen}
+        eyebrow={editingId === null ? 'NUEVO' : 'EDITANDO'}
+        title={editingId === null ? 'Crear producto' : `Producto #${editingId}`}
+        onClose={resetForm}
+      >
+        <form className="form-grid" onSubmit={submitProduct}>
+          <label>Código<input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></label>
+          <label>Nombre<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
+          <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
+          <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
+          <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
+          <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
+          <label>Descripción
+            <textarea
+              value={details}
+              onChange={(event) => setDetails(event.target.value.slice(0, 1000))}
+              rows={4}
+              maxLength={1000}
+              placeholder="Describe el producto, sus características, beneficios, uso…"
+            />
+            <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
+          </label>
+          {editingId === null ? (
+            <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
+          ) : null}
+          <button className="primary" type="submit" disabled={saveMutation.isPending}>
+            {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
+          </button>
+        </form>
+
+        {editingProduct ? <ProductImagesEditor product={editingProduct} /> : null}
+      </Modal>
+
+      <Modal
+        open={stockProduct !== null}
+        eyebrow="AJUSTE"
+        title={stockProduct ? `Stock · ${stockProduct.name ?? stockProduct.code ?? `#${stockProduct.id}`}` : 'Stock'}
+        onClose={() => setStockProduct(null)}
+      >
+        <form className="form-grid" onSubmit={submitStock}>
+          <label>Cantidad<input value={stockQuantity} onChange={(event) => setStockQuantity(event.target.value)} inputMode="numeric" /></label>
+          <div className="form-actions">
+            <button className="primary" type="submit" disabled={stockMutation.isPending}>Guardar stock</button>
+            <button className="quiet" type="button" onClick={() => setStockProduct(null)}>Cancelar</button>
+          </div>
+        </form>
+      </Modal>
     </>
   );
 }

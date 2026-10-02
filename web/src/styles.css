@@ -263,11 +263,20 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .nav-icon { width: 18px; text-align: center; }
 .app-body { min-width: 0; display: flex; flex-direction: column; }
 .mobile-nav-toggle { display: none; }
-.page { width: min(1440px, 96%); margin: 26px auto 60px; display: grid; gap: 18px; align-content: start; }
+.page {
+  width: 100%;
+  max-width: none;
+  margin: 26px 0 60px;
+  padding: 0 clamp(16px, 3vw, 40px);
+  display: grid;
+  gap: 18px;
+  align-content: start;
+}
 .page-header { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
 .page-header .eyebrow { margin-top: 0; }
 .page-actions { display: flex; gap: 10px; align-items: center; }
 .panel { padding: 22px; border: 1px solid #e2e9e3; border-radius: 18px; background: #fff; box-shadow: 0 6px 24px #18391f08; }
+.panel.full-width { width: 100%; max-width: none; }
 .stack { display: grid; gap: 16px; align-content: start; }
 .split-layout { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr); gap: 18px; align-items: start; }
 .toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
@@ -282,8 +291,9 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .stat-card span { color: #68736b; font-size: 12px; font-weight: 700; }
 .stat-card strong { font-size: 22px; font-weight: 800; }
 .stat-card small { color: #8b968e; font-size: 11px; }
-.table-wrap { overflow-x: auto; }
+.table-wrap { width: 100%; overflow-x: auto; }
 .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.products-table { min-width: 760px; }
 .data-table th {
   padding: 10px 12px;
   border-bottom: 1px solid #e2e9e3;
@@ -521,3 +531,24 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 @media (max-width: 520px) {
   .field-row { grid-template-columns: 1fr; }
 }
+
+.quick-filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick-filters .quiet {
+  padding: 6px 12px;
+  border: 1px solid #dce5dd;
+  border-radius: 999px;
+  font-size: 12px;
+}
+.quick-filters .quiet.active { border-color: #147d4a; background: #e4f5e9; color: #147d4a; }
+.quick-filters .quiet:disabled { opacity: .55; cursor: wait; }
+
+.chart-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 18px; }
+.chart-box { min-width: 0; padding: 18px; border: 1px solid #e2e9e3; border-radius: 16px; background: #fff; }
+.chart-title { margin: 0 0 12px; font-size: 14px; font-weight: 700; }
+.chart-empty { display: grid; place-items: center; height: 280px; color: #849087; font-size: 13px; }
+
+.stat-card.profit { border-color: #147d4a; }
+.stat-card.profit.negative { border-color: #c2410c; }
+.stat-card.profit strong { font-size: 26px; }
+.profit-positive { color: #147d4a; }
+.profit-negative { color: #c2410c; }

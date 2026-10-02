@@ -176,6 +176,32 @@ export interface ReportDay {
   due: string;
 }
 
+export interface ReportTotals {
+  sales_count: number;
+  subtotal: string;
+  grand_total: string;
+  paid: string;
+  due: string;
+}
+
+export interface ReportMonthPoint {
+  month: string;
+  sales: string;
+  purchases: string;
+  expenses: string;
+}
+
+export interface ReportSummary {
+  from: string;
+  to: string;
+  days: ReportDay[];
+  totals: ReportTotals;
+  purchases_total: string;
+  expenses_total: string;
+  net_profit: string;
+  monthly: ReportMonthPoint[];
+}
+
 export interface TopProduct {
   product_id: number;
   code: string | null;
@@ -320,7 +346,7 @@ export const updateExpense = (id: number, payload: ExpensePayload) =>
   apiRequest<ExpenseRecord>(`/expenses/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 
 export const fetchReportSummary = (from: string, to: string) =>
-  apiRequest<ReportDay[]>(withQuery('/reports/summary', { from, to }));
+  apiRequest<ReportSummary>(withQuery('/reports/summary', { from, to }));
 
 export const fetchTopProducts = (from: string, to: string) =>
   apiRequest<TopProduct[]>(withQuery('/reports/top-products', { from, to }));

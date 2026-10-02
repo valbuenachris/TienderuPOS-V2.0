@@ -1,10 +1,11 @@
 const amountFormatter = new Intl.NumberFormat('es-CO', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function formatMoney(value: string | number | null | undefined, prefix = 'COP'): string {
+export function formatMoney(value: string | number | null | undefined, prefix = '$'): string {
   const amount = amountFormatter.format(Number(value ?? 0));
-  const normalizedPrefix = (prefix || '').trim();
-  if (!normalizedPrefix) return amount;
-  return /^[A-Z]{3}$/.test(normalizedPrefix) ? `${normalizedPrefix} ${amount}` : `${normalizedPrefix}${amount}`;
+  const normalized = (prefix || '').trim();
+  // Settings may store an ISO code ("COP", "USD"); render the symbol instead of the code.
+  const symbol = normalized && !/^[A-Za-z]{3}$/.test(normalized) ? normalized : '$';
+  return `${symbol} ${amount}`;
 }
 
 export function formatDate(value: string | null | undefined): string {

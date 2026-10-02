@@ -60,6 +60,8 @@ export default function ReportsPage() {
   const expensesTotal = summary?.expenses_total ?? '0.00';
   const netProfit = Number(summary?.net_profit ?? 0);
   const netProfitPositive = netProfit >= 0;
+  const salesCount = totals?.sales_count ?? 0;
+  const averageTicket = salesCount > 0 ? Number(totals?.grand_total ?? 0) / salesCount : 0;
 
   const lineData = days.map((day) => ({ day: day.day, ventas: Number(day.grand_total ?? 0) }));
   const barData = (summary?.monthly ?? []).map((point) => ({
@@ -103,18 +105,19 @@ export default function ReportsPage() {
         {summaryQuery.isError ? <Notice tone="error">No fue posible cargar el resumen.</Notice> : null}
         {loading ? <Notice>Cargando reportes…</Notice> : null}
 
-        <div className="stat-grid">
-          <article className="stat-card"><span>Ventas</span><strong>{totals?.sales_count ?? '—'}</strong><small>{applied.from} → {applied.to}</small></article>
-          <article className="stat-card"><span>Total ventas</span><strong>{money(totals?.grand_total ?? 0)}</strong><small>Con impuestos</small></article>
-          <article className="stat-card"><span>Total compras</span><strong>{money(purchasesTotal)}</strong><small>Costo de mercancía</small></article>
-          <article className="stat-card"><span>Total gastos</span><strong>{money(expensesTotal)}</strong><small>Gastos operativos</small></article>
-          <article className={`stat-card profit ${netProfitPositive ? 'positive' : 'negative'}`}>
+        <div className="stats-grid">
+          <article className="stat-card stat-card--ventas"><span>Ventas</span><strong className="stat-value">{totals?.sales_count ?? '—'}</strong><small>{applied.from} → {applied.to}</small></article>
+          <article className="stat-card money stat-card--ventas"><span>Total ventas</span><strong className="stat-value">{money(totals?.grand_total ?? 0)}</strong><small>Con impuestos</small></article>
+          <article className="stat-card money stat-card--compras"><span>Total compras</span><strong className="stat-value">{money(purchasesTotal)}</strong><small>Costo de mercancía</small></article>
+          <article className="stat-card money stat-card--gastos"><span>Total gastos</span><strong className="stat-value">{money(expensesTotal)}</strong><small>Gastos operativos</small></article>
+          <article className={`stat-card money stat-card--ganancia ${netProfitPositive ? '' : 'negative'}`}>
             <span>Ganancia neta</span>
-            <strong className={netProfitPositive ? 'profit-positive' : 'profit-negative'}>{money(summary?.net_profit ?? 0)}</strong>
+            <strong className="stat-value">{money(summary?.net_profit ?? 0)}</strong>
             <small>Ventas − compras − gastos</small>
           </article>
-          <article className="stat-card"><span>Cobrado</span><strong>{money(totals?.paid ?? 0)}</strong><small>Pagos registrados</small></article>
-          <article className="stat-card"><span>Pendiente</span><strong>{money(totals?.due ?? 0)}</strong><small>Saldo por cobrar</small></article>
+          <article className="stat-card money"><span>Cobrado</span><strong>{money(totals?.paid ?? 0)}</strong><small>Pagos registrados</small></article>
+          <article className="stat-card money"><span>Pendiente</span><strong>{money(totals?.due ?? 0)}</strong><small>Saldo por cobrar</small></article>
+          <article className="stat-card money"><span>Ticket promedio</span><strong>{money(averageTicket)}</strong><small>Promedio por venta</small></article>
         </div>
 
         <div className="chart-grid">

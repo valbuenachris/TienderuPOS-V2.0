@@ -18,6 +18,7 @@ import {
   fetchReportSummary,
   fetchReportCalendar,
   fetchSales,
+  fetchSaleDetail,
   fetchSettings,
   fetchStores,
   fetchSuppliers,
@@ -81,6 +82,23 @@ export function useCustomersQuery(token: string | null, tenantId: string | null,
   });
 }
 
+export function useCustomerSearchQuery(
+  token: string | null,
+  tenantId: string | null,
+  storeId: number | null,
+  search: string
+) {
+  return useQuery({
+    queryKey: ['customer-search', tenantId, storeId, search],
+    queryFn: () => {
+      if (storeId === null) throw new Error('A store is required to search customers');
+      return fetchCustomers(storeId, search);
+    },
+    enabled: Boolean(token && tenantId && storeId && search.trim().length > 0),
+    retry: false
+  });
+}
+
 export function useSettingsQuery(token: string | null, tenantId: string | null) {
   return useQuery({
     queryKey: ['global-pos-settings'],
@@ -120,6 +138,18 @@ export function useSalesQuery(
     queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit],
     queryFn: () => fetchSales(from, to, page, limit),
     enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useSaleDetailQuery(token: string | null, tenantId: string | null, saleId: number | null) {
+  return useQuery({
+    queryKey: ['sale-detail', tenantId, saleId],
+    queryFn: () => {
+      if (saleId === null) throw new Error('A sale id is required to load the detail');
+      return fetchSaleDetail(saleId);
+    },
+    enabled: Boolean(token && tenantId && saleId !== null),
     retry: false
   });
 }

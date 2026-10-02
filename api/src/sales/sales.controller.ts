@@ -1,9 +1,23 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  ParseIntPipe,
+  Post,
+  Put,
+  Query,
+  Req,
+  UseGuards
+} from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { parsePagination } from '../common/pagination';
-import { CreateSaleDto } from './sale.dto';
+import { CreateSaleDto, UpdateSaleDto } from './sale.dto';
 import { SalesService } from './sales.service';
 
 function parseDate(value?: unknown): string | undefined {
@@ -52,5 +66,26 @@ export class SalesController {
   @Post()
   create(@Req() request: PosRequest, @Body() body: CreateSaleDto) {
     return this.sales.create(request.tenantId!, request.posUser!, body);
+  }
+
+  @Get(':id')
+  detail(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.sales.detail(request.tenantId!, request.posUser!, id);
+  }
+
+  @Put(':id')
+  @UseGuards(AdminGuard)
+  update(
+    @Req() request: PosRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: UpdateSaleDto
+  ) {
+    return this.sales.update(request.tenantId!, request.posUser!, id, body);
+  }
+
+  @Delete(':id')
+  @UseGuards(AdminGuard)
+  remove(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.sales.remove(request.tenantId!, request.posUser!, id);
   }
 }

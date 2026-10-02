@@ -164,16 +164,25 @@ export class CatalogService {
       return query;
     };
 
-    let customers: CustomerListRow[] = [];
     if (!cleanSearch) {
       const result = await load();
       if (result.error) throwCatalogError();
-      customers = result.data ?? [];
-    } else {
-      const result = await load().ilike('name', `%${escapeLike(cleanSearch)}%`);
-      if (result.error) throwCatalogError();
-      customers = result.data ?? [];
+      return result.data ?? [];
     }
-    return customers;
+
+    const pattern = `%${escapeLike(cleanSearch)}%`;
+    const [byName, byEmail, byPhone] = await Promise.all([
+      load().ilike('name', pattern),
+      load().ilike('email', pattern),
+      load().ilike('phone', pattern)
+    ]);
+    if (byName.error || byEmail.error || byPhone.error) throwCatalogError();
+    const unique = new Map<number, CustomerListRow>();
+    for (const customer of [...(byName.data ?? []), ...(byEmail.data ?? []), ...(byPhone.data ?? [])]) {
+      unique.set(customer.id, customer);
+    }
+    return [...unique.values()]
+      .sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+      .slice(0, 100);
   }
 }

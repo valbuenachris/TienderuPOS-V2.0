@@ -87,6 +87,7 @@ export interface PosSettings {
 
 export interface SaleListRow {
   id: number;
+  customer_id: number | null;
   customer_name: string | null;
   total: string | null;
   grand_total: string | null;
@@ -279,8 +280,8 @@ export const fetchPosUser = () =>
 
 export const fetchStores = () => apiRequest<Store[]>('/catalog/stores');
 
-export const fetchCustomers = (storeId: number) =>
-  apiRequest<Customer[]>(`/catalog/customers?store_id=${storeId}`);
+export const fetchCustomers = (storeId: number, search = '') =>
+  apiRequest<Customer[]>(withQuery('/catalog/customers', { store_id: storeId, q: search }));
 
 export const fetchSettings = () => apiRequest<PosSettings>('/settings');
 
@@ -294,6 +295,42 @@ export const createSale = (payload: CreateSalePayload) =>
 
 export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
   apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit }));
+
+export interface SaleDetailItem {
+  id: number;
+  product_id: number | null;
+  code: string | null;
+  name: string | null;
+  quantity: string | null;
+  unit_price: string | null;
+  subtotal: string | null;
+  reward_points: number | null;
+}
+
+export interface SalePayment {
+  id: number;
+  amount: string | null;
+  paid_by: string | null;
+  created_at: string | null;
+}
+
+export interface SaleDetail extends SaleListRow {
+  items: SaleDetailItem[];
+  payments: SalePayment[];
+}
+
+export interface UpdateSalePayload {
+  customer_id?: number | null;
+  items: Array<{ product_id: number; quantity: string }>;
+}
+
+export const fetchSaleDetail = (id: number) => apiRequest<SaleDetail>(`/sales/${id}`);
+
+export const updateSale = (id: number, payload: UpdateSalePayload) =>
+  apiRequest<SaleDetail>(`/sales/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const deleteSale = (id: number) =>
+  apiRequest<{ id: number; deleted: boolean }>(`/sales/${id}`, { method: 'DELETE' });
 
 export const fetchDailyReport = (date: string) =>
   apiRequest<DailyReport>(withQuery('/sales/daily', { date }));

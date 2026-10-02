@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice } from '../components/ui';
+import CustomerSearch from '../components/CustomerSearch';
 import { useSession } from '../app/session';
-import { useCreateSaleMutation, useCustomersQuery, useProductsQuery } from '../pos-queries';
-import type { Product, SaleResult } from '../api';
+import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
+import type { Customer, Product, SaleResult } from '../api';
 import { formatMoney } from '../format';
 
 type CartLine = { product: Product; quantity: number };
@@ -32,7 +33,7 @@ export default function PosPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, user, isAdmin, stores, settings } = useSession();
   const [selectedStoreId, setSelectedStoreId] = useState<number | null>(null);
-  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customer, setCustomer] = useState<Customer | null>(null);
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
@@ -41,16 +42,8 @@ export default function PosPage() {
 
   const storeId = selectedStoreId ?? user?.store_id ?? (isAdmin ? stores[0]?.id ?? null : null);
   const productsQuery = useProductsQuery(token, tenantId, storeId, search);
-  const customersQuery = useCustomersQuery(token, tenantId, storeId);
   const saleMutation = useCreateSaleMutation();
 
-  const customers = customersQuery.data ?? [];
-  const configuredCustomerId = settings?.default_customer ?? null;
-  const defaultCustomerId = configuredCustomerId !== null
-    && customers.some((customer) => customer.id === configuredCustomerId)
-    ? configuredCustomerId
-    : null;
-  const effectiveCustomerId = customerId === 0 ? null : customerId ?? defaultCustomerId;
   const currency = settings?.currency_prefix || 'COP';
 
   const estimatedTotal = useMemo(() => cart.reduce((sum, line) => {
@@ -66,14 +59,14 @@ export default function PosPage() {
     }
     saleMutation.mutate({
       store_id: storeId,
-      ...(effectiveCustomerId ? { customer_id: effectiveCustomerId } : {}),
+      ...(customer ? { customer_id: customer.id } : {}),
       items: cart.map((line) => ({ product_id: line.product.id, quantity: String(line.quantity) })),
       ...(paymentMode === 'due' ? {} : { paid_by: paymentMode })
     }, {
       onSuccess: async (sale) => {
         setLastSale(sale);
         setCart([]);
-        setCustomerId(null);
+        setCustomer(null);
         setNotice(`Venta #${sale.id} registrada.`);
         await queryClient.invalidateQueries({ queryKey: ['products', tenantId, storeId] });
       },
@@ -142,7 +135,7 @@ export default function PosPage() {
             <select value={storeId} disabled={saleMutation.isPending} onChange={(event) => {
               setSelectedStoreId(Number(event.target.value));
               setCart([]);
-              setCustomerId(null);
+              setCustomer(null);
               setNotice('');
             }} aria-label="Tienda">
               {stores.map((store) => <option value={store.id} key={store.id}>{store.name}</option>)}
@@ -150,7 +143,6 @@ export default function PosPage() {
           ) : <div className="store-pill">{stores[0]?.name || 'Tienda asignada'}</div>}
         </div>
         {notice ? <Notice>{notice}</Notice> : null}
-        {customersQuery.isError ? <Notice tone="error">No fue posible cargar los clientes de esta tienda.</Notice> : null}
         <input className="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto por nombre o código…" />
         {productsQuery.isError ? <Notice tone="error">No fue posible cargar el catálogo.</Notice> : null}
         <div className="product-grid">
@@ -175,16 +167,14 @@ export default function PosPage() {
 
       <aside className="ticket-panel">
         <div className="ticket-heading"><div><p className="eyebrow">TICKET</p><h2>Venta actual</h2></div><span>{cart.length} líneas</span></div>
-        <label>Cliente
-          <select
-            value={customerId === null ? defaultCustomerId ?? '' : customerId || ''}
-            disabled={saleMutation.isPending}
-            onChange={(event) => setCustomerId(Number(event.target.value) || 0)}
-          >
-            <option value="">Cliente ocasional</option>
-            {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name} · {customer.phone || customer.email || ''}</option>)}
-          </select>
-        </label>
+        <CustomerSearch
+          token={token}
+          tenantId={tenantId}
+          storeId={storeId}
+          value={customer}
+          onChange={setCustomer}
+          disabled={saleMutation.isPending}
+        />
         <div className="cart-lines">
           {cart.map((line) => (
             <div className="cart-line" key={line.product.id}>

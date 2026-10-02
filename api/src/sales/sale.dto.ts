@@ -59,3 +59,27 @@ export class CreateSaleDto {
   @IsIn(['cash', 'CC', 'Transferencia'])
   paid_by?: 'cash' | 'CC' | 'Transferencia';
 }
+
+export class UpdateSaleLineDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  product_id!: number;
+
+  @IsString()
+  @Matches(DECIMAL_PATTERN)
+  quantity!: string;
+}
+
+export class UpdateSaleDto {
+  @IsOptional()
+  customer_id?: number | null;
+
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => UpdateSaleLineDto)
+  items!: UpdateSaleLineDto[];
+}

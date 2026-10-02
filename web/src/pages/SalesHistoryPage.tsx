@@ -1,7 +1,10 @@
 import { useState } from 'react';
-import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
+import { useQueryClient } from '@tanstack/react-query';
+import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
-import { useSalesQuery } from '../pos-queries';
+import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } from '../pos-queries';
+import { deleteSale, updateSale } from '../api';
+import type { UpdateSalePayload } from '../api';
 import { formatDate, formatMoney } from '../format';
 
 function isoDaysAgo(days: number): string {
@@ -12,27 +15,168 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+const ERROR_NOTICE = /error|inválid|invalid|required|supera|no se puede|insuficiente|personalizados/i;
+
+function EyeIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function PencilIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+      <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+      <line x1="10" y1="11" x2="10" y2="17" />
+      <line x1="14" y1="11" x2="14" y2="17" />
+    </svg>
+  );
+}
+
 export default function SalesHistoryPage() {
-  const { token, tenantId, settings } = useSession();
-  const currency = settings?.currency_prefix || 'COP';
+  const queryClient = useQueryClient();
+  const { token, tenantId, settings, isAdmin, stores } = useSession();
+  const currency = settings?.currency_prefix || '$';
   const [from, setFrom] = useState(() => isoDaysAgo(7));
   const [to, setTo] = useState(() => today());
   const [applied, setApplied] = useState(() => ({ from: isoDaysAgo(7), to: today() }));
   const [page, setPage] = useState(1);
+  const [notice, setNotice] = useState('');
+  const [viewId, setViewId] = useState<number | null>(null);
+  const [editId, setEditId] = useState<number | null>(null);
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<number, string>>({});
+  const [customerDraft, setCustomerDraft] = useState<string | undefined>(undefined);
   const limit = 20;
+
   const sales = useSalesQuery(token, tenantId, applied.from, applied.to, page, limit);
+  const viewQuery = useSaleDetailQuery(token, tenantId, viewId);
+  const editQuery = useSaleDetailQuery(token, tenantId, editId);
+  const editStoreId = editQuery.data?.store_id ?? null;
+  const customersQuery = useCustomersQuery(token, tenantId, editStoreId);
+
+  const saveMutation = useApiMutation((input: { id: number; payload: UpdateSalePayload }) =>
+    updateSale(input.id, input.payload)
+  );
+  const deleteMutation = useApiMutation((id: number) => deleteSale(id));
+
+  function money(value: string | number | null | undefined): string {
+    return formatMoney(value, currency);
+  }
 
   function applyFilters() {
     setPage(1);
     setApplied({ from, to });
   }
 
+  async function refreshSaleData() {
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['sales'] }),
+      queryClient.invalidateQueries({ queryKey: ['sale-detail'] }),
+      queryClient.invalidateQueries({ queryKey: ['products'] }),
+      queryClient.invalidateQueries({ queryKey: ['managed-products'] }),
+      queryClient.invalidateQueries({ queryKey: ['sales-daily'] }),
+      queryClient.invalidateQueries({ queryKey: ['report-summary'] }),
+      queryClient.invalidateQueries({ queryKey: ['report-calendar'] }),
+      queryClient.invalidateQueries({ queryKey: ['report-top-products'] })
+    ]);
+  }
+
+  function openView(saleId: number) {
+    setNotice('');
+    setViewId(saleId);
+  }
+
+  function openEdit(saleId: number) {
+    setNotice('');
+    setQuantityDrafts({});
+    setCustomerDraft(undefined);
+    setEditId(saleId);
+  }
+
+  function closeEdit() {
+    setEditId(null);
+    setQuantityDrafts({});
+    setCustomerDraft(undefined);
+  }
+
+  function submitEdit() {
+    const detail = editQuery.data;
+    if (!detail) return;
+
+    const lines: UpdateSalePayload['items'] = [];
+    for (const item of detail.items) {
+      if (item.product_id === null || item.product_id < 1) {
+        setNotice('Esta venta contiene artículos personalizados y no puede editarse desde aquí.');
+        return;
+      }
+      const value = (quantityDrafts[item.id] ?? item.quantity ?? '1').trim();
+      if (!/^\d+$/.test(value) || Number(value) < 1) {
+        setNotice('Las cantidades deben ser números enteros mayores a cero.');
+        return;
+      }
+      lines.push({ product_id: item.product_id, quantity: String(Number(value)) });
+    }
+    if (lines.length === 0) {
+      setNotice('La venta debe conservar al menos un artículo.');
+      return;
+    }
+
+    const payload: UpdateSalePayload = { items: lines };
+    if (customerDraft !== undefined) {
+      payload.customer_id = customerDraft === '' ? null : Number(customerDraft);
+    }
+
+    saveMutation.mutate({ id: detail.id, payload }, {
+      onSuccess: async () => {
+        setNotice('Venta actualizada correctamente.');
+        closeEdit();
+        await refreshSaleData();
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
+  }
+
+  function handleDelete(saleId: number) {
+    const confirmed = window.confirm(
+      '¿Estás seguro de eliminar esta venta? Esta acción no se puede deshacer; el stock volverá a la tienda y se borrarán sus pagos.'
+    );
+    if (!confirmed) return;
+
+    deleteMutation.mutate(saleId, {
+      onSuccess: async () => {
+        setNotice('Venta eliminada exitosamente.');
+        if (viewId === saleId) setViewId(null);
+        if (editId === saleId) closeEdit();
+        await refreshSaleData();
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
+  }
+
   const rows = sales.data?.data ?? [];
   const meta = sales.data?.meta;
+  const editItems = editQuery.data?.items ?? [];
+  const hasCustomItems = editItems.some((item) => item.product_id === null || item.product_id < 1);
+  const detailCustomerId = editQuery.data?.customer_id;
+  const currentCustomerId = customerDraft ?? (detailCustomerId === null || detailCustomerId === undefined ? '' : String(detailCustomerId));
 
   return (
     <>
       <PageHeader eyebrow="OPERACIÓN" title="Historial de ventas" />
+      {notice ? <Notice tone={ERROR_NOTICE.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
       <Panel className="stack">
         <div className="toolbar">
           <label>Desde<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
@@ -43,7 +187,10 @@ export default function SalesHistoryPage() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>#</th><th>Fecha</th><th>Cliente</th><th>Artículos</th><th>Subtotal</th><th>Total</th><th>Pagado</th><th>Estado</th></tr>
+              <tr>
+                <th>#</th><th>Fecha</th><th>Cliente</th><th>Artículos</th><th>Subtotal</th>
+                <th>Total</th><th>Pagado</th><th>Estado</th><th className="actions-col">Acciones</th>
+              </tr>
             </thead>
             <tbody>
               {rows.map((sale) => (
@@ -52,14 +199,50 @@ export default function SalesHistoryPage() {
                   <td>{formatDate(sale.created_at)}</td>
                   <td>{sale.customer_name || 'Cliente ocasional'}</td>
                   <td>{sale.total_items ?? '—'}</td>
-                  <td>{formatMoney(sale.total, currency)}</td>
-                  <td>{formatMoney(sale.grand_total, currency)}</td>
-                  <td>{formatMoney(sale.paid, currency)}</td>
+                  <td>{money(sale.total)}</td>
+                  <td>{money(sale.grand_total)}</td>
+                  <td>{money(sale.paid)}</td>
                   <td><span className={`badge ${sale.status ?? ''}`}>{sale.status || '—'}</span></td>
+                  <td>
+                    <div className="row-actions sale-actions">
+                      <button
+                        type="button"
+                        className="sale-action-btn sale-action-btn--view"
+                        title="Ver venta"
+                        aria-label="Ver venta"
+                        onClick={() => openView(sale.id)}
+                      >
+                        <EyeIcon />
+                      </button>
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="sale-action-btn sale-action-btn--edit"
+                          title="Editar venta"
+                          aria-label="Editar venta"
+                          onClick={() => openEdit(sale.id)}
+                        >
+                          <PencilIcon />
+                        </button>
+                      ) : null}
+                      {isAdmin ? (
+                        <button
+                          type="button"
+                          className="sale-action-btn sale-action-btn--delete"
+                          title="Eliminar venta"
+                          aria-label="Eliminar venta"
+                          onClick={() => handleDelete(sale.id)}
+                          disabled={deleteMutation.isPending}
+                        >
+                          <TrashIcon />
+                        </button>
+                      ) : null}
+                    </div>
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && !sales.isPending ? (
-                <tr><td colSpan={8} className="empty">No hay ventas en el rango seleccionado.</td></tr>
+                <tr><td colSpan={9} className="empty">No hay ventas en el rango seleccionado.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -71,6 +254,137 @@ export default function SalesHistoryPage() {
           onChange={setPage}
         />
       </Panel>
+
+      <Modal
+        open={viewId !== null}
+        eyebrow="DETALLE DE VENTA"
+        title={viewId === null ? '' : `Venta #${viewId}`}
+        onClose={() => setViewId(null)}
+      >
+        {viewQuery.isPending ? <Notice>Cargando…</Notice> : null}
+        {viewQuery.isError ? <Notice tone="error">No fue posible cargar el detalle de la venta.</Notice> : null}
+        {viewQuery.data ? (
+          <div className="stack">
+            <div className="sale-detail-grid">
+              <div><span>Cliente</span><strong>{viewQuery.data.customer_name || 'Cliente ocasional'}</strong></div>
+              <div><span>Fecha</span><strong>{formatDate(viewQuery.data.created_at)}</strong></div>
+              <div><span>Tienda</span><strong>{stores.find((store) => store.id === viewQuery.data?.store_id)?.name ?? '—'}</strong></div>
+              <div><span>Estado</span><strong><span className={`badge ${viewQuery.data.status ?? ''}`}>{viewQuery.data.status || '—'}</span></strong></div>
+              <div><span>Subtotal</span><strong>{money(viewQuery.data.total)}</strong></div>
+              <div><span>Total</span><strong>{money(viewQuery.data.grand_total)}</strong></div>
+              <div><span>Pagado</span><strong>{money(viewQuery.data.paid)}</strong></div>
+              <div><span>Artículos</span><strong>{viewQuery.data.total_items ?? viewQuery.data.items.length}</strong></div>
+            </div>
+
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Código</th><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal</th></tr></thead>
+                <tbody>
+                  {viewQuery.data.items.map((item) => (
+                    <tr key={item.id}>
+                      <td>{item.code || '—'}</td>
+                      <td>{item.name || '—'}</td>
+                      <td>{item.quantity ?? '—'}</td>
+                      <td>{money(item.unit_price)}</td>
+                      <td>{money(item.subtotal)}</td>
+                    </tr>
+                  ))}
+                  {viewQuery.data.items.length === 0 ? (
+                    <tr><td colSpan={5} className="empty">Sin artículos registrados.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+
+            <h3 className="modal-section">Pagos</h3>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Fecha</th><th>Forma de pago</th><th>Monto</th></tr></thead>
+                <tbody>
+                  {viewQuery.data.payments.map((payment) => (
+                    <tr key={payment.id}>
+                      <td>{formatDate(payment.created_at)}</td>
+                      <td>{payment.paid_by || '—'}</td>
+                      <td>{money(payment.amount)}</td>
+                    </tr>
+                  ))}
+                  {viewQuery.data.payments.length === 0 ? (
+                    <tr><td colSpan={3} className="empty">Sin pagos registrados.</td></tr>
+                  ) : null}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={editId !== null}
+        eyebrow="EDITAR VENTA"
+        title={editId === null ? '' : `Venta #${editId}`}
+        onClose={closeEdit}
+      >
+        {editQuery.isPending ? <Notice>Cargando…</Notice> : null}
+        {editQuery.isError ? <Notice tone="error">No fue posible cargar la venta.</Notice> : null}
+        {editQuery.data ? (
+          <div className="stack">
+            {hasCustomItems ? (
+              <Notice tone="error">Esta venta contiene artículos personalizados y no puede editarse desde el POS V2.</Notice>
+            ) : null}
+            <label>Cliente
+              <select
+                value={currentCustomerId}
+                onChange={(event) => setCustomerDraft(event.target.value)}
+                disabled={hasCustomItems}
+              >
+                <option value="">Cliente ocasional</option>
+                {(customersQuery.data ?? []).map((customer) => (
+                  <option key={customer.id} value={customer.id}>{customer.name || `Cliente #${customer.id}`}</option>
+                ))}
+              </select>
+            </label>
+            <div className="table-wrap">
+              <table className="data-table">
+                <thead><tr><th>Producto</th><th>Cantidad</th><th>Precio</th><th>Subtotal actual</th></tr></thead>
+                <tbody>
+                  {editItems.map((item) => {
+                    const value = quantityDrafts[item.id] ?? item.quantity ?? '1';
+                    return (
+                      <tr key={item.id}>
+                        <td>{item.name || item.code || `Producto #${item.product_id ?? '—'}`}</td>
+                        <td>
+                          <input
+                            className="qty-input"
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={value}
+                            onChange={(event) => setQuantityDrafts((current) => ({ ...current, [item.id]: event.target.value }))}
+                            disabled={hasCustomItems}
+                          />
+                        </td>
+                        <td>{money(item.unit_price)}</td>
+                        <td>{money(item.subtotal)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+            <p className="muted-note">
+              Solo se ajustan cantidades; se conservan los precios de la venta y el stock se recalcula automáticamente.
+            </p>
+            <button
+              className="primary"
+              type="button"
+              onClick={submitEdit}
+              disabled={saveMutation.isPending || hasCustomItems}
+            >
+              {saveMutation.isPending ? 'Guardando…' : 'Guardar cambios'}
+            </button>
+          </div>
+        ) : null}
+      </Modal>
     </>
   );
 }

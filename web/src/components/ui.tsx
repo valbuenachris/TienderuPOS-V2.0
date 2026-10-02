@@ -61,12 +61,14 @@ export function Modal({
   title,
   eyebrow,
   onClose,
+  className = '',
   children
 }: {
   open: boolean;
   title: string;
   eyebrow?: string;
   onClose: () => void;
+  className?: string;
   children: ReactNode;
 }) {
   useEffect(() => {
@@ -90,7 +92,7 @@ export function Modal({
       role="presentation"
       onClick={(event) => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <section className="modal-card" role="dialog" aria-modal="true" aria-label={title}>
+      <section className={`modal-card ${className}`.trim()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="modal-header">
           <div>
             {eyebrow ? <p className="eyebrow">{eyebrow}</p> : null}

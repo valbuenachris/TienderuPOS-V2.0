@@ -745,3 +745,66 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .customer-search-option.active { background: #e9f7ef; }
 .customer-search-option[aria-selected='true'] strong { color: #059669; }
 .customer-search-empty { padding: 10px; color: #8b968e; font-size: 12px; text-align: center; }
+
+.sale-confirm-card { width: min(100%, 640px); }
+.sale-confirm-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 18px;
+  margin: 4px 0 12px;
+  color: #7b867e;
+  font-size: 12px;
+}
+.sale-confirm-customer {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f4f7f4;
+}
+.sale-confirm-customer .eyebrow { margin: 0; }
+.sale-confirm-customer strong { font-size: 14px; }
+.sale-confirm-customer small { color: #7b867e; font-size: 12px; }
+.confirm-products { max-height: 220px; margin-top: 12px; }
+.confirm-totals { display: grid; gap: 6px; margin: 14px 0; }
+.confirm-totals div { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; color: #536057; font-size: 13px; }
+.confirm-totals .confirm-total {
+  margin-top: 4px;
+  padding-top: 10px;
+  border-top: 1px solid #e2e9e3;
+  color: #18251c;
+  font-size: 15px;
+  font-weight: 700;
+}
+.confirm-totals .confirm-total strong { font-size: 24px; font-weight: 800; }
+.confirm-payment {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e2e9e3;
+  border-radius: 12px;
+  background: #fbfdfb;
+}
+.confirm-payment-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: #536057; }
+.confirm-payment label { margin: 0; }
+.quick-cash { display: flex; flex-wrap: wrap; gap: 8px; }
+.quick-cash button {
+  padding: 7px 12px;
+  border: 1px solid #dce5dd;
+  border-radius: 9px;
+  background: #fff;
+  color: #147d4a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.quick-cash button:hover { background: #f0f8f2; }
+.change-line { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; font-size: 13px; font-weight: 700; }
+.change-line.positive, .change-line.exact { color: #059669; }
+.change-line.negative { color: #dc2626; font-weight: 600; }
+.change-line.neutral { color: #536057; font-weight: 600; }
+.sale-confirm-status { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding-top: 8px; border-top: 1px dashed #e2e9e3; font-size: 13px; color: #536057; }
+.sale-status-badge { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.sale-status-badge.paid { background: #e4f5e9; color: #147d4a; }
+.sale-status-badge.partial { background: #fef3c7; color: #b45309; }
+.sale-status-badge.due { background: #fee2e2; color: #b91c1c; }

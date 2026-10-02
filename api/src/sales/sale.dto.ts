@@ -67,6 +67,16 @@ export class CreateSaleDto {
 
   @IsOptional()
   @IsString()
+  @Matches(DECIMAL_PATTERN)
+  amount_received?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_PATTERN)
+  change_amount?: string;
+
+  @IsOptional()
+  @IsString()
   @IsIn(PAID_BY_VALUES)
   paid_by?: SalePaymentMethod;
 }

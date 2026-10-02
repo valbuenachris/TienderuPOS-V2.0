@@ -61,6 +61,8 @@ export interface SaleResult {
   paid: string;
   status: string;
   paid_by?: string | null;
+  amount_received?: string | null;
+  change_amount?: string | null;
   created_at?: string | null;
   items: Array<{
     product_id: number;
@@ -79,6 +81,8 @@ export interface CreateSalePayload {
   customer_id?: number;
   items: Array<{ product_id: number; quantity: string }>;
   paid_by?: SalePaymentMethod;
+  amount_received?: string;
+  change_amount?: string;
 }
 
 export interface PosSettings {

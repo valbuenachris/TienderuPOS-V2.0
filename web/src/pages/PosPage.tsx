@@ -2,6 +2,8 @@ import { useMemo, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice } from '../components/ui';
 import CustomerSearch from '../components/CustomerSearch';
+import SaleConfirmationModal from '../components/SaleConfirmationModal';
+import type { SaleConfirmationData, SaleConfirmationPayload } from '../components/SaleConfirmationModal';
 import { useSession } from '../app/session';
 import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
 import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
@@ -38,6 +40,7 @@ export default function PosPage() {
   const [search, setSearch] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
   const [paymentMode, setPaymentMode] = useState<PaymentMode>('cash');
+  const [confirmOpen, setConfirmOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [lastSale, setLastSale] = useState<SaleResult | null>(null);
 
@@ -63,25 +66,42 @@ export default function PosPage() {
     return sum + (unitPrice + unitPrice * taxPercent / 100) * line.quantity;
   }, 0), [cart]);
 
-  function submitSale() {
+  const confirmationData: SaleConfirmationData = {
+    lines: cart,
+    customer,
+    paymentMode,
+    paymentLabel: paymentMethods.find((method) => method.value === paymentMode)?.label ?? paymentMode
+  };
+
+  function requestSaleConfirmation() {
     if (!storeId || cart.length === 0) {
       setNotice('Selecciona una tienda y agrega productos.');
       return;
     }
+    setNotice('');
+    setConfirmOpen(true);
+  }
+
+  function confirmSale(payload: SaleConfirmationPayload) {
+    if (!storeId || cart.length === 0) return;
     saleMutation.mutate({
       store_id: storeId,
       ...(customer ? { customer_id: customer.id } : {}),
       items: cart.map((line) => ({ product_id: line.product.id, quantity: String(line.quantity) })),
-      ...(paymentMode === 'due' ? {} : { paid_by: paymentMode })
+      ...payload
     }, {
       onSuccess: async (sale) => {
+        setConfirmOpen(false);
         setLastSale(sale);
         setCart([]);
         setCustomer(null);
         setNotice(`Venta #${sale.id} registrada.`);
         await queryClient.invalidateQueries({ queryKey: ['products', tenantId, storeId] });
       },
-      onError: (error: Error) => setNotice(error.message)
+      onError: (error: Error) => {
+        setConfirmOpen(false);
+        setNotice(error.message);
+      }
     });
   }
 
@@ -209,7 +229,7 @@ export default function PosPage() {
           </label>
           <div className="total-row"><span>Total aproximado</span><strong>{formatMoney(estimatedTotal, currency)}</strong></div>
           <small className="muted">El servidor recalcula impuestos y existencias antes de confirmar.</small>
-          <button className="primary full checkout" onClick={submitSale} disabled={saleMutation.isPending || cart.length === 0}>
+          <button className="primary full checkout" onClick={requestSaleConfirmation} disabled={saleMutation.isPending || cart.length === 0}>
             {saleMutation.isPending ? 'Procesando…' : 'Registrar venta'}
           </button>
           {lastSale ? (
@@ -220,6 +240,16 @@ export default function PosPage() {
           ) : null}
         </div>
       </aside>
+
+      {confirmOpen ? (
+        <SaleConfirmationModal
+          data={confirmationData}
+          currency={currency}
+          submitting={saleMutation.isPending}
+          onClose={() => setConfirmOpen(false)}
+          onConfirm={confirmSale}
+        />
+      ) : null}
 
       {lastSale ? (
         <div className="print-receipt" aria-hidden>
@@ -239,6 +269,12 @@ export default function PosPage() {
           <div className="print-line"><span>Impuestos</span><span>{formatMoney(lastSale.tax_total, currency)}</span></div>
           <div className="print-line print-total"><span>TOTAL</span><span>{formatMoney(lastSale.grand_total, currency)}</span></div>
           <div className="print-line"><span>Pagado ({lastSale.paid_by ? paymentMethods.find((method) => method.value === lastSale.paid_by)?.label ?? lastSale.paid_by : 'pendiente'})</span><span>{formatMoney(lastSale.paid, currency)}</span></div>
+          {lastSale.paid_by === 'cash' && lastSale.amount_received ? (
+            <>
+              <div className="print-line"><span>Recibido</span><span>{formatMoney(lastSale.amount_received, currency)}</span></div>
+              <div className="print-line"><span>Cambio</span><span>{formatMoney(lastSale.change_amount ?? '0', currency)}</span></div>
+            </>
+          ) : null}
           <div className="print-center print-thanks">¡Gracias por su compra!</div>
         </div>
       ) : null}

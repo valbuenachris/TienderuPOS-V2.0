@@ -198,11 +198,39 @@ export class SalesService {
 
       total = total.toDecimalPlaces(2, MONEY_ROUNDING);
       const grandTotal = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
-      const paid = input.paid_amount === undefined
-        ? (input.paid_by ? grandTotal : new Decimal(0))
-        : new Decimal(input.paid_amount);
-      if (!paid.isFinite() || paid.lt(0) || paid.gt(grandTotal)) {
-        throw new BadRequestException('paid_amount must be between zero and the sale total');
+
+      let paid: Decimal;
+      let amountReceived: Decimal | null = null;
+      let change = new Decimal(0);
+      if (!input.paid_by) {
+        if (input.paid_amount !== undefined || input.amount_received !== undefined) {
+          throw new BadRequestException('A payment method is required when a payment amount is supplied');
+        }
+        paid = new Decimal(0);
+      } else if (input.paid_by === 'cash' && input.amount_received !== undefined) {
+        const received = new Decimal(input.amount_received);
+        if (!received.isFinite() || received.isNegative()) {
+          throw new BadRequestException('amount_received must be zero or greater');
+        }
+        amountReceived = received;
+        paid = Decimal.min(received, grandTotal);
+        change = received.minus(paid).toDecimalPlaces(2, MONEY_ROUNDING);
+        if (input.change_amount !== undefined) {
+          const requested = new Decimal(input.change_amount);
+          if (!requested.isFinite() || requested.isNegative()) {
+            throw new BadRequestException('change_amount must be zero or greater');
+          }
+          if (!requested.equals(change)) {
+            throw new BadRequestException('change_amount does not match amount_received minus the sale total');
+          }
+        }
+      } else if (input.paid_amount !== undefined) {
+        paid = new Decimal(input.paid_amount);
+        if (!paid.isFinite() || paid.isNegative() || paid.gt(grandTotal)) {
+          throw new BadRequestException('paid_amount must be between zero and the sale total');
+        }
+      } else {
+        paid = grandTotal;
       }
       if (paid.gt(0) && !input.paid_by) {
         throw new BadRequestException('paid_by is required when the sale has a payment');
@@ -255,6 +283,8 @@ export class SalesService {
         paid: paid.toFixed(2),
         status,
         paid_by: input.paid_by ?? null,
+        amount_received: amountReceived === null ? null : amountReceived.toFixed(2),
+        change_amount: change.toFixed(2),
         created_at: saleCreatedAt,
         total_items: prepared.length,
         total_quantity: totalQuantity.toFixed(2),

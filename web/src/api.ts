@@ -72,11 +72,13 @@ export interface SaleResult {
   }>;
 }
 
+export type SalePaymentMethod = 'cash' | 'CC' | 'Transferencia' | 'Sistecredito' | 'ADI' | 'credito';
+
 export interface CreateSalePayload {
   store_id: number;
   customer_id?: number;
   items: Array<{ product_id: number; quantity: string }>;
-  paid_by?: 'cash' | 'CC' | 'Transferencia';
+  paid_by?: SalePaymentMethod;
 }
 
 export interface PosSettings {
@@ -506,6 +508,9 @@ export interface RegisterSummary {
     cash: string;
     card: string;
     transfer: string;
+    sistecredito: string;
+    adi: string;
+    credit: string;
     paid_total: string;
     payments_count: number;
     card_count: number;

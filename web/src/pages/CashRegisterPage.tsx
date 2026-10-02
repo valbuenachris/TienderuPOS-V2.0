@@ -93,6 +93,9 @@ export default function CashRegisterPage() {
         <article className="stat-card"><span>Efectivo</span><strong>{formatMoney(summary?.payments.cash, currency)}</strong></article>
         <article className="stat-card"><span>Tarjeta</span><strong>{formatMoney(summary?.payments.card, currency)}</strong></article>
         <article className="stat-card"><span>Transferencia</span><strong>{formatMoney(summary?.payments.transfer, currency)}</strong></article>
+        <article className="stat-card"><span>Sistecrédito</span><strong>{formatMoney(summary?.payments.sistecredito, currency)}</strong></article>
+        <article className="stat-card"><span>Addi</span><strong>{formatMoney(summary?.payments.adi, currency)}</strong></article>
+        <article className="stat-card"><span>Crédito tienda</span><strong>{formatMoney(summary?.payments.credit, currency)}</strong></article>
       </div>
 
       <div className="split-layout">

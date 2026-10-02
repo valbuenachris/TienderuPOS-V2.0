@@ -4,11 +4,12 @@ import { Notice } from '../components/ui';
 import CustomerSearch from '../components/CustomerSearch';
 import { useSession } from '../app/session';
 import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
-import type { Customer, Product, SaleResult } from '../api';
+import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
+import { PAYMENT_METHOD_LABELS } from '../payments';
 import { formatMoney } from '../format';
 
 type CartLine = { product: Product; quantity: number };
-type PaymentMode = 'cash' | 'CC' | 'Transferencia' | 'due';
+type PaymentMode = SalePaymentMethod | 'due';
 
 function ProductImage({ product }: { product: Product }) {
   const [stage, setStage] = useState(0);
@@ -45,6 +46,16 @@ export default function PosPage() {
   const saleMutation = useCreateSaleMutation();
 
   const currency = settings?.currency_prefix || 'COP';
+  const currentStoreName = stores.find((store) => store.id === storeId)?.name || settings?.site_name || 'Tienda';
+  const paymentMethods: Array<{ value: PaymentMode; label: string }> = [
+    { value: 'cash', label: PAYMENT_METHOD_LABELS.cash },
+    { value: 'CC', label: PAYMENT_METHOD_LABELS.CC },
+    { value: 'Transferencia', label: PAYMENT_METHOD_LABELS.Transferencia },
+    { value: 'Sistecredito', label: PAYMENT_METHOD_LABELS.Sistecredito },
+    { value: 'ADI', label: PAYMENT_METHOD_LABELS.ADI },
+    { value: 'due', label: 'Cuenta pendiente' },
+    { value: 'credito', label: `Crédito ${currentStoreName}` }
+  ];
 
   const estimatedTotal = useMemo(() => cart.reduce((sum, line) => {
     const unitPrice = Number(line.product.price || 0);
@@ -191,8 +202,9 @@ export default function PosPage() {
         <div className="ticket-footer">
           <label>Forma de pago
             <select value={paymentMode} disabled={saleMutation.isPending} onChange={(event) => setPaymentMode(event.target.value as PaymentMode)}>
-              <option value="cash">Efectivo</option><option value="CC">Tarjeta</option>
-              <option value="Transferencia">Transferencia</option><option value="due">Cuenta pendiente</option>
+              {paymentMethods.map((method) => (
+                <option key={method.value} value={method.value}>{method.label}</option>
+              ))}
             </select>
           </label>
           <div className="total-row"><span>Total aproximado</span><strong>{formatMoney(estimatedTotal, currency)}</strong></div>
@@ -226,7 +238,7 @@ export default function PosPage() {
           <div className="print-line"><span>Subtotal</span><span>{formatMoney(lastSale.total, currency)}</span></div>
           <div className="print-line"><span>Impuestos</span><span>{formatMoney(lastSale.tax_total, currency)}</span></div>
           <div className="print-line print-total"><span>TOTAL</span><span>{formatMoney(lastSale.grand_total, currency)}</span></div>
-          <div className="print-line"><span>Pagado ({lastSale.paid_by || 'pendiente'})</span><span>{formatMoney(lastSale.paid, currency)}</span></div>
+          <div className="print-line"><span>Pagado ({lastSale.paid_by ? paymentMethods.find((method) => method.value === lastSale.paid_by)?.label ?? lastSale.paid_by : 'pendiente'})</span><span>{formatMoney(lastSale.paid, currency)}</span></div>
           <div className="print-center print-thanks">¡Gracias por su compra!</div>
         </div>
       ) : null}

@@ -5,6 +5,7 @@ import { useSession } from '../app/session';
 import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } from '../pos-queries';
 import { deleteSale, updateSale } from '../api';
 import type { UpdateSalePayload } from '../api';
+import { paymentMethodLabel } from '../payments';
 import { formatDate, formatMoney } from '../format';
 
 function isoDaysAgo(days: number): string {
@@ -304,7 +305,7 @@ export default function SalesHistoryPage() {
                   {viewQuery.data.payments.map((payment) => (
                     <tr key={payment.id}>
                       <td>{formatDate(payment.created_at)}</td>
-                      <td>{payment.paid_by || '—'}</td>
+                      <td>{paymentMethodLabel(payment.paid_by)}</td>
                       <td>{money(payment.amount)}</td>
                     </tr>
                   ))}

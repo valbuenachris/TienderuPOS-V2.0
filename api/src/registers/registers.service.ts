@@ -21,6 +21,9 @@ type PaymentSummaryRow = {
   cash: string;
   card: string;
   transfer: string;
+  sistecredito: string;
+  adi: string;
+  credit: string;
   paid_total: string;
   payments_count: number;
   card_count: number;
@@ -85,6 +88,9 @@ export class RegistersService {
       `SELECT COALESCE(SUM(CASE WHEN pay.paid_by = 'cash' THEN pay.amount END), 0)::text AS cash,
               COALESCE(SUM(CASE WHEN pay.paid_by = 'CC' THEN pay.amount END), 0)::text AS card,
               COALESCE(SUM(CASE WHEN pay.paid_by = 'Transferencia' THEN pay.amount END), 0)::text AS transfer,
+              COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) IN ('sistecredito', 'sistecrédito') THEN pay.amount END), 0)::text AS sistecredito,
+              COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) = 'adi' THEN pay.amount END), 0)::text AS adi,
+              COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) IN ('credito', 'crédito') THEN pay.amount END), 0)::text AS credit,
               COALESCE(SUM(pay.amount), 0)::text AS paid_total,
               COUNT(*)::integer AS payments_count,
               COALESCE(SUM(CASE WHEN pay.paid_by = 'CC' THEN 1 ELSE 0 END), 0)::integer AS card_count
@@ -111,7 +117,7 @@ export class RegistersService {
     return {
       store_id: storeId,
       date,
-      payments: payments.rows[0] ?? { cash: '0.00', card: '0.00', transfer: '0.00', paid_total: '0.00', payments_count: 0, card_count: 0 },
+      payments: payments.rows[0] ?? { cash: '0.00', card: '0.00', transfer: '0.00', sistecredito: '0.00', adi: '0.00', credit: '0.00', paid_total: '0.00', payments_count: 0, card_count: 0 },
       sales: sales.rows[0] ?? { sales_count: 0, subtotal: '0.00', grand_total: '0.00', paid: '0.00' }
     };
   }
@@ -159,6 +165,9 @@ export class RegistersService {
         `SELECT COALESCE(SUM(CASE WHEN pay.paid_by = 'cash' THEN pay.amount END), 0)::text AS cash,
                 COALESCE(SUM(CASE WHEN pay.paid_by = 'CC' THEN pay.amount END), 0)::text AS card,
                 COALESCE(SUM(CASE WHEN pay.paid_by = 'Transferencia' THEN pay.amount END), 0)::text AS transfer,
+                COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) IN ('sistecredito', 'sistecrédito') THEN pay.amount END), 0)::text AS sistecredito,
+                COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) = 'adi' THEN pay.amount END), 0)::text AS adi,
+                COALESCE(SUM(CASE WHEN LOWER(pay.paid_by) IN ('credito', 'crédito') THEN pay.amount END), 0)::text AS credit,
                 COALESCE(SUM(pay.amount), 0)::text AS paid_total,
                 COUNT(*)::integer AS payments_count,
                 COALESCE(SUM(CASE WHEN pay.paid_by = 'CC' THEN 1 ELSE 0 END), 0)::integer AS card_count
@@ -168,7 +177,7 @@ export class RegistersService {
            AND pay.created_at >= $3`,
         [tenantId, register.store_id, register.date]
       );
-      const totals = payments.rows[0] ?? { cash: '0.00', card: '0.00', transfer: '0.00', paid_total: '0.00', payments_count: 0, card_count: 0 };
+      const totals = payments.rows[0] ?? { cash: '0.00', card: '0.00', transfer: '0.00', sistecredito: '0.00', adi: '0.00', credit: '0.00', paid_total: '0.00', payments_count: 0, card_count: 0 };
       const submitted = input.total_cash_submitted ?? totals.cash;
 
       const updated = await client.query<RegisterRow>(

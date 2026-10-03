@@ -6,6 +6,7 @@ import {
   HttpStatus,
   Logger
 } from '@nestjs/common';
+import { randomUUID } from 'node:crypto';
 import { Response } from 'express';
 
 @Catch()
@@ -28,12 +29,33 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return;
     }
 
-    const code = typeof exception === 'object' && exception !== null && 'code' in exception
-      ? String((exception as { code?: unknown }).code)
-      : 'UNKNOWN';
-    this.logger.error(`Unhandled request error (${code})`);
+    const reference = randomUUID().slice(0, 8);
+    const pg = exception as {
+      code?: unknown;
+      detail?: unknown;
+      table?: unknown;
+      column?: unknown;
+      constraint?: unknown;
+      hint?: unknown;
+    };
+    const code = pg.code !== undefined ? String(pg.code) : 'UNKNOWN';
+    const message = exception instanceof Error ? exception.message : 'Unknown error';
+    const target = [pg.table, pg.column]
+      .filter((value): value is string => typeof value === 'string' && value.length > 0)
+      .join('.');
+    const details = [
+      target ? `target=${target}` : '',
+      typeof pg.constraint === 'string' ? `constraint=${pg.constraint}` : '',
+      typeof pg.detail === 'string' ? `detail=${pg.detail}` : '',
+      typeof pg.hint === 'string' ? `hint=${pg.hint}` : ''
+    ].filter(Boolean).join(' | ');
+
+    this.logger.error(
+      `Unhandled request error [${reference}] (${code}) ${message}${details ? ` | ${details}` : ''}`,
+      exception instanceof Error ? exception.stack : undefined
+    );
     response.status(HttpStatus.INTERNAL_SERVER_ERROR).json({
-      error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' }
+      error: { code: 'INTERNAL_ERROR', message: `An unexpected error occurred (ref: ${reference})` }
     });
   }
 }

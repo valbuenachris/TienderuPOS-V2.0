@@ -1,10 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
+import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
-import { useApiMutation, useManagedProductsQuery, usePurchasesQuery, useSuppliersQuery } from '../pos-queries';
-import { createPurchase } from '../api';
+import {
+  useApiMutation,
+  useManagedProductsQuery,
+  usePurchaseDetailQuery,
+  usePurchasesQuery,
+  useSuppliersQuery
+} from '../pos-queries';
+import { createPurchase, updatePurchase } from '../api';
 import type { PurchasePayload } from '../api';
 import { formatDate, formatMoney } from '../format';
 
@@ -20,6 +26,10 @@ function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+function emptyRow(): PurchaseRow {
+  return { key: Date.now(), productId: '', quantity: '1', cost: '', salePrice: '' };
+}
+
 export default function PurchasesPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, stores, settings } = useSession();
@@ -29,18 +39,39 @@ export default function PurchasesPage() {
   const [reference, setReference] = useState('');
   const [date, setDate] = useState(today());
   const [note, setNote] = useState('');
-  const [rows, setRows] = useState<PurchaseRow[]>([{ key: Date.now(), productId: '', quantity: '1', cost: '', salePrice: '' }]);
+  const [rows, setRows] = useState<PurchaseRow[]>([emptyRow()]);
   const [notice, setNotice] = useState('');
   const [page, setPage] = useState(1);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
   const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, '', 1, 100);
   const suppliersQuery = useSuppliersQuery(token, tenantId, '', 1, 100);
   const purchasesQuery = usePurchasesQuery(token, tenantId, undefined, undefined, page, 20);
+  const detailQuery = usePurchaseDetailQuery(token, tenantId, editingId);
   const products = productsQuery.data?.data ?? [];
   const suppliers = suppliersQuery.data?.data ?? [];
 
-  const saveMutation = useApiMutation((payload: PurchasePayload) => createPurchase(payload));
+  const saveMutation = useApiMutation((input: { id: number | null; payload: PurchasePayload }) =>
+    input.id === null ? createPurchase(input.payload) : updatePurchase(input.id, input.payload)
+  );
+
+  useEffect(() => {
+    const detail = detailQuery.data;
+    if (!detail || editingId === null) return;
+    setSupplierId(detail.purchase.supplier_id === null ? '' : String(detail.purchase.supplier_id));
+    setReference(detail.purchase.reference_no ?? '');
+    setDate(detail.purchase.date ? detail.purchase.date.slice(0, 10) : today());
+    setNote(detail.purchase.note ?? '');
+    setRows(detail.items.map((item) => ({
+      key: item.id,
+      productId: item.product_id === null ? '' : String(item.product_id),
+      quantity: String(Number(item.quantity ?? 0)),
+      cost: String(Number(item.cost ?? 0)),
+      salePrice: ''
+    })));
+  }, [detailQuery.data, editingId]);
 
   const total = rows.reduce((sum, row) => sum + (Number(row.quantity) || 0) * (Number(row.cost) || 0), 0);
 
@@ -58,7 +89,7 @@ export default function PurchasesPage() {
   }
 
   function addRow() {
-    setRows((current) => [...current, { key: Date.now(), productId: '', quantity: '1', cost: '', salePrice: '' }]);
+    setRows((current) => [...current, emptyRow()]);
   }
 
   function removeRow(key: number) {
@@ -66,11 +97,24 @@ export default function PurchasesPage() {
   }
 
   function resetForm() {
+    setModalOpen(false);
+    setEditingId(null);
     setSupplierId('');
     setReference('');
     setDate(today());
     setNote('');
-    setRows([{ key: Date.now(), productId: '', quantity: '1', cost: '', salePrice: '' }]);
+    setRows([emptyRow()]);
+  }
+
+  function openCreate() {
+    resetForm();
+    setModalOpen(true);
+  }
+
+  function startEdit(purchaseId: number) {
+    setNotice('');
+    setEditingId(purchaseId);
+    setModalOpen(true);
   }
 
   function submitPurchase(event: FormEvent<HTMLFormElement>) {
@@ -94,14 +138,17 @@ export default function PurchasesPage() {
 
     const payload: PurchasePayload = { items, date, store_id: effectiveStoreId };
     if (supplierId) payload.supplier_id = Number(supplierId);
-    if (reference.trim()) payload.reference = reference.trim();
+    if (reference.trim()) payload.reference_no = reference.trim();
     if (note.trim()) payload.note = note.trim();
 
-    saveMutation.mutate(payload, {
+    saveMutation.mutate({ id: editingId, payload }, {
       onSuccess: async (purchase) => {
-        setNotice(`Compra #${purchase.id} registrada (${purchase.reference}).`);
+        setNotice(editingId === null
+          ? `Compra #${purchase.id} registrada (${purchase.reference_no}).`
+          : `Compra #${purchase.id} actualizada.`);
         resetForm();
         await queryClient.invalidateQueries({ queryKey: ['purchases'] });
+        await queryClient.invalidateQueries({ queryKey: ['purchase-detail'] });
         await queryClient.invalidateQueries({ queryKey: ['managed-products'] });
       },
       onError: (error: Error) => setNotice(error.message)
@@ -110,16 +157,59 @@ export default function PurchasesPage() {
 
   const purchases = purchasesQuery.data?.data ?? [];
   const meta = purchasesQuery.data?.meta;
+  const showForm = editingId === null || detailQuery.data !== undefined;
 
   return (
     <>
       <PageHeader eyebrow="ABASTECIMIENTO" title="Compras" />
       {notice ? <Notice tone={/error|inválid|invalid|required|insuficiente/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
-      <div className="split-layout">
-        <Panel className="stack">
-          <div className="section-heading">
-            <div><p className="eyebrow">RECEPCIÓN</p><h2>Nueva compra</h2></div>
-          </div>
+      <Panel className="stack full-width">
+        <div className="toolbar">
+          <button className="primary" type="button" onClick={openCreate}>+ Nueva compra</button>
+        </div>
+        {purchasesQuery.isError ? <Notice tone="error">No fue posible cargar las compras.</Notice> : null}
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr><th>#</th><th>Fecha</th><th>Referencia</th><th>Proveedor</th><th>Total</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {purchases.map((purchase) => (
+                <tr key={purchase.id}>
+                  <td>{purchase.id}</td>
+                  <td>{formatDate(purchase.date)}</td>
+                  <td>{purchase.reference_no || '—'}</td>
+                  <td>{purchase.supplier_name || '—'}</td>
+                  <td>{formatMoney(purchase.total, currency)}</td>
+                  <td className="row-actions">
+                    <button className="quiet" type="button" onClick={() => startEdit(purchase.id)}>Editar</button>
+                  </td>
+                </tr>
+              ))}
+              {purchases.length === 0 && !purchasesQuery.isPending ? (
+                <tr><td colSpan={6} className="empty">No hay compras registradas.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+        <Pagination
+          page={page}
+          totalPages={meta?.totalPages ?? 0}
+          total={meta?.total ?? 0}
+          onChange={setPage}
+        />
+      </Panel>
+
+      <Modal
+        open={modalOpen}
+        eyebrow={editingId === null ? 'NUEVA' : 'EDITANDO'}
+        title={editingId === null ? 'Nueva compra' : `Compra #${editingId}`}
+        className="purchase-modal"
+        onClose={resetForm}
+      >
+        {editingId !== null && detailQuery.isPending ? <Notice>Cargando compra…</Notice> : null}
+        {editingId !== null && detailQuery.isError ? <Notice tone="error">No fue posible cargar la compra.</Notice> : null}
+        {showForm ? (
           <form className="form-grid" onSubmit={submitPurchase}>
             <div className="toolbar">
               <label>Tienda
@@ -159,46 +249,28 @@ export default function PurchasesPage() {
               <button className="quiet" type="button" onClick={addRow}>+ Agregar producto</button>
             </div>
 
-            <label>Nota<input value={note} onChange={(event) => setNote(event.target.value)} maxLength={200} /></label>
+            <label>Nota
+              <textarea
+                value={note}
+                onChange={(event) => setNote(event.target.value.slice(0, 1000))}
+                rows={3}
+                maxLength={1000}
+                placeholder="Observaciones de la compra"
+              />
+            </label>
             <div className="purchase-total"><span>Total de la compra</span><strong>{formatMoney(total, currency)}</strong></div>
-            <button className="primary" type="submit" disabled={saveMutation.isPending}>
-              {saveMutation.isPending ? 'Registrando…' : 'Registrar compra'}
-            </button>
+            {editingId !== null ? (
+              <small className="muted">El stock se ajustará en la tienda seleccionada.</small>
+            ) : null}
+            <div className="modal-actions">
+              <button className="quiet" type="button" onClick={resetForm} disabled={saveMutation.isPending}>Cancelar</button>
+              <button className="primary" type="submit" disabled={saveMutation.isPending}>
+                {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Registrar compra' : 'Guardar cambios'}
+              </button>
+            </div>
           </form>
-        </Panel>
-
-        <Panel className="stack">
-          <div className="section-heading"><div><p className="eyebrow">HISTORIAL</p><h2>Últimas compras</h2></div></div>
-          {purchasesQuery.isError ? <Notice tone="error">No fue posible cargar las compras.</Notice> : null}
-          <div className="table-wrap">
-            <table className="data-table">
-              <thead>
-                <tr><th>#</th><th>Fecha</th><th>Referencia</th><th>Proveedor</th><th>Total</th></tr>
-              </thead>
-              <tbody>
-                {purchases.map((purchase) => (
-                  <tr key={purchase.id}>
-                    <td>{purchase.id}</td>
-                    <td>{formatDate(purchase.date)}</td>
-                    <td>{purchase.reference || '—'}</td>
-                    <td>{purchase.supplier_name || '—'}</td>
-                    <td>{formatMoney(purchase.total, currency)}</td>
-                  </tr>
-                ))}
-                {purchases.length === 0 && !purchasesQuery.isPending ? (
-                  <tr><td colSpan={5} className="empty">No hay compras registradas.</td></tr>
-                ) : null}
-              </tbody>
-            </table>
-          </div>
-          <Pagination
-            page={page}
-            totalPages={meta?.totalPages ?? 0}
-            total={meta?.total ?? 0}
-            onChange={setPage}
-          />
-        </Panel>
-      </div>
+        ) : null}
+      </Modal>
     </>
   );
 }

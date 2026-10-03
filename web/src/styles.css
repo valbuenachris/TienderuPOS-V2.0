@@ -350,6 +350,8 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .sidebar-backdrop { display: none; }
 
 .purchase-rows { display: grid; gap: 10px; }
+.purchase-modal { width: min(100%, 760px); }
+.purchase-rows { display: grid; gap: 8px; }
 .purchase-row {
   display: grid;
   grid-template-columns: minmax(140px, 1.4fr) repeat(3, minmax(70px, 0.6fr)) auto;

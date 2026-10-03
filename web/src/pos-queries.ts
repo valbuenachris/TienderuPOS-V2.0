@@ -12,6 +12,7 @@ import {
   fetchManagedProducts,
   fetchPosUser,
   fetchProducts,
+  fetchPurchaseDetail,
   fetchPurchases,
   fetchRegisterSummary,
   fetchRegisters,
@@ -299,6 +300,18 @@ export function usePurchasesQuery(
     queryKey: ['purchases', tenantId, from ?? '', to ?? '', page, limit],
     queryFn: () => fetchPurchases(from, to, page, limit),
     enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function usePurchaseDetailQuery(token: string | null, tenantId: string | null, purchaseId: number | null) {
+  return useQuery({
+    queryKey: ['purchase-detail', tenantId, purchaseId],
+    queryFn: () => {
+      if (purchaseId === null) throw new Error('A purchase id is required to load the detail');
+      return fetchPurchaseDetail(purchaseId);
+    },
+    enabled: Boolean(token && tenantId && purchaseId !== null),
     retry: false
   });
 }

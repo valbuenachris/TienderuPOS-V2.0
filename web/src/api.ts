@@ -465,14 +465,12 @@ export interface SupplierPayload {
 
 export interface PurchaseListRow {
   id: number;
-  reference: string | null;
+  reference_no: string | null;
   date: string | null;
   note: string | null;
   total: string | null;
-  received: number | null;
   supplier_id: number | null;
   supplier_name: string | null;
-  store_id: number | null;
   created_by: number | null;
 }
 
@@ -485,11 +483,26 @@ export interface PurchaseItemPayload {
 
 export interface PurchasePayload {
   supplier_id?: number;
-  reference?: string;
+  reference_no?: string;
   date?: string;
   note?: string;
   store_id?: number;
   items: PurchaseItemPayload[];
+}
+
+export interface PurchaseDetailItem {
+  id: number;
+  product_id: number | null;
+  code: string | null;
+  product_name: string | null;
+  quantity: string | null;
+  cost: string | null;
+  subtotal: string | null;
+}
+
+export interface PurchaseDetail {
+  purchase: PurchaseListRow;
+  items: PurchaseDetailItem[];
 }
 
 export interface RegisterRecord {
@@ -545,10 +558,19 @@ export const updateSupplier = (id: number, payload: SupplierPayload) =>
 export const fetchPurchases = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
   apiRequest<Paginated<PurchaseListRow>>(withQuery('/purchases', { from, to, page, limit }));
 
+export const fetchPurchaseDetail = (id: number) =>
+  apiRequest<PurchaseDetail>(`/purchases/${id}`);
+
 export const createPurchase = (payload: PurchasePayload) =>
-  apiRequest<{ id: number; reference: string; total: string; store_id: number; supplier_id: number | null; items: number }>(
+  apiRequest<{ id: number; reference_no: string; total: string; supplier_id: number | null; items: number }>(
     '/purchases',
     { method: 'POST', body: JSON.stringify(payload) }
+  );
+
+export const updatePurchase = (id: number, payload: PurchasePayload) =>
+  apiRequest<{ id: number; reference_no: string; total: string; supplier_id: number | null; items: number }>(
+    `/purchases/${id}`,
+    { method: 'PUT', body: JSON.stringify(payload) }
   );
 
 export const fetchRegisters = () => apiRequest<RegisterRecord[]>('/registers');

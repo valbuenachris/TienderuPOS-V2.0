@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
@@ -55,5 +55,14 @@ export class PurchasesController {
   @Post()
   create(@Req() request: PosRequest, @Body() body: CreatePurchaseDto) {
     return this.purchases.create(request.tenantId!, request.posUser!, body);
+  }
+
+  @Put(':id')
+  update(
+    @Req() request: PosRequest,
+    @Param('id') id: string,
+    @Body() body: CreatePurchaseDto
+  ) {
+    return this.purchases.update(request.tenantId!, request.posUser!, parseInteger(id, 'id'), body);
   }
 }

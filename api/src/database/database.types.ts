@@ -55,14 +55,13 @@ export type Database = {
         cf2: string | null; phone: string | null; email: string | null;
       }>;
       tec_purchases: Table<{
-        id: number; tenant_id: string | null; reference: string | null; date: string | null;
+        id: number; tenant_id: string | null; reference_no: string | null; date: string | null;
         note: string | null; total: number | null; attachment: string | null; supplier_id: number | null;
-        received: number | null; created_by: number | null; store_id: number | null;
+        created_by: number | null;
       }>;
       tec_purchase_items: Table<{
         id: number; tenant_id: string | null; purchase_id: number | null; product_id: number | null;
         quantity: number | null; cost: number | null; subtotal: number | null;
-        sale_price: number | null; profit_margin: number | null;
       }>;
       tec_registers: Table<{
         id: number; tenant_id: string | null; date: string | null; user_id: number | null;

@@ -48,7 +48,7 @@ export class CreatePurchaseDto {
   @IsOptional()
   @IsString()
   @MaxLength(55)
-  reference?: string;
+  reference_no?: string;
 
   @IsOptional()
   @IsString()

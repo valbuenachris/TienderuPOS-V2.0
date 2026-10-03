@@ -10,6 +10,14 @@ interface SaleTicketProps {
   siteName?: string;
   storeName?: string;
   cashierName?: string;
+  logoUrl?: string | null;
+  address?: string | null;
+  phone?: string | null;
+  nit?: string | null;
+  thankYouMessage?: string | null;
+  returnPolicy?: string | null;
+  showQr?: boolean;
+  printerWidth?: '58mm' | '80mm' | null;
   preview?: boolean;
 }
 
@@ -57,18 +65,39 @@ export default function SaleTicket({
   siteName,
   storeName,
   cashierName,
+  logoUrl,
+  address,
+  phone,
+  nit,
+  thankYouMessage,
+  returnPolicy,
+  showQr = true,
+  printerWidth,
   preview = false
 }: SaleTicketProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
+  const [logoBroken, setLogoBroken] = useState(false);
 
   useEffect(() => {
+    if (!showQr) {
+      setQrDataUrl('');
+      return;
+    }
     let active = true;
     const payload = buildQrPayload(sale, storeName || siteName || 'POS');
     QRCode.toDataURL(payload, { width: 256, margin: 1, errorCorrectionLevel: 'M' })
       .then((url) => { if (active) setQrDataUrl(url); })
       .catch(() => { if (active) setQrDataUrl(''); });
     return () => { active = false; };
-  }, [sale, storeName, siteName]);
+  }, [sale, storeName, siteName, showQr]);
+
+  useEffect(() => {
+    if (printerWidth !== '80mm') return;
+    const style = document.createElement('style');
+    style.textContent = '@page { size: 80mm auto; margin: 3mm 2mm; }';
+    document.head.appendChild(style);
+    return () => { document.head.removeChild(style); };
+  }, [printerWidth]);
 
   const isCash = sale.paid_by === 'cash';
   const received = sale.amount_received;
@@ -77,10 +106,24 @@ export default function SaleTicket({
   const showCustomer = Boolean(sale.customer_name) && sale.customer_name !== 'Cliente ocasional';
 
   return (
-    <div className={`sale-ticket ${preview ? 'sale-ticket-preview' : 'print-receipt'}`}>
+    <div className={`sale-ticket ${preview ? 'sale-ticket-preview' : 'print-receipt'} ${printerWidth === '80mm' ? 'sale-ticket--wide' : ''}`.trim()}>
       <div className="ticket-header">
+        {logoUrl && !logoBroken ? (
+          <img
+            className="ticket-logo-img"
+            src={logoUrl}
+            alt={siteName || 'Logo'}
+            onError={() => setLogoBroken(true)}
+          />
+        ) : null}
         <div className="ticket-logo">{siteName || 'TIENDERU POS'}</div>
         {storeName ? <div className="ticket-store">{storeName}</div> : null}
+        {address ? <div className="ticket-meta-line">{address}</div> : null}
+        {phone || nit ? (
+          <div className="ticket-meta-line">
+            {[phone, nit ? `NIT ${nit}` : ''].filter(Boolean).join(' · ')}
+          </div>
+        ) : null}
         <div className="ticket-ticket-no">Ticket #{sale.id}</div>
         <div className="ticket-meta-line">{formatDate(sale.created_at)}</div>
         {cashierName ? <div className="ticket-meta-line">Cajero: {cashierName}</div> : null}
@@ -126,12 +169,14 @@ export default function SaleTicket({
       <div className="ticket-rule" />
 
       <div className="ticket-footer">
-        <div className="ticket-qr-container">
-          {qrDataUrl ? <img className="ticket-qr" src={qrDataUrl} alt="QR del ticket" /> : <div className="ticket-qr placeholder">QR</div>}
-        </div>
-        <div className="ticket-qr-label">Escanea para ver detalles</div>
-        <div className="ticket-thanks">¡Gracias por su compra!</div>
-        <div className="ticket-legal">Conserva este ticket para cambios o reclamos dentro de los 30 días.</div>
+        {showQr ? (
+          <div className="ticket-qr-container">
+            {qrDataUrl ? <img className="ticket-qr" src={qrDataUrl} alt="QR del ticket" /> : <div className="ticket-qr placeholder">QR</div>}
+          </div>
+        ) : null}
+        {showQr ? <div className="ticket-qr-label">Escanea para ver detalles</div> : null}
+        <div className="ticket-thanks">{thankYouMessage?.trim() || '¡Gracias por su compra!'}</div>
+        {returnPolicy?.trim() ? <div className="ticket-legal">{returnPolicy}</div> : null}
         <div className="ticket-legal">Comprobante de venta · {siteName || 'Tienderu POS'}</div>
       </div>
     </div>

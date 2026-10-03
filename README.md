@@ -84,3 +84,41 @@ El reporte de calendario (`GET /api/reports/calendar`, solo admin) agrupa por `g
 Las imágenes de producto (`tec_products.image`, `image_2`, `image_3`) pueden guardar una URL completa (Supabase Storage) o un nombre de archivo legacy. La API respeta la URL completa tal cual; para nombres legacy arma `/uploads/thumbs/<archivo>` con fallback a `/uploads/<archivo>` y un placeholder si no existen. El Compose de despliegue monta `LEGACY_UPLOADS_PATH` (por defecto `/srv/pos-media/uploads`; ajustar en `.env` si los archivos legacy viven en otra ruta) como solo lectura en el contenedor web; ese montaje solo aplica si usas nombres legacy.
 
 En la edición de producto hay una galería de 3 ranuras: subir, cambiar o eliminar imágenes (JPG/PNG/WEBP, máximo 2 MB). La API sube al bucket `SUPABASE_PRODUCT_BUCKET` (default `productos`) con la service role y guarda la URL pública construida con `SUPABASE_PUBLIC_URL`; si esa variable falta o apunta a un host interno (por ejemplo `supabase-kong`), la subida se rechaza con un error claro para no guardar URLs inalcanzables. Al leer catálogo y productos, cualquier URL guardada con el host interno de `SUPABASE_URL` se reescribe a `SUPABASE_PUBLIC_URL`. El navegador nunca habla directo con Supabase.
+
+## Configuración editable (solo admin)
+
+La página `/config` es editable y usa `PUT /api/settings` (solo admin). La API **no asume columnas**: consulta `information_schema.columns` de `public.tec_settings` (caché de 30 s) y solo lee/escribe la intersección con su lista blanca (`site_name`, `currency_prefix`, `default_customer`, `address`, `phone`, `email`, `nit`, `timezone`, `language`, `default_tax`, `decimal_digits`, `thank_you_message`, `return_policy`, `show_qr_on_ticket`, `printer_width`, `logo_url`). Los campos sin columna aparecen deshabilitados y la respuesta incluye `supported`. Los campos SMTP nunca se exponen ni se editan. El logo se elige con vista previa inmediata y se sube junto con "Guardar cambios" (`POST /api/settings/logo`, máx. 2 MB, PNG/JPG/WEBP/SVG) al bucket de productos bajo el prefijo `logos/`; "Eliminar" lo borra del storage y pone `logo_url = NULL`. Nginx permite hasta 5 MB en `/api/`.
+
+`tec_settings` es **global** (no tiene `tenant_id`): hoy la edición afecta a todos los tenants y usa la primera fila (`setting_id = 1`). Para habilitar los campos que falten, ejecutar una sola vez (DDL manual aprobada):
+
+```sql
+ALTER TABLE public.tec_settings
+  ADD COLUMN IF NOT EXISTS address varchar(255),
+  ADD COLUMN IF NOT EXISTS phone varchar(30),
+  ADD COLUMN IF NOT EXISTS email varchar(100),
+  ADD COLUMN IF NOT EXISTS nit varchar(30),
+  ADD COLUMN IF NOT EXISTS timezone varchar(64),
+  ADD COLUMN IF NOT EXISTS language varchar(8),
+  ADD COLUMN IF NOT EXISTS default_tax numeric(6,2),
+  ADD COLUMN IF NOT EXISTS decimal_digits smallint DEFAULT 2,
+  ADD COLUMN IF NOT EXISTS thank_you_message varchar(255),
+  ADD COLUMN IF NOT EXISTS return_policy text,
+  ADD COLUMN IF NOT EXISTS show_qr_on_ticket boolean DEFAULT true,
+  ADD COLUMN IF NOT EXISTS printer_width varchar(8) DEFAULT '58mm',
+  ADD COLUMN IF NOT EXISTS logo_url varchar(500);
+```
+
+Para que la configuración sea **por tenant** (opcional; el código detecta `tenant_id` automáticamente y usa la fila del tenant si existe):
+
+```sql
+ALTER TABLE public.tec_settings ADD COLUMN IF NOT EXISTS tenant_id uuid;
+UPDATE public.tec_settings SET tenant_id = '<UUID_DEL_TENANT_ORIGINAL>' WHERE tenant_id IS NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS tec_settings_tenant_uq
+  ON public.tec_settings (tenant_id) WHERE tenant_id IS NOT NULL;
+-- Duplicar la fila base para cada tenant adicional:
+-- INSERT INTO public.tec_settings (site_name, currency_prefix, default_customer, tenant_id)
+-- SELECT site_name, currency_prefix, default_customer, '<UUID_TENANT_NUEVO>'
+-- FROM public.tec_settings WHERE tenant_id = '<UUID_DEL_TENANT_ORIGINAL>';
+```
+
+Notas del ticket: `show_qr_on_ticket`, `thank_you_message`, `return_policy` y `printer_width` se aplican en `SaleTicket`; con `80mm` se inyecta `@page { size: 80mm auto }`. `address`, `phone` y `nit` se imprimen en la cabecera si existen.

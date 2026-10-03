@@ -1,7 +1,23 @@
-import { Controller, Get, NotFoundException, Req, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Post,
+  Put,
+  Req,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { UpdateSettingsDto } from './settings.dto';
 import { SettingsService } from './settings.service';
 
 @Controller('settings')
@@ -14,5 +30,25 @@ export class SettingsController {
     const settings = await this.settings.getGlobalForTenant(request.tenantId!);
     if (!settings) throw new NotFoundException('Global POS settings are unavailable');
     return settings;
+  }
+
+  @Put()
+  @UseGuards(AdminGuard)
+  update(@Req() request: PosRequest, @Body() body: UpdateSettingsDto) {
+    return this.settings.update(request.tenantId!, body);
+  }
+
+  @Post('logo')
+  @UseGuards(AdminGuard)
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 3 * 1024 * 1024 } }))
+  uploadLogo(@Req() request: PosRequest, @UploadedFile() file?: Express.Multer.File) {
+    if (!file) throw new BadRequestException('file is required');
+    return this.settings.uploadLogo(request.tenantId!, file);
+  }
+
+  @Delete('logo')
+  @UseGuards(AdminGuard)
+  deleteLogo(@Req() request: PosRequest) {
+    return this.settings.deleteLogo(request.tenantId!);
   }
 }

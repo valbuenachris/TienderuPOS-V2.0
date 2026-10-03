@@ -29,6 +29,15 @@ export class ApiExceptionFilter implements ExceptionFilter {
       return;
     }
 
+    if (exception instanceof Error && exception.name === 'MulterError') {
+      const code = (exception as { code?: unknown }).code;
+      const message = code === 'LIMIT_FILE_SIZE'
+        ? 'El archivo supera el tamaño permitido'
+        : 'El archivo enviado no es válido';
+      response.status(HttpStatus.BAD_REQUEST).json({ error: { code: 'REQUEST_ERROR', message } });
+      return;
+    }
+
     const reference = randomUUID().slice(0, 8);
     const pg = exception as {
       code?: unknown;

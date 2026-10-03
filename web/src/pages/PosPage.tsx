@@ -265,6 +265,14 @@ export default function PosPage() {
           siteName={settings?.site_name}
           storeName={lastSaleStoreName}
           cashierName={cashierName}
+          logoUrl={settings?.logo_url}
+          address={settings?.address}
+          phone={settings?.phone}
+          nit={settings?.nit}
+          thankYouMessage={settings?.thank_you_message}
+          returnPolicy={settings?.return_policy}
+          showQr={settings?.show_qr_on_ticket !== false}
+          printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
         />
       ) : null}
 
@@ -282,6 +290,14 @@ export default function PosPage() {
             siteName={settings?.site_name}
             storeName={lastSaleStoreName}
             cashierName={cashierName}
+            logoUrl={settings?.logo_url}
+            address={settings?.address}
+            phone={settings?.phone}
+            nit={settings?.nit}
+            thankYouMessage={settings?.thank_you_message}
+            returnPolicy={settings?.return_policy}
+            showQr={settings?.show_qr_on_ticket !== false}
+            printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
             preview
           />
         </Modal>

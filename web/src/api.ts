@@ -90,6 +90,39 @@ export interface PosSettings {
   site_name: string;
   currency_prefix: string;
   default_customer: number | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  nit?: string | null;
+  timezone?: string | null;
+  language?: string | null;
+  default_tax?: number | string | null;
+  decimal_digits?: number | null;
+  thank_you_message?: string | null;
+  return_policy?: string | null;
+  show_qr_on_ticket?: boolean | null;
+  printer_width?: '58mm' | '80mm' | null;
+  logo_url?: string | null;
+  supported?: string[];
+}
+
+export interface UpdateSettingsPayload {
+  site_name?: string;
+  currency_prefix?: string;
+  default_customer?: number | null;
+  address?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  nit?: string | null;
+  timezone?: string | null;
+  language?: string | null;
+  default_tax?: number | null;
+  decimal_digits?: number | null;
+  thank_you_message?: string | null;
+  return_policy?: string | null;
+  show_qr_on_ticket?: boolean;
+  printer_width?: '58mm' | '80mm';
+  logo_url?: string | null;
 }
 
 export interface SaleListRow {
@@ -291,6 +324,18 @@ export const fetchCustomers = (storeId: number, search = '') =>
   apiRequest<Customer[]>(withQuery('/catalog/customers', { store_id: storeId, q: search }));
 
 export const fetchSettings = () => apiRequest<PosSettings>('/settings');
+
+export const updateSettings = (payload: UpdateSettingsPayload) =>
+  apiRequest<PosSettings>('/settings', { method: 'PUT', body: JSON.stringify(payload) });
+
+export const uploadSettingsLogo = (file: File) => {
+  const form = new FormData();
+  form.append('file', file);
+  return apiRequest<{ logo_url: string }>('/settings/logo', { method: 'POST', body: form });
+};
+
+export const deleteSettingsLogo = () =>
+  apiRequest<{ logo_url: null }>('/settings/logo', { method: 'DELETE' });
 
 export const fetchProducts = (storeId: number, search: string) => {
   const query = new URLSearchParams({ store_id: String(storeId), q: search });

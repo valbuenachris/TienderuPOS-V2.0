@@ -378,6 +378,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .sale-ticket-preview { border: 1px solid #e2e9e3; border-radius: 10px; box-shadow: 0 6px 18px #18391f12; }
 .ticket-modal { width: min(100%, 340px); }
 .ticket-header { display: grid; gap: 2px; text-align: center; }
+.ticket-logo-img { display: block; max-width: 140px; max-height: 56px; margin: 0 auto 4px; object-fit: contain; }
 .ticket-logo { font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
 .ticket-store { font-size: 11px; font-weight: 700; }
 .ticket-ticket-no { margin-top: 4px; font-size: 14px; font-weight: 800; }
@@ -857,3 +858,56 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .sale-status-badge.paid { background: #e4f5e9; color: #147d4a; }
 .sale-status-badge.partial { background: #fef3c7; color: #b45309; }
 .sale-status-badge.due { background: #fee2e2; color: #b91c1c; }
+
+.settings-form { display: grid; gap: 16px; }
+.settings-section {
+  display: grid;
+  gap: 10px;
+  padding: 16px;
+  border: 1px solid #e2e9e3;
+  border-radius: 14px;
+  background: #fff;
+}
+.settings-section h2 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: #536057; }
+.settings-section label { margin: 0; }
+.settings-logo { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.settings-logo img {
+  max-width: 180px;
+  max-height: 80px;
+  padding: 6px;
+  border: 1px solid #e2e9e3;
+  border-radius: 10px;
+  background: #fff;
+  object-fit: contain;
+}
+.settings-logo-placeholder {
+  display: grid;
+  place-items: center;
+  width: 180px;
+  height: 80px;
+  border: 1px dashed #cbd5cb;
+  border-radius: 10px;
+  color: #9aa79e;
+  font-size: 12px;
+}
+.settings-logo-actions { display: flex; align-items: center; gap: 10px; }
+.button-like {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 9px 14px;
+  border: 1px solid #dce5dd;
+  border-radius: 10px;
+  background: #fff;
+  color: #147d4a;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.button-like:hover { background: #f0f8f2; }
+.sale-ticket--wide { width: 80mm; }
+
+@media print {
+  .sale-ticket.print-receipt.sale-ticket--wide { width: 76mm; }
+}

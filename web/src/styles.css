@@ -406,8 +406,9 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .ticket-payment div span:first-child { color: #444; }
 .ticket-points { margin-top: 5px; text-align: center; font-size: 10px; font-weight: 700; }
 .ticket-footer { display: grid; justify-items: center; gap: 3px; text-align: center; }
-.ticket-qr { width: 96px; height: 96px; image-rendering: pixelated; }
-.ticket-qr.placeholder { display: grid; place-items: center; border: 1px dashed #cbd5cb; color: #9aa79e; font-size: 10px; }
+.ticket-qr-container { width: 100%; display: grid; justify-items: center; margin: 10px 0 2px; }
+.ticket-qr { width: 100%; max-width: 150px; height: auto; aspect-ratio: 1 / 1; }
+.ticket-qr.placeholder { display: grid; place-items: center; max-width: 150px; border: 1px dashed #cbd5cb; color: #9aa79e; font-size: 10px; }
 .ticket-qr-label { font-size: 9px; color: #444; }
 .ticket-thanks { margin-top: 3px; font-size: 12px; font-weight: 800; }
 .ticket-legal { font-size: 9px; color: #555; overflow-wrap: anywhere; }
@@ -435,7 +436,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
     background: #fff;
     color: #000;
   }
-  .ticket-qr { width: 84px; height: 84px; }
+  .ticket-qr { max-width: 100%; }
   @page { size: 58mm auto; margin: 3mm 2mm; }
 }
 

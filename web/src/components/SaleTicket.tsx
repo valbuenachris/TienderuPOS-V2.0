@@ -64,7 +64,7 @@ export default function SaleTicket({
   useEffect(() => {
     let active = true;
     const payload = buildQrPayload(sale, storeName || siteName || 'POS');
-    QRCode.toDataURL(payload, { width: 96, margin: 1, errorCorrectionLevel: 'M' })
+    QRCode.toDataURL(payload, { width: 256, margin: 1, errorCorrectionLevel: 'M' })
       .then((url) => { if (active) setQrDataUrl(url); })
       .catch(() => { if (active) setQrDataUrl(''); });
     return () => { active = false; };
@@ -126,7 +126,9 @@ export default function SaleTicket({
       <div className="ticket-rule" />
 
       <div className="ticket-footer">
-        {qrDataUrl ? <img className="ticket-qr" src={qrDataUrl} alt="QR del ticket" /> : <div className="ticket-qr placeholder">QR</div>}
+        <div className="ticket-qr-container">
+          {qrDataUrl ? <img className="ticket-qr" src={qrDataUrl} alt="QR del ticket" /> : <div className="ticket-qr placeholder">QR</div>}
+        </div>
         <div className="ticket-qr-label">Escanea para ver detalles</div>
         <div className="ticket-thanks">¡Gracias por su compra!</div>
         <div className="ticket-legal">Conserva este ticket para cambios o reclamos dentro de los 30 días.</div>

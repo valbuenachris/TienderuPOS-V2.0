@@ -117,7 +117,6 @@ export default function SaleTicket({
           />
         ) : null}
         <div className="ticket-logo">{siteName || 'TIENDERU POS'}</div>
-        {storeName ? <div className="ticket-store">{storeName}</div> : null}
         {address ? <div className="ticket-meta-line">{address}</div> : null}
         {phone || nit ? (
           <div className="ticket-meta-line">
@@ -178,6 +177,7 @@ export default function SaleTicket({
         <div className="ticket-thanks">{thankYouMessage?.trim() || '¡Gracias por su compra!'}</div>
         {returnPolicy?.trim() ? <div className="ticket-legal">{returnPolicy}</div> : null}
         <div className="ticket-legal">Comprobante de venta · {siteName || 'Tienderu POS'}</div>
+        <div className="ticket-branding">Facturado con Tienderu POS - 3104039092</div>
       </div>
     </div>
   );

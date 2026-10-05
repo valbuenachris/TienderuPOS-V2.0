@@ -378,9 +378,16 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .sale-ticket-preview { border: 1px solid #e2e9e3; border-radius: 10px; box-shadow: 0 6px 18px #18391f12; }
 .ticket-modal { width: min(100%, 340px); }
 .ticket-header { display: grid; gap: 2px; text-align: center; }
-.ticket-logo-img { display: block; max-width: 140px; max-height: 56px; margin: 0 auto 4px; object-fit: contain; }
+.ticket-logo-img {
+  display: block;
+  width: auto;
+  height: auto;
+  max-width: 140px;
+  max-height: 120px;
+  margin: 0 auto 6px;
+  object-fit: contain;
+}
 .ticket-logo { font-size: 15px; font-weight: 800; letter-spacing: .04em; text-transform: uppercase; }
-.ticket-store { font-size: 11px; font-weight: 700; }
 .ticket-ticket-no { margin-top: 4px; font-size: 14px; font-weight: 800; }
 .ticket-meta-line { font-size: 10px; color: #444; overflow-wrap: anywhere; }
 .ticket-rule { border-top: 1px dashed #9ca3af; margin: 6px 0; }
@@ -413,6 +420,13 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .ticket-qr-label { font-size: 9px; color: #444; }
 .ticket-thanks { margin-top: 3px; font-size: 12px; font-weight: 800; }
 .ticket-legal { font-size: 9px; color: #555; overflow-wrap: anywhere; }
+.ticket-branding {
+  margin-top: 12px;
+  text-align: center;
+  font-weight: bold;
+  font-size: 10px;
+  color: #111;
+}
 .receipt-actions { display: flex; align-items: center; gap: 8px; }
 
 @media (max-width: 900px) {
@@ -438,6 +452,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
     color: #000;
   }
   .ticket-qr { max-width: 100%; }
+  .ticket-logo-img { max-width: 100%; max-height: 120px; }
   @page { size: 58mm auto; margin: 3mm 2mm; }
 }
 

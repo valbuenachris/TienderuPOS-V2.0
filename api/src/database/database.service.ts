@@ -40,6 +40,36 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
 
   async onModuleInit(): Promise<void> {
     await this.query('SELECT 1');
+    await this.warnAboutInventoryTriggers();
+  }
+
+  private async warnAboutInventoryTriggers(): Promise<void> {
+    try {
+      const result = await this.query<{ table_name: string; trigger_name: string }>(
+        `SELECT c.relname AS table_name, t.tgname AS trigger_name
+         FROM pg_trigger t
+         JOIN pg_class c ON c.oid = t.tgrelid
+         JOIN pg_namespace n ON n.oid = c.relnamespace
+         WHERE NOT t.tgisinternal
+           AND n.nspname = 'public'
+           AND t.tgenabled <> 'D'
+           AND c.relname IN (
+             'tec_sales', 'tec_sale_items', 'tec_product_store_qty', 'tec_products',
+             'tec_purchases', 'tec_purchase_items'
+           )`
+      );
+      if (result.rows.length > 0) {
+        const list = result.rows.map((row) => `${row.table_name}.${row.trigger_name}`).join(', ');
+        this.logger.error(
+          `Inventory triggers detected (${list}); the API updates stock itself, so enabled triggers double-apply stock changes. Review and drop/disable them.`
+        );
+      }
+    } catch (error: unknown) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : 'UNKNOWN';
+      this.logger.warn(`Could not inspect inventory triggers (${code})`);
+    }
   }
 
   async onModuleDestroy(): Promise<void> {

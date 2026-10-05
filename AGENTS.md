@@ -1,7 +1,7 @@
 # POS v2 development rules
 
 - This is a clean TypeScript/NestJS + React POS. Do not copy PHP/CodeIgniter implementation files here; `../pos-gres` remains the legacy reference until cutover.
-- The Supabase schema is immutable. Do not add migrations, alter tables, create indexes, change policies/grants, or enable ORM schema synchronization.
+- The Supabase schema is immutable. Do not add migrations, alter tables, create indexes, change policies/grants, or enable ORM schema synchronization. **Database triggers/rules on stock tables are forbidden**: the API owns all stock math (`tec_product_store_qty`) inside transactions; an enabled trigger double-applies deductions/additions. `DatabaseService` logs an error at startup if it finds triggers on `tec_sales`, `tec_sale_items`, `tec_product_store_qty`, `tec_products`, `tec_purchases` or `tec_purchase_items`.
 - Use the typed `SupabaseService` for simple table CRUD and types in `api/src/database/database.types.ts`; use `pg` for atomic multi-table sales, BYTEA session compatibility, and exact-text monetary reports. Type every SQL result from the known table row types or an explicit aggregate projection.
 - Keep database/service-role credentials in the API `.env` only. React uses the Nest API and TanStack Query for server state; do not fetch server data with `useEffect` or connect the browser directly to Supabase.
 - All tenant-owned SQL must use `tenant_id` from the verified JWT/tenant resolver. Never accept a tenant ID or database credential from browser input.

@@ -508,6 +508,7 @@ export default function SalesHistoryPage() {
               currency={currency}
               siteName={settings?.site_name}
               storeName={ticketStoreName}
+              logoUrl={settings?.logo_url}
               address={settings?.address}
               phone={settings?.phone}
               nit={settings?.nit}
@@ -528,6 +529,7 @@ export default function SalesHistoryPage() {
           currency={currency}
           siteName={settings?.site_name}
           storeName={ticketStoreName}
+          logoUrl={settings?.logo_url}
           address={settings?.address}
           phone={settings?.phone}
           nit={settings?.nit}

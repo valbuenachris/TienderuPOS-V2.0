@@ -5,7 +5,7 @@ import { useSession } from '../app/session';
 import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } from '../pos-queries';
 import { deleteSale, updateSale } from '../api';
 import type { UpdateSalePayload } from '../api';
-import { paymentMethodLabel } from '../payments';
+import { paymentMethodLabel, saleStatusLabel } from '../payments';
 import { formatDate, formatMoney } from '../format';
 
 function isoDaysAgo(days: number): string {
@@ -203,7 +203,7 @@ export default function SalesHistoryPage() {
                   <td>{money(sale.total)}</td>
                   <td>{money(sale.grand_total)}</td>
                   <td>{money(sale.paid)}</td>
-                  <td><span className={`badge ${sale.status ?? ''}`}>{sale.status || '—'}</span></td>
+                  <td><span className={`badge ${sale.status ?? ''}`}>{saleStatusLabel(sale.status)}</span></td>
                   <td>
                     <div className="row-actions sale-actions">
                       <button
@@ -270,7 +270,7 @@ export default function SalesHistoryPage() {
               <div><span>Cliente</span><strong>{viewQuery.data.customer_name || 'Cliente ocasional'}</strong></div>
               <div><span>Fecha</span><strong>{formatDate(viewQuery.data.created_at)}</strong></div>
               <div><span>Tienda</span><strong>{stores.find((store) => store.id === viewQuery.data?.store_id)?.name ?? '—'}</strong></div>
-              <div><span>Estado</span><strong><span className={`badge ${viewQuery.data.status ?? ''}`}>{viewQuery.data.status || '—'}</span></strong></div>
+              <div><span>Estado</span><strong><span className={`badge ${viewQuery.data.status ?? ''}`}>{saleStatusLabel(viewQuery.data.status)}</span></strong></div>
               <div><span>Subtotal</span><strong>{money(viewQuery.data.total)}</strong></div>
               <div><span>Total</span><strong>{money(viewQuery.data.grand_total)}</strong></div>
               <div><span>Pagado</span><strong>{money(viewQuery.data.paid)}</strong></div>

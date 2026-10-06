@@ -15,7 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/ventas', label: 'Ventas', icon: '🧾' },
   { to: '/productos', label: 'Productos', icon: '📦', admin: true },
   { to: '/inventario', label: 'Inventario', icon: '🏷️', admin: true },
-  { to: '/clientes', label: 'Clientes', icon: '👥', admin: true },
+  { to: '/clientes', label: 'Clientes', icon: '👥' },
   { to: '/proveedores', label: 'Proveedores', icon: '🚚', admin: true },
   { to: '/compras', label: 'Compras', icon: '🛍️', admin: true },
   { to: '/reportes', label: 'Reportes', icon: '📈', admin: true },

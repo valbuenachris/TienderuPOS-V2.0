@@ -851,6 +851,29 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
   background: #fbfdfb;
 }
 .confirm-payment-label { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 13px; color: #536057; }
+.confirm-discount {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+  padding: 12px;
+  border: 1px solid #e2e9e3;
+  border-radius: 12px;
+  background: #fbfdfb;
+}
+.confirm-discount label { margin: 0; }
+.discount-toggle { display: inline-flex; border: 1px solid #dce5dd; border-radius: 9px; overflow: hidden; }
+.discount-toggle button {
+  padding: 6px 12px;
+  border: 0;
+  background: #fff;
+  color: #536057;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.discount-toggle button.active { background: #e4f5e9; color: #147d4a; }
+.confirm-totals .confirm-discount-line { color: #059669; font-weight: 700; }
+.ticket-discount { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
 .confirm-payment label { margin: 0; }
 .quick-cash { display: flex; flex-wrap: wrap; gap: 8px; }
 .quick-cash button {

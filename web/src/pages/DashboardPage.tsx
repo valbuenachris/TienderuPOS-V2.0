@@ -3,6 +3,7 @@ import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useDailyReportQuery, useSalesQuery } from '../pos-queries';
 import { formatDate, formatMoney } from '../format';
+import { saleStatusLabel } from '../payments';
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
@@ -65,7 +66,7 @@ export default function DashboardPage() {
                   <td>{formatDate(sale.created_at)}</td>
                   <td>{sale.customer_name || 'Cliente ocasional'}</td>
                   <td>{formatMoney(sale.grand_total, currency)}</td>
-                  <td><span className={`badge ${sale.status ?? ''}`}>{sale.status || '—'}</span></td>
+                  <td><span className={`badge ${sale.status ?? ''}`}>{saleStatusLabel(sale.status)}</span></td>
                 </tr>
               ))}
               {(recent.data?.data ?? []).length === 0 && !recent.isPending ? (

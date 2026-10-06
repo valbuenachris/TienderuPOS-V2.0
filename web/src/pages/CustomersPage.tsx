@@ -9,7 +9,7 @@ import type { ManagedCustomer, ManagedCustomerPayload } from '../api';
 
 export default function CustomersPage() {
   const queryClient = useQueryClient();
-  const { token, tenantId, stores } = useSession();
+  const { token, tenantId, stores, user, isAdmin } = useSession();
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
@@ -25,13 +25,23 @@ export default function CustomersPage() {
     input.id === null ? createManagedCustomer(input.payload) : updateManagedCustomer(input.id, input.payload)
   );
 
+  function defaultStoreValue(): string {
+    if (isAdmin) return '';
+    return stores[0] ? String(stores[0].id) : '';
+  }
+
+  function canEdit(customer: ManagedCustomer): boolean {
+    if (isAdmin) return true;
+    return customer.store_id !== null && customer.store_id === user?.store_id;
+  }
+
   function resetForm() {
     setModalOpen(false);
     setEditingId(null);
     setName('');
     setEmail('');
     setPhone('');
-    setStoreId('');
+    setStoreId(defaultStoreValue());
   }
 
   function openCreate() {
@@ -94,7 +104,11 @@ export default function CustomersPage() {
                   <td>{customer.email || '—'}</td>
                   <td>{customer.phone || '—'}</td>
                   <td>{stores.find((store) => store.id === customer.store_id)?.name ?? 'Todas'}</td>
-                  <td className="row-actions"><button className="quiet" onClick={() => startEdit(customer)}>Editar</button></td>
+                  <td className="row-actions">
+                    {canEdit(customer)
+                      ? <button className="quiet" onClick={() => startEdit(customer)}>Editar</button>
+                      : null}
+                  </td>
                 </tr>
               ))}
               {customers.length === 0 && !customersQuery.isPending ? (
@@ -122,8 +136,8 @@ export default function CustomersPage() {
           <label>Correo<input value={email} onChange={(event) => setEmail(event.target.value)} type="email" maxLength={100} /></label>
           <label>Teléfono<input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={20} /></label>
           <label>Tienda
-            <select value={storeId} onChange={(event) => setStoreId(event.target.value)}>
-              <option value="">Todas las tiendas</option>
+            <select value={storeId} onChange={(event) => setStoreId(event.target.value)} disabled={!isAdmin}>
+              {isAdmin ? <option value="">Todas las tiendas</option> : null}
               {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
             </select>
           </label>

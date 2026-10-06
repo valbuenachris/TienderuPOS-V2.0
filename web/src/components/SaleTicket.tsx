@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import QRCode from 'qrcode';
 import type { SaleResult } from '../api';
-import { paymentMethodLabel } from '../payments';
+import { paymentMethodLabel, saleStatusLabel } from '../payments';
 import { formatDate, formatMoney } from '../format';
 
 interface SaleTicketProps {
@@ -20,12 +20,6 @@ interface SaleTicketProps {
   printerWidth?: '58mm' | '80mm' | null;
   preview?: boolean;
 }
-
-const STATUS_LABELS: Record<string, string> = {
-  paid: 'PAGADA',
-  partial: 'PAGO PARCIAL',
-  due: 'PENDIENTE'
-};
 
 function buildQrPayload(sale: SaleResult, storeName: string): string {
   const items = sale.items.map((item) => ({
@@ -151,6 +145,12 @@ export default function SaleTicket({
       <div className="ticket-totals">
         <div><span>Subtotal</span><span>{formatMoney(sale.total, currency)}</span></div>
         <div><span>Impuestos</span><span>{formatMoney(sale.tax_total, currency)}</span></div>
+        {Number(sale.total_discount ?? 0) > 0 ? (
+          <div className="ticket-discount">
+            <span>Descuento {sale.order_discount_id ? `(${sale.order_discount_id})` : ''}</span>
+            <span>-{formatMoney(sale.total_discount, currency)}</span>
+          </div>
+        ) : null}
         <div className="ticket-grand-total"><span>TOTAL</span><span>{formatMoney(sale.grand_total, currency)}</span></div>
       </div>
 
@@ -160,7 +160,7 @@ export default function SaleTicket({
         <div><span>Pago</span><span>{sale.paid_by ? paymentMethodLabel(sale.paid_by) : 'Cuenta pendiente'}</span></div>
         {isCash && received ? <div><span>Recibido</span><span>{formatMoney(received, currency)}</span></div> : null}
         {isCash && received ? <div><span>Cambio</span><span>{formatMoney(change ?? '0', currency)}</span></div> : null}
-        <div><span>Estado</span><span>{STATUS_LABELS[sale.status] ?? sale.status}</span></div>
+        <div><span>Estado</span><span>{saleStatusLabel(sale.status)}</span></div>
       </div>
 
       {points > 0 ? <div className="ticket-points">Puntos ganados: {points}</div> : null}

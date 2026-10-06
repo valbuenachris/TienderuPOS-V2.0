@@ -34,6 +34,7 @@ type EditableSaleRow = {
   customer_name: string | null;
   paid: string | null;
   store_id: number | null;
+  order_discount_id: string | null;
 };
 
 type SaleItemLockRow = {
@@ -197,7 +198,34 @@ export class SalesService {
       }
 
       total = total.toDecimalPlaces(2, MONEY_ROUNDING);
-      const grandTotal = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
+      taxTotal = taxTotal.toDecimalPlaces(2, MONEY_ROUNDING);
+      const preDiscount = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
+
+      let orderDiscount = new Decimal(0);
+      let discountId: string | null = null;
+      if (input.discount_type !== undefined || input.discount_value !== undefined) {
+        if (input.discount_type === undefined || input.discount_value === undefined) {
+          throw new BadRequestException('discount_type and discount_value must be supplied together');
+        }
+        const discountValue = new Decimal(input.discount_value);
+        if (!discountValue.isFinite() || discountValue.isNegative()) {
+          throw new BadRequestException('discount_value must be zero or greater');
+        }
+        if (discountValue.gt(0)) {
+          if (input.discount_type === 'percent') {
+            if (discountValue.gt(100)) throw new BadRequestException('Discount percent cannot exceed 100');
+            orderDiscount = preDiscount.times(discountValue).dividedBy(100).toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = `${input.discount_value}%`;
+          } else {
+            if (discountValue.gt(preDiscount)) {
+              throw new BadRequestException('Discount cannot exceed the sale total');
+            }
+            orderDiscount = discountValue.toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = orderDiscount.toFixed(2);
+          }
+        }
+      }
+      const grandTotal = preDiscount.minus(orderDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
 
       let paid: Decimal;
       let amountReceived: Decimal | null = null;
@@ -241,13 +269,17 @@ export class SalesService {
         `INSERT INTO public.tec_sales
           (tenant_id, customer_id, customer_name, total, grand_total, paid,
            total_items, total_quantity, status, created_by, store_id,
-           total_reward_points, created_at, user_id)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, NULL)
+           total_reward_points, created_at, user_id,
+           product_discount, order_discount_id, order_discount, total_discount,
+           product_tax, order_tax_id, order_tax, total_tax, rounding)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, NULL,
+                 '0.00', $13, $14, $14, $15, NULL, '0.00', $15, '0.00')
          RETURNING id, created_at`,
         [
           tenantId, customer?.id ?? null, customer?.name ?? 'Cliente ocasional',
           total.toFixed(2), grandTotal.toFixed(2), paid.toFixed(2), prepared.length,
-          totalQuantity.toFixed(2), status, user.id, storeId, totalRewardPoints
+          totalQuantity.toFixed(2), status, user.id, storeId, totalRewardPoints,
+          discountId, orderDiscount.toFixed(2), taxTotal.toFixed(2)
         ]
       );
       const saleId = header.rows[0]?.id;
@@ -283,6 +315,9 @@ export class SalesService {
         paid: paid.toFixed(2),
         status,
         paid_by: input.paid_by ?? null,
+        order_discount: orderDiscount.toFixed(2),
+        total_discount: orderDiscount.toFixed(2),
+        order_discount_id: discountId,
         amount_received: amountReceived === null ? null : amountReceived.toFixed(2),
         change_amount: change.toFixed(2),
         created_at: saleCreatedAt,
@@ -444,7 +479,7 @@ export class SalesService {
 
     await this.database.transaction(async (client) => {
       const saleResult = await client.query<EditableSaleRow>(
-        `SELECT id, customer_id, customer_name, paid::text AS paid, store_id
+        `SELECT id, customer_id, customer_name, paid::text AS paid, store_id, order_discount_id
          FROM public.tec_sales
          WHERE tenant_id = $1 AND id = $2
          LIMIT 1
@@ -614,7 +649,28 @@ export class SalesService {
       if (prepared.length === 0) throw new BadRequestException('Sale must keep at least one item');
 
       total = total.toDecimalPlaces(2, MONEY_ROUNDING);
-      const grandTotal = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
+      taxTotal = taxTotal.toDecimalPlaces(2, MONEY_ROUNDING);
+      const preDiscount = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
+
+      let orderDiscount = new Decimal(0);
+      let discountId: string | null = null;
+      const storedDiscountId = sale.order_discount_id?.trim() ?? '';
+      if (storedDiscountId) {
+        if (storedDiscountId.endsWith('%')) {
+          const percent = new Decimal(storedDiscountId.slice(0, -1));
+          if (percent.isFinite() && percent.gte(0) && percent.lte(100)) {
+            orderDiscount = preDiscount.times(percent).dividedBy(100).toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = storedDiscountId;
+          }
+        } else {
+          const fixed = new Decimal(storedDiscountId);
+          if (fixed.isFinite() && fixed.gte(0)) {
+            orderDiscount = Decimal.min(fixed, preDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = orderDiscount.toFixed(2);
+          }
+        }
+      }
+      const grandTotal = preDiscount.minus(orderDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
       const paid = new Decimal(sale.paid ?? '0');
       if (paid.gt(grandTotal)) {
         throw new BadRequestException('El pago registrado supera el nuevo total; ajusta los pagos antes de editar.');
@@ -624,7 +680,9 @@ export class SalesService {
       await client.query(
         `UPDATE public.tec_sales
          SET customer_id = $1, customer_name = $2, total = $3, grand_total = $4,
-             total_items = $5, total_quantity = $6, status = $7, total_reward_points = $8
+             total_items = $5, total_quantity = $6, status = $7, total_reward_points = $8,
+             product_discount = '0.00', order_discount_id = $11, order_discount = $12, total_discount = $12,
+             product_tax = $13, order_tax_id = NULL, order_tax = '0.00', total_tax = $13, rounding = '0.00'
          WHERE tenant_id = $9 AND id = $10`,
         [
           customer?.id ?? null,
@@ -636,7 +694,10 @@ export class SalesService {
           status,
           totalRewardPoints,
           tenantId,
-          saleId
+          saleId,
+          discountId,
+          orderDiscount.toFixed(2),
+          taxTotal.toFixed(2)
         ]
       );
 

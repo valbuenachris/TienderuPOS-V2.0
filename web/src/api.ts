@@ -63,6 +63,9 @@ export interface SaleResult {
   paid_by?: string | null;
   amount_received?: string | null;
   change_amount?: string | null;
+  order_discount?: string | null;
+  total_discount?: string | null;
+  order_discount_id?: string | null;
   total_reward_points?: number | null;
   created_at?: string | null;
   items: Array<{
@@ -84,6 +87,8 @@ export interface CreateSalePayload {
   paid_by?: SalePaymentMethod;
   amount_received?: string;
   change_amount?: string;
+  discount_type?: 'fixed' | 'percent';
+  discount_value?: string;
 }
 
 export interface PosSettings {

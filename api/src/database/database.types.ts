@@ -37,6 +37,9 @@ export type Database = {
         total_quantity: number | null; status: string | null; created_at: string | null;
         created_by: number | null; store_id: number | null; total_reward_points: number | null;
         status_delivery: string | null; user_id: string | null;
+        product_discount: number | null; order_discount_id: string | null; order_discount: number | null;
+        total_discount: number | null; product_tax: number | null; order_tax_id: string | null;
+        order_tax: number | null; total_tax: number | null; rounding: number | null;
       }>;
       tec_sale_items: Table<{
         id: number; tenant_id: string | null; sale_id: number | null; product_id: number | null;

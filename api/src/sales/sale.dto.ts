@@ -77,6 +77,16 @@ export class CreateSaleDto {
 
   @IsOptional()
   @IsString()
+  @IsIn(['fixed', 'percent'])
+  discount_type?: 'fixed' | 'percent';
+
+  @IsOptional()
+  @IsString()
+  @Matches(DECIMAL_PATTERN)
+  discount_value?: string;
+
+  @IsOptional()
+  @IsString()
   @IsIn(PAID_BY_VALUES)
   paid_by?: SalePaymentMethod;
 }

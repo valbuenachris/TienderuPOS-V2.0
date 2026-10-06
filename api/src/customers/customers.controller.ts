@@ -1,5 +1,4 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
-import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
@@ -24,7 +23,7 @@ function optionalInteger(value: unknown, field: string): number | undefined {
 }
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard)
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 
@@ -39,6 +38,7 @@ export class CustomersController {
     const cleanSearch = search === undefined ? '' : search.trim().slice(0, 100);
     return this.customers.list(
       request.tenantId!,
+      request.posUser!,
       cleanSearch,
       optionalInteger(storeId, 'store_id'),
       parsePagination(page, limit)
@@ -47,11 +47,11 @@ export class CustomersController {
 
   @Post()
   create(@Req() request: PosRequest, @Body() body: CreateCustomerDto) {
-    return this.customers.create(request.tenantId!, body);
+    return this.customers.create(request.tenantId!, request.posUser!, body);
   }
 
   @Put(':id')
   update(@Req() request: PosRequest, @Param('id') id: string, @Body() body: UpdateCustomerDto) {
-    return this.customers.update(request.tenantId!, parseInteger(id, 'id'), body);
+    return this.customers.update(request.tenantId!, request.posUser!, parseInteger(id, 'id'), body);
   }
 }

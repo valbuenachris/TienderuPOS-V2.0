@@ -5,6 +5,7 @@ import { useSession } from '../app/session';
 import { useReportCalendarQuery, useSalesQuery } from '../pos-queries';
 import { MONTH_NAMES, WEEKDAY_NAMES, monthGrid, todayIso } from '../calendar';
 import { formatDate, formatDay, formatMoney } from '../format';
+import { saleStatusLabel } from '../payments';
 import type { ReportCalendarPoint } from '../api';
 
 export default function DailySalesReport() {
@@ -117,7 +118,7 @@ export default function DailySalesReport() {
                     <td>{sale.customer_name || 'Cliente ocasional'}</td>
                     <td>{money(sale.grand_total)}</td>
                     <td>{money(sale.paid)}</td>
-                    <td><span className={`badge ${sale.status ?? ''}`}>{sale.status || '—'}</span></td>
+                    <td><span className={`badge ${sale.status ?? ''}`}>{saleStatusLabel(sale.status)}</span></td>
                   </tr>
                 ))}
                 {(salesQuery.data?.data ?? []).length === 0 && selectedDay !== null && !salesQuery.isPending ? (

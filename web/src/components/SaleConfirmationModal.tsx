@@ -17,6 +17,8 @@ export interface SaleConfirmationPayload {
   paid_by?: SalePaymentMethod;
   amount_received?: string;
   change_amount?: string;
+  discount_type?: 'fixed' | 'percent';
+  discount_value?: string;
 }
 
 interface SaleConfirmationModalProps {
@@ -47,6 +49,12 @@ function parseAmountToCents(value: string): number {
   return Number.isFinite(amount) ? Math.round(amount * 100) : NaN;
 }
 
+function parsePercent(value: string): number {
+  const clean = value.trim();
+  if (clean === '') return NaN;
+  return Number(clean.replace(',', '.'));
+}
+
 function centsToInput(cents: number): string {
   return amountInputFormatter.format(cents / 100);
 }
@@ -63,6 +71,8 @@ export default function SaleConfirmationModal({
   onConfirm
 }: SaleConfirmationModalProps) {
   const [receivedDraft, setReceivedDraft] = useState('');
+  const [discountType, setDiscountType] = useState<'fixed' | 'percent'>('fixed');
+  const [discountValue, setDiscountValue] = useState('');
   const [openedAt] = useState(() => new Date().toLocaleString('es-CO'));
 
   const rows = data.lines.map((line) => {
@@ -73,8 +83,30 @@ export default function SaleConfirmationModal({
   });
   const subtotalCents = rows.reduce((sum, row) => sum + row.subtotalCents, 0);
   const taxCents = rows.reduce((sum, row) => sum + row.taxCents, 0);
-  const totalCents = subtotalCents + taxCents;
+  const preTotalCents = subtotalCents + taxCents;
   const totalItems = rows.reduce((sum, row) => sum + row.line.quantity, 0);
+
+  const discountDraft = discountValue.trim();
+  const discountPercent = discountType === 'percent' ? parsePercent(discountDraft) : NaN;
+  const discountFixedCents = discountType === 'fixed' ? parseAmountToCents(discountDraft) : NaN;
+  let discountCents = 0;
+  let discountValid = true;
+  if (discountDraft !== '') {
+    if (discountType === 'percent') {
+      discountValid = Number.isFinite(discountPercent) && discountPercent >= 0 && discountPercent <= 100;
+      discountCents = discountValid ? Math.round(preTotalCents * discountPercent / 100) : 0;
+    } else {
+      discountValid = Number.isFinite(discountFixedCents) && discountFixedCents >= 0 && discountFixedCents <= preTotalCents;
+      discountCents = discountValid ? discountFixedCents : 0;
+    }
+  }
+  if (discountCents > preTotalCents) discountCents = preTotalCents;
+  const totalCents = preTotalCents - discountCents;
+  const discountEquivalent = discountCents > 0 && preTotalCents > 0
+    ? (discountType === 'percent'
+      ? formatMoney(discountCents / 100, currency)
+      : `${((discountCents / preTotalCents) * 100).toFixed(2)}%`)
+    : '';
 
   const method = data.paymentMode;
   const isCash = method === 'cash';
@@ -100,9 +132,17 @@ export default function SaleConfirmationModal({
   const contact = [data.customer?.email, data.customer?.phone].filter(Boolean).join(' · ');
 
   function confirm() {
-    if (submitting || rows.length === 0) return;
+    if (submitting || rows.length === 0 || !discountValid) return;
+    const discountPayload = discountCents > 0
+      ? {
+          discount_type: discountType,
+          discount_value: discountType === 'percent'
+            ? String(discountPercent)
+            : centsToApi(discountCents)
+        }
+      : {};
     if (method === 'due') {
-      onConfirm({});
+      onConfirm(discountPayload);
       return;
     }
     if (method === 'cash') {
@@ -110,11 +150,12 @@ export default function SaleConfirmationModal({
       onConfirm({
         paid_by: 'cash',
         amount_received: centsToApi(receivedCents),
-        change_amount: centsToApi(Math.max(changeCents, 0))
+        change_amount: centsToApi(Math.max(changeCents, 0)),
+        ...discountPayload
       });
       return;
     }
-    onConfirm({ paid_by: method });
+    onConfirm({ paid_by: method, ...discountPayload });
   }
 
   return (
@@ -149,9 +190,59 @@ export default function SaleConfirmationModal({
         </table>
       </div>
 
+      <div className="confirm-discount">
+        <div className="confirm-payment-label">
+          <span>Descuento</span>
+          <div className="discount-toggle">
+            <button
+              type="button"
+              className={discountType === 'fixed' ? 'active' : ''}
+              onClick={() => { setDiscountType('fixed'); setDiscountValue(''); }}
+            >
+              Monto fijo
+            </button>
+            <button
+              type="button"
+              className={discountType === 'percent' ? 'active' : ''}
+              onClick={() => { setDiscountType('percent'); setDiscountValue(''); }}
+            >
+              Porcentaje
+            </button>
+          </div>
+        </div>
+        <label>{discountType === 'percent' ? 'Porcentaje (0 - 100)' : 'Monto'}
+          <input
+            value={discountValue}
+            onChange={(event) => setDiscountValue(event.target.value)}
+            inputMode="decimal"
+            placeholder={discountType === 'percent' ? '0' : '0.00'}
+            aria-label="Descuento"
+          />
+        </label>
+        {!discountValid ? (
+          <Notice tone="error">
+            {discountType === 'percent'
+              ? 'El porcentaje debe estar entre 0 y 100.'
+              : 'El descuento no puede ser negativo ni superar el total.'}
+          </Notice>
+        ) : null}
+        {discountEquivalent ? (
+          <div className="change-line neutral">
+            <span>Descuento aplicado</span>
+            <span>−{formatMoney(discountCents / 100, currency)} ({discountEquivalent})</span>
+          </div>
+        ) : null}
+      </div>
+
       <div className="confirm-totals">
         <div><span>Subtotal ({totalItems} artículos)</span><span>{formatMoney(subtotalCents / 100, currency)}</span></div>
         <div><span>Impuestos</span><span>{formatMoney(taxCents / 100, currency)}</span></div>
+        {discountCents > 0 ? (
+          <div className="confirm-discount-line">
+            <span>Descuento {discountType === 'percent' ? `(${discountDraft}%)` : ''}</span>
+            <span>−{formatMoney(discountCents / 100, currency)}</span>
+          </div>
+        ) : null}
         <div className="confirm-total"><span>TOTAL</span><strong>{formatMoney(totalCents / 100, currency)}</strong></div>
       </div>
 
@@ -210,7 +301,7 @@ export default function SaleConfirmationModal({
           className="primary"
           type="button"
           onClick={confirm}
-          disabled={submitting || rows.length === 0 || (isCash && !receivedValid)}
+          disabled={submitting || rows.length === 0 || (isCash && !receivedValid) || !discountValid}
         >
           {submitting ? 'Registrando…' : 'Confirmar venta'}
         </button>

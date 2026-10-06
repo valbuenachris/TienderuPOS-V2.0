@@ -91,6 +91,16 @@ export class CreateSaleDto {
   paid_by?: SalePaymentMethod;
 }
 
+export class AddSalePaymentDto {
+  @IsString()
+  @Matches(DECIMAL_PATTERN)
+  amount!: string;
+
+  @IsString()
+  @IsIn(PAID_BY_VALUES)
+  paid_by!: SalePaymentMethod;
+}
+
 export class UpdateSaleLineDto {
   @Type(() => Number)
   @IsInt()

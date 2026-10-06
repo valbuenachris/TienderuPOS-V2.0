@@ -4,7 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
-import { CreateSaleDto, UpdateSaleDto } from './sale.dto';
+import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
   price: string | null;
@@ -59,6 +59,20 @@ type SalePaymentDetailRow = {
   amount: string | null;
   paid_by: string | null;
   created_at: string | null;
+};
+
+type SaleDetailHeaderRow = SalesListRow & {
+  total_discount: string | null;
+  order_discount_id: string | null;
+};
+
+type PaymentableSaleRow = {
+  id: number;
+  grand_total: string | null;
+  paid: string | null;
+  status: string | null;
+  created_by: number | null;
+  store_id: number | null;
 };
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
@@ -435,11 +449,12 @@ export class SalesService {
       ownerFilter = ` AND created_by = $${values.length}`;
     }
 
-    const header = await this.database.query<SalesListRow>(
+    const header = await this.database.query<SaleDetailHeaderRow>(
       `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
               grand_total::text AS grand_total, paid::text AS paid, total_items,
               total_quantity::text AS total_quantity, status, created_at, created_by,
-              store_id, total_reward_points, status_delivery
+              store_id, total_reward_points, status_delivery,
+              total_discount::text AS total_discount, order_discount_id
        FROM public.tec_sales
        WHERE tenant_id = $1 AND id = $2${ownerFilter}
        LIMIT 1`,
@@ -469,7 +484,74 @@ export class SalesService {
       )
     ]);
 
-    return { ...sale, items: items.rows, payments: payments.rows };
+    const taxTotal = new Decimal(sale.grand_total ?? '0')
+      .minus(sale.total ?? '0')
+      .plus(sale.total_discount ?? '0')
+      .toDecimalPlaces(2, MONEY_ROUNDING)
+      .toFixed(2);
+
+    return { ...sale, tax_total: taxTotal, items: items.rows, payments: payments.rows };
+  }
+
+  async addPayment(tenantId: string, user: PosUser, saleId: number, input: AddSalePaymentDto) {
+    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+
+    return this.database.transaction(async (client) => {
+      const saleResult = await client.query<PaymentableSaleRow>(
+        `SELECT id, grand_total::text AS grand_total, paid::text AS paid, status, created_by, store_id
+         FROM public.tec_sales
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [tenantId, saleId]
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) throw new NotFoundException('Sale not found in this tenant');
+      if (!isAdmin && sale.created_by !== user.id) {
+        throw new ForbiddenException('POS users can only add payments to their own sales');
+      }
+
+      const grandTotal = new Decimal(sale.grand_total ?? '0');
+      const paid = new Decimal(sale.paid ?? '0');
+      const remaining = grandTotal.minus(paid);
+      if (remaining.lte(0)) throw new BadRequestException('This sale is already fully paid');
+
+      const rawAmount = new Decimal(input.amount);
+      if (!rawAmount.isFinite() || rawAmount.lte(0)) {
+        throw new BadRequestException('Payment amount must be greater than zero');
+      }
+      const amount = rawAmount.toDecimalPlaces(2, MONEY_ROUNDING);
+      if (amount.gt(remaining)) {
+        throw new BadRequestException('Payment cannot exceed the pending balance');
+      }
+
+      const newPaid = paid.plus(amount).toDecimalPlaces(2, MONEY_ROUNDING);
+      const status = newPaid.gte(grandTotal) ? 'paid' : (newPaid.eq(0) ? 'due' : 'partial');
+
+      await client.query(
+        `UPDATE public.tec_sales
+         SET paid = $3, status = $4
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, saleId, newPaid.toFixed(2), status]
+      );
+
+      const payment = await client.query<SalePaymentDetailRow>(
+        `INSERT INTO public.tec_payments (tenant_id, sale_id, amount, paid_by, created_at)
+         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+         RETURNING id, amount::text AS amount, paid_by, created_at`,
+        [tenantId, saleId, amount.toFixed(2), input.paid_by]
+      );
+
+      return {
+        id: payment.rows[0]?.id,
+        sale_id: saleId,
+        amount: amount.toFixed(2),
+        paid_by: input.paid_by,
+        created_at: payment.rows[0]?.created_at ?? null,
+        paid: newPaid.toFixed(2),
+        status
+      };
+    });
   }
 
   async update(tenantId: string, user: PosUser, saleId: number, input: UpdateSaleDto) {

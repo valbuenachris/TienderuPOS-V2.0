@@ -724,6 +724,8 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .sale-action-btn:hover { background-color: #f3f4f6; }
 .sale-action-btn:disabled { cursor: wait; opacity: .5; }
 .sale-action-btn--view { color: #2563eb; }
+.sale-action-btn--ticket { color: #059669; }
+.sale-action-btn--payment { color: #ea580c; }
 .sale-action-btn--edit { color: #f59e0b; }
 .sale-action-btn--delete { color: #dc2626; }
 .sale-action-btn--delete:hover { background-color: #fee2e2; }

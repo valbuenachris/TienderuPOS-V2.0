@@ -17,7 +17,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { parsePagination } from '../common/pagination';
-import { CreateSaleDto, UpdateSaleDto } from './sale.dto';
+import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
 import { SalesService } from './sales.service';
 
 function parseDate(value?: unknown): string | undefined {
@@ -66,6 +66,15 @@ export class SalesController {
   @Post()
   create(@Req() request: PosRequest, @Body() body: CreateSaleDto) {
     return this.sales.create(request.tenantId!, request.posUser!, body);
+  }
+
+  @Post(':id/payments')
+  addPayment(
+    @Req() request: PosRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AddSalePaymentDto
+  ) {
+    return this.sales.addPayment(request.tenantId!, request.posUser!, id, body);
   }
 
   @Get(':id')

@@ -143,6 +143,7 @@ export interface SaleListRow {
   created_at: string | null;
   created_by: number | null;
   store_id: number | null;
+  total_reward_points?: number | null;
 }
 
 export interface DailyReport {
@@ -372,6 +373,9 @@ export interface SalePayment {
 }
 
 export interface SaleDetail extends SaleListRow {
+  tax_total?: string | null;
+  total_discount?: string | null;
+  order_discount_id?: string | null;
   items: SaleDetailItem[];
   payments: SalePayment[];
 }
@@ -382,6 +386,22 @@ export interface UpdateSalePayload {
 }
 
 export const fetchSaleDetail = (id: number) => apiRequest<SaleDetail>(`/sales/${id}`);
+
+export interface AddSalePaymentPayload {
+  amount: string;
+  paid_by: SalePaymentMethod;
+}
+
+export const addSalePayment = (id: number, payload: AddSalePaymentPayload) =>
+  apiRequest<{
+    id: number;
+    sale_id: number;
+    amount: string;
+    paid_by: string | null;
+    created_at: string | null;
+    paid: string;
+    status: string;
+  }>(`/sales/${id}/payments`, { method: 'POST', body: JSON.stringify(payload) });
 
 export const updateSale = (id: number, payload: UpdateSalePayload) =>
   apiRequest<SaleDetail>(`/sales/${id}`, { method: 'PUT', body: JSON.stringify(payload) });

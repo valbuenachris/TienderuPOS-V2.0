@@ -1,10 +1,12 @@
 import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
+import SaleTicket from '../components/SaleTicket';
+import AddPaymentModal from '../components/AddPaymentModal';
 import { useSession } from '../app/session';
 import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } from '../pos-queries';
-import { deleteSale, updateSale } from '../api';
-import type { UpdateSalePayload } from '../api';
+import { addSalePayment, deleteSale, updateSale } from '../api';
+import type { AddSalePaymentPayload, SaleDetail, SaleListRow, SaleResult, UpdateSalePayload } from '../api';
 import { paymentMethodLabel, saleStatusLabel } from '../payments';
 import { formatDate, formatMoney } from '../format';
 
@@ -14,6 +16,37 @@ function isoDaysAgo(days: number): string {
 
 function today(): string {
   return new Date().toISOString().slice(0, 10);
+}
+
+function remainingCents(sale: { grand_total: string | null; paid: string | null }): number {
+  return Math.max(
+    Math.round(Number(sale.grand_total ?? 0) * 100) - Math.round(Number(sale.paid ?? 0) * 100),
+    0
+  );
+}
+
+function buildTicketSale(detail: SaleDetail): SaleResult {
+  return {
+    id: detail.id,
+    customer_name: detail.customer_name,
+    store_id: detail.store_id ?? 0,
+    total: detail.total ?? '0.00',
+    tax_total: detail.tax_total ?? '0.00',
+    grand_total: detail.grand_total ?? '0.00',
+    paid: detail.paid ?? '0.00',
+    status: detail.status ?? 'due',
+    paid_by: detail.payments.length === 1 ? detail.payments[0].paid_by : null,
+    total_reward_points: detail.total_reward_points ?? 0,
+    created_at: detail.created_at,
+    items: detail.items.map((item) => ({
+      product_id: item.product_id ?? 0,
+      code: item.code,
+      name: item.name,
+      quantity: item.quantity ?? '0',
+      unit_price: item.unit_price ?? '0',
+      subtotal: item.subtotal ?? '0'
+    }))
+  };
 }
 
 const ERROR_NOTICE = /error|inválid|invalid|required|supera|no se puede|insuficiente|personalizados/i;
@@ -47,6 +80,28 @@ function TrashIcon() {
   );
 }
 
+function TicketIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z" />
+      <path d="M8 7h8" />
+      <path d="M8 11h8" />
+      <path d="M8 15h5" />
+    </svg>
+  );
+}
+
+function PaymentIcon() {
+  return (
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <rect x="2" y="6" width="20" height="12" rx="2" />
+      <circle cx="12" cy="12" r="2" />
+      <path d="M6 12h.01" />
+      <path d="M18 12h.01" />
+    </svg>
+  );
+}
+
 export default function SalesHistoryPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, settings, isAdmin, stores } = useSession();
@@ -58,6 +113,8 @@ export default function SalesHistoryPage() {
   const [notice, setNotice] = useState('');
   const [viewId, setViewId] = useState<number | null>(null);
   const [editId, setEditId] = useState<number | null>(null);
+  const [ticketId, setTicketId] = useState<number | null>(null);
+  const [paymentSale, setPaymentSale] = useState<SaleListRow | null>(null);
   const [quantityDrafts, setQuantityDrafts] = useState<Record<number, string>>({});
   const [customerDraft, setCustomerDraft] = useState<string | undefined>(undefined);
   const limit = 20;
@@ -65,6 +122,7 @@ export default function SalesHistoryPage() {
   const sales = useSalesQuery(token, tenantId, applied.from, applied.to, page, limit);
   const viewQuery = useSaleDetailQuery(token, tenantId, viewId);
   const editQuery = useSaleDetailQuery(token, tenantId, editId);
+  const ticketQuery = useSaleDetailQuery(token, tenantId, ticketId);
   const editStoreId = editQuery.data?.store_id ?? null;
   const customersQuery = useCustomersQuery(token, tenantId, editStoreId);
 
@@ -72,6 +130,9 @@ export default function SalesHistoryPage() {
     updateSale(input.id, input.payload)
   );
   const deleteMutation = useApiMutation((id: number) => deleteSale(id));
+  const paymentMutation = useApiMutation((input: { id: number; payload: AddSalePaymentPayload }) =>
+    addSalePayment(input.id, input.payload)
+  );
 
   function money(value: string | number | null | undefined): string {
     return formatMoney(value, currency);
@@ -105,6 +166,28 @@ export default function SalesHistoryPage() {
     setQuantityDrafts({});
     setCustomerDraft(undefined);
     setEditId(saleId);
+  }
+
+  function openTicket(saleId: number) {
+    setNotice('');
+    setTicketId(saleId);
+  }
+
+  function handleAddPayment(sale: SaleListRow) {
+    setNotice('');
+    setPaymentSale(sale);
+  }
+
+  function submitPayment(payload: AddSalePaymentPayload) {
+    if (!paymentSale) return;
+    paymentMutation.mutate({ id: paymentSale.id, payload }, {
+      onSuccess: async (result) => {
+        setNotice(`Pago registrado: ${formatMoney(result.amount, currency)} · Estado: ${saleStatusLabel(result.status)}.`);
+        setPaymentSale(null);
+        await refreshSaleData();
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
   }
 
   function closeEdit() {
@@ -169,6 +252,8 @@ export default function SalesHistoryPage() {
 
   const rows = sales.data?.data ?? [];
   const meta = sales.data?.meta;
+  const ticketSale = ticketQuery.data ? buildTicketSale(ticketQuery.data) : null;
+  const ticketStoreName = stores.find((store) => store.id === ticketSale?.store_id)?.name;
   const editItems = editQuery.data?.items ?? [];
   const hasCustomItems = editItems.some((item) => item.product_id === null || item.product_id < 1);
   const detailCustomerId = editQuery.data?.customer_id;
@@ -215,6 +300,26 @@ export default function SalesHistoryPage() {
                       >
                         <EyeIcon />
                       </button>
+                      <button
+                        type="button"
+                        className="sale-action-btn sale-action-btn--ticket"
+                        title="Ver ticket"
+                        aria-label="Ver ticket"
+                        onClick={() => openTicket(sale.id)}
+                      >
+                        <TicketIcon />
+                      </button>
+                      {sale.status !== 'paid' && remainingCents(sale) > 0 ? (
+                        <button
+                          type="button"
+                          className="sale-action-btn sale-action-btn--payment"
+                          title="Agregar pago"
+                          aria-label="Agregar pago"
+                          onClick={() => handleAddPayment(sale)}
+                        >
+                          <PaymentIcon />
+                        </button>
+                      ) : null}
                       {isAdmin ? (
                         <button
                           type="button"
@@ -386,6 +491,62 @@ export default function SalesHistoryPage() {
           </div>
         ) : null}
       </Modal>
+
+      <Modal
+        open={ticketId !== null}
+        eyebrow="TICKET"
+        title={ticketId === null ? '' : `Ticket · Venta #${ticketId}`}
+        className="ticket-modal"
+        onClose={() => setTicketId(null)}
+      >
+        {ticketQuery.isPending ? <Notice>Cargando…</Notice> : null}
+        {ticketQuery.isError ? <Notice tone="error">No fue posible cargar el ticket.</Notice> : null}
+        {ticketSale ? (
+          <div className="stack">
+            <SaleTicket
+              sale={ticketSale}
+              currency={currency}
+              siteName={settings?.site_name}
+              storeName={ticketStoreName}
+              address={settings?.address}
+              phone={settings?.phone}
+              nit={settings?.nit}
+              thankYouMessage={settings?.thank_you_message}
+              returnPolicy={settings?.return_policy}
+              showQr={settings?.show_qr_on_ticket !== false}
+              printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
+              preview
+            />
+            <button className="primary" type="button" onClick={() => window.print()}>Imprimir ticket</button>
+          </div>
+        ) : null}
+      </Modal>
+
+      {ticketSale ? (
+        <SaleTicket
+          sale={ticketSale}
+          currency={currency}
+          siteName={settings?.site_name}
+          storeName={ticketStoreName}
+          address={settings?.address}
+          phone={settings?.phone}
+          nit={settings?.nit}
+          thankYouMessage={settings?.thank_you_message}
+          returnPolicy={settings?.return_policy}
+          showQr={settings?.show_qr_on_ticket !== false}
+          printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
+        />
+      ) : null}
+
+      {paymentSale ? (
+        <AddPaymentModal
+          sale={paymentSale}
+          currency={currency}
+          submitting={paymentMutation.isPending}
+          onClose={() => setPaymentSale(null)}
+          onConfirm={submitPayment}
+        />
+      ) : null}
     </>
   );
 }

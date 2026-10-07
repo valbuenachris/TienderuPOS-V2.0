@@ -133,11 +133,12 @@ export function useSalesQuery(
   to: string | undefined,
   page = 1,
   limit = 20,
-  enabled = true
+  enabled = true,
+  customer = ''
 ) {
   return useQuery({
-    queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit],
-    queryFn: () => fetchSales(from, to, page, limit),
+    queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit, customer],
+    queryFn: () => fetchSales(from, to, page, limit, customer),
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

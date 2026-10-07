@@ -282,6 +282,23 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .toolbar { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .toolbar label { margin: 0; }
 .toolbar input, .toolbar select { min-width: 160px; }
+.filter-input { position: relative; display: inline-flex; align-items: center; }
+.filter-input input { padding-right: 34px; }
+.filter-clear {
+  position: absolute;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: #eef2ee;
+  color: #536057;
+  font-size: 12px;
+  cursor: pointer;
+}
+.filter-clear:hover { background: #e2e9e3; color: #142018; }
 .form-grid { display: grid; gap: 4px; }
 .form-grid .primary { margin-top: 10px; }
 .form-actions { display: flex; gap: 10px; }

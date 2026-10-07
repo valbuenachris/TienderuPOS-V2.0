@@ -108,7 +108,8 @@ export default function SalesHistoryPage() {
   const currency = settings?.currency_prefix || '$';
   const [from, setFrom] = useState(() => isoDaysAgo(7));
   const [to, setTo] = useState(() => today());
-  const [applied, setApplied] = useState(() => ({ from: isoDaysAgo(7), to: today() }));
+  const [customerInput, setCustomerInput] = useState('');
+  const [applied, setApplied] = useState(() => ({ from: isoDaysAgo(7), to: today(), customer: '' }));
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [viewId, setViewId] = useState<number | null>(null);
@@ -119,7 +120,7 @@ export default function SalesHistoryPage() {
   const [customerDraft, setCustomerDraft] = useState<string | undefined>(undefined);
   const limit = 20;
 
-  const sales = useSalesQuery(token, tenantId, applied.from, applied.to, page, limit);
+  const sales = useSalesQuery(token, tenantId, applied.from, applied.to, page, limit, true, applied.customer);
   const viewQuery = useSaleDetailQuery(token, tenantId, viewId);
   const editQuery = useSaleDetailQuery(token, tenantId, editId);
   const ticketQuery = useSaleDetailQuery(token, tenantId, ticketId);
@@ -140,7 +141,13 @@ export default function SalesHistoryPage() {
 
   function applyFilters() {
     setPage(1);
-    setApplied({ from, to });
+    setApplied({ from, to, customer: customerInput.trim() });
+  }
+
+  function clearCustomer() {
+    setCustomerInput('');
+    setPage(1);
+    setApplied((current) => ({ ...current, customer: '' }));
   }
 
   async function refreshSaleData() {
@@ -267,8 +274,36 @@ export default function SalesHistoryPage() {
         <div className="toolbar">
           <label>Desde<input type="date" value={from} onChange={(event) => setFrom(event.target.value)} /></label>
           <label>Hasta<input type="date" value={to} onChange={(event) => setTo(event.target.value)} /></label>
+          <label>Cliente
+            <div className="filter-input">
+              <input
+                value={customerInput}
+                onChange={(event) => setCustomerInput(event.target.value)}
+                onKeyDown={(event) => { if (event.key === 'Enter') applyFilters(); }}
+                placeholder="Buscar por cliente…"
+                aria-label="Buscar por cliente"
+                maxLength={100}
+              />
+              {customerInput ? (
+                <button
+                  type="button"
+                  className="filter-clear"
+                  onClick={clearCustomer}
+                  aria-label="Limpiar cliente"
+                  title="Limpiar cliente"
+                >
+                  ✕
+                </button>
+              ) : null}
+            </div>
+          </label>
           <button className="primary" onClick={applyFilters} disabled={sales.isFetching}>Aplicar</button>
         </div>
+        {applied.customer ? (
+          <small className="muted">
+            {meta?.total ?? 0} venta(s) encontradas para “{applied.customer}”.
+          </small>
+        ) : null}
         {sales.isError ? <Notice tone="error">No fue posible cargar las ventas.</Notice> : null}
         <div className="table-wrap">
           <table className="data-table">

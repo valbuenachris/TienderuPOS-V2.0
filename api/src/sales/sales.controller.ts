@@ -42,15 +42,18 @@ export class SalesController {
     @Req() request: PosRequest,
     @Query('from') from?: string,
     @Query('to') to?: string,
+    @Query('customer') customer?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string
   ) {
+    const cleanCustomer = customer === undefined ? undefined : customer.trim().slice(0, 100);
     return this.sales.list(
       request.tenantId!,
       request.posUser!,
       parseDate(from),
       parseDate(to),
-      parsePagination(page, limit, 20, 100)
+      parsePagination(page, limit, 20, 100),
+      cleanCustomer
     );
   }
 

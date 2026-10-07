@@ -77,6 +77,10 @@ type PaymentableSaleRow = {
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
 
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
 @Injectable()
 export class SalesService {
   constructor(private readonly database: DatabaseService) {}
@@ -381,11 +385,14 @@ export class SalesService {
     user: PosUser,
     from: string | undefined,
     to: string | undefined,
-    pagination: PaginationQuery
+    pagination: PaginationQuery,
+    customer?: string
   ): Promise<Paginated<SalesListRow>> {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const customerFilterValue = customer === undefined ? '' : customer.trim().slice(0, 100);
+    const customerPattern = customerFilterValue === '' ? null : `%${escapeLike(customerFilterValue)}%`;
 
     if (from && to) {
       const values: unknown[] = [tenantId, from, to];
@@ -393,6 +400,11 @@ export class SalesService {
       if (!isAdmin) {
         values.push(user.id);
         ownerFilter = ` AND created_by = $${values.length}`;
+      }
+      let customerFilter = '';
+      if (customerPattern !== null) {
+        values.push(customerPattern);
+        customerFilter = ` AND customer_name ILIKE $${values.length}`;
       }
       values.push(pagination.limit, pagination.offset);
       const result = await this.database.query<SalesListRow & { total_count: number }>(
@@ -406,6 +418,7 @@ export class SalesService {
            AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
            AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')
            ${ownerFilter}
+           ${customerFilter}
          ORDER BY created_at DESC, id DESC
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
         values
@@ -421,6 +434,11 @@ export class SalesService {
       values.push(user.id);
       ownerFilter = ` AND created_by = $${values.length}`;
     }
+    let customerFilter = '';
+    if (customerPattern !== null) {
+      values.push(customerPattern);
+      customerFilter = ` AND customer_name ILIKE $${values.length}`;
+    }
     values.push(pagination.limit, pagination.offset);
     const result = await this.database.query<SalesListRow & { total_count: number }>(
       `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
@@ -431,6 +449,7 @@ export class SalesService {
        FROM public.tec_sales
        WHERE tenant_id = $1
        ${ownerFilter}
+       ${customerFilter}
        ORDER BY created_at DESC, id DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values

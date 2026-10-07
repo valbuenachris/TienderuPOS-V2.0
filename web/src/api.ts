@@ -351,8 +351,8 @@ export const fetchProducts = (storeId: number, search: string) => {
 export const createSale = (payload: CreateSalePayload) =>
   apiRequest<SaleResult>('/sales', { method: 'POST', body: JSON.stringify(payload) });
 
-export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
-  apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit }));
+export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20, customer = '') =>
+  apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit, customer }));
 
 export interface SaleDetailItem {
   id: number;

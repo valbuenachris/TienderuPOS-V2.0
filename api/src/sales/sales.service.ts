@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
@@ -83,6 +83,8 @@ function escapeLike(value: string): string {
 
 @Injectable()
 export class SalesService {
+  private readonly logger = new Logger(SalesService.name);
+
   constructor(private readonly database: DatabaseService) {}
 
   async create(tenantId: string, user: PosUser, input: CreateSaleDto) {
@@ -357,6 +359,9 @@ export class SalesService {
 
   async dailyReport(tenantId: string, date: string, user: PosUser) {
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    if (!isAdmin && !user.store_id) {
+      throw new BadRequestException('Assign this POS user to a store before viewing sales');
+    }
     const result = await this.database.query<DailyReportRow>(
       `SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
               COUNT(*)::integer AS sales_count,
@@ -367,9 +372,9 @@ export class SalesService {
        WHERE tenant_id = $1
          AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
          AND created_at < (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')
-         AND ($3::boolean OR created_by = $4)
+         AND ($3::boolean OR store_id = $4)
        GROUP BY TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
-      [tenantId, date, isAdmin, user.id]
+      [tenantId, date, isAdmin, user.store_id ?? 0]
     );
     return result.rows[0] ?? {
       day: date,
@@ -391,15 +396,18 @@ export class SalesService {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    if (!isAdmin && !user.store_id) {
+      throw new BadRequestException('Assign this POS user to a store before viewing sales');
+    }
     const customerFilterValue = customer === undefined ? '' : customer.trim().slice(0, 100);
     const customerPattern = customerFilterValue === '' ? null : `%${escapeLike(customerFilterValue)}%`;
 
     if (from && to) {
       const values: unknown[] = [tenantId, from, to];
-      let ownerFilter = '';
+      let storeFilter = '';
       if (!isAdmin) {
-        values.push(user.id);
-        ownerFilter = ` AND created_by = $${values.length}`;
+        values.push(user.store_id);
+        storeFilter = ` AND store_id = $${values.length}`;
       }
       let customerFilter = '';
       if (customerPattern !== null) {
@@ -417,7 +425,7 @@ export class SalesService {
          WHERE tenant_id = $1
            AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
            AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')
-           ${ownerFilter}
+           ${storeFilter}
            ${customerFilter}
          ORDER BY created_at DESC, id DESC
          LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -429,10 +437,10 @@ export class SalesService {
     }
 
     const values: unknown[] = [tenantId];
-    let ownerFilter = '';
+    let storeFilter = '';
     if (!isAdmin) {
-      values.push(user.id);
-      ownerFilter = ` AND created_by = $${values.length}`;
+      values.push(user.store_id);
+      storeFilter = ` AND store_id = $${values.length}`;
     }
     let customerFilter = '';
     if (customerPattern !== null) {
@@ -448,7 +456,7 @@ export class SalesService {
               COUNT(*) OVER() AS total_count
        FROM public.tec_sales
        WHERE tenant_id = $1
-       ${ownerFilter}
+       ${storeFilter}
        ${customerFilter}
        ORDER BY created_at DESC, id DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
@@ -461,11 +469,14 @@ export class SalesService {
 
   async detail(tenantId: string, user: PosUser, saleId: number) {
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    if (!isAdmin && !user.store_id) {
+      throw new BadRequestException('Assign this POS user to a store before viewing sales');
+    }
     const values: unknown[] = [tenantId, saleId];
-    let ownerFilter = '';
+    let storeFilter = '';
     if (!isAdmin) {
-      values.push(user.id);
-      ownerFilter = ` AND created_by = $${values.length}`;
+      values.push(user.store_id);
+      storeFilter = ` AND store_id = $${values.length}`;
     }
 
     const header = await this.database.query<SaleDetailHeaderRow>(
@@ -475,7 +486,7 @@ export class SalesService {
               store_id, total_reward_points, status_delivery,
               total_discount::text AS total_discount, order_discount_id
        FROM public.tec_sales
-       WHERE tenant_id = $1 AND id = $2${ownerFilter}
+       WHERE tenant_id = $1 AND id = $2${storeFilter}
        LIMIT 1`,
       values
     );
@@ -514,6 +525,9 @@ export class SalesService {
 
   async addPayment(tenantId: string, user: PosUser, saleId: number, input: AddSalePaymentDto) {
     const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    if (!isAdmin && !user.store_id) {
+      throw new BadRequestException('Assign this POS user to a store before adding payments');
+    }
 
     return this.database.transaction(async (client) => {
       const saleResult = await client.query<PaymentableSaleRow>(
@@ -526,8 +540,8 @@ export class SalesService {
       );
       const sale = saleResult.rows[0];
       if (!sale) throw new NotFoundException('Sale not found in this tenant');
-      if (!isAdmin && sale.created_by !== user.id) {
-        throw new ForbiddenException('POS users can only add payments to their own sales');
+      if (!isAdmin && sale.store_id !== user.store_id) {
+        throw new ForbiddenException('POS users can only add payments to sales of their own store');
       }
 
       const grandTotal = new Decimal(sale.grand_total ?? '0');
@@ -559,6 +573,10 @@ export class SalesService {
          VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
          RETURNING id, amount::text AS amount, paid_by, created_at`,
         [tenantId, saleId, amount.toFixed(2), input.paid_by]
+      );
+
+      this.logger.log(
+        `Payment registered: sale=${saleId} amount=${amount.toFixed(2)} method=${input.paid_by} user=${user.id} tenant=${tenantId}`
       );
 
       return {

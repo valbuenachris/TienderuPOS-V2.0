@@ -13,7 +13,7 @@ type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | '
 type StockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'> & { store_price: string | null };
 type SaleIdRow = Pick<TableRow<'tec_sales'>, 'id' | 'created_at'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
-type CustomerIdNameRow = Pick<TableRow<'tec_customers'>, 'id' | 'name'>;
+type CustomerIdNameRow = Pick<TableRow<'tec_customers'>, 'id' | 'name' | 'phone'>;
 type UpdatedStockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'>;
 type SalesListRow = Omit<Pick<
   TableRow<'tec_sales'>,
@@ -64,6 +64,7 @@ type SalePaymentDetailRow = {
 type SaleDetailHeaderRow = SalesListRow & {
   total_discount: string | null;
   order_discount_id: string | null;
+  customer_phone: string | null;
 };
 
 type PaymentableSaleRow = {
@@ -105,10 +106,10 @@ export class SalesService {
       );
       if (store.rowCount !== 1) throw new NotFoundException('Store not found in this tenant');
 
-      let customer: { id: number; name: string | null } | null = null;
+      let customer: { id: number; name: string | null; phone: string | null } | null = null;
       if (input.customer_id) {
         const result = await client.query<CustomerIdNameRow>(
-          `SELECT id, name FROM public.tec_customers
+          `SELECT id, name, phone FROM public.tec_customers
            WHERE tenant_id = $1 AND id = $2
              AND (store_id IS NULL OR store_id = $3)
            LIMIT 1 FOR KEY SHARE`,
@@ -328,6 +329,7 @@ export class SalesService {
         tenant_id: tenantId,
         customer_id: customer?.id ?? null,
         customer_name: customer?.name ?? 'Cliente ocasional',
+        customer_phone: customer?.phone ?? null,
         store_id: storeId,
         total: total.toFixed(2),
         tax_total: taxTotal.toFixed(2),
@@ -476,17 +478,20 @@ export class SalesService {
     let storeFilter = '';
     if (!isAdmin) {
       values.push(user.store_id);
-      storeFilter = ` AND store_id = $${values.length}`;
+      storeFilter = ` AND s.store_id = $${values.length}`;
     }
 
     const header = await this.database.query<SaleDetailHeaderRow>(
-      `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
-              grand_total::text AS grand_total, paid::text AS paid, total_items,
-              total_quantity::text AS total_quantity, status, created_at, created_by,
-              store_id, total_reward_points, status_delivery,
-              total_discount::text AS total_discount, order_discount_id
-       FROM public.tec_sales
-       WHERE tenant_id = $1 AND id = $2${storeFilter}
+      `SELECT s.id, s.tenant_id, s.customer_id, s.customer_name, s.total::text AS total,
+              s.grand_total::text AS grand_total, s.paid::text AS paid, s.total_items,
+              s.total_quantity::text AS total_quantity, s.status, s.created_at, s.created_by,
+              s.store_id, s.total_reward_points, s.status_delivery,
+              s.total_discount::text AS total_discount, s.order_discount_id,
+              c.phone AS customer_phone
+       FROM public.tec_sales s
+       LEFT JOIN public.tec_customers c
+         ON c.id = s.customer_id AND c.tenant_id = s.tenant_id
+       WHERE s.tenant_id = $1 AND s.id = $2${storeFilter}
        LIMIT 1`,
       values
     );
@@ -658,7 +663,7 @@ export class SalesService {
           throw new BadRequestException('customer_id must be a positive integer');
         }
         const customerResult = await client.query<CustomerIdNameRow>(
-          `SELECT id, name FROM public.tec_customers
+          `SELECT id, name, phone FROM public.tec_customers
            WHERE tenant_id = $1 AND id = $2
              AND (store_id IS NULL OR store_id = $3)
            LIMIT 1

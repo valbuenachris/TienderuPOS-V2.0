@@ -54,6 +54,7 @@ export interface Store {
 export interface SaleResult {
   id: number;
   customer_name: string | null;
+  customer_phone?: string | null;
   store_id: number;
   total: string;
   tax_total: string;
@@ -376,6 +377,7 @@ export interface SaleDetail extends SaleListRow {
   tax_total?: string | null;
   total_discount?: string | null;
   order_discount_id?: string | null;
+  customer_phone?: string | null;
   items: SaleDetailItem[];
   payments: SalePayment[];
 }

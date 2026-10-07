@@ -29,6 +29,7 @@ function buildTicketSale(detail: SaleDetail): SaleResult {
   return {
     id: detail.id,
     customer_name: detail.customer_name,
+    customer_phone: detail.customer_phone ?? null,
     store_id: detail.store_id ?? 0,
     total: detail.total ?? '0.00',
     tax_total: detail.tax_total ?? '0.00',
@@ -537,24 +538,21 @@ export default function SalesHistoryPage() {
         {ticketQuery.isPending ? <Notice>Cargando…</Notice> : null}
         {ticketQuery.isError ? <Notice tone="error">No fue posible cargar el ticket.</Notice> : null}
         {ticketSale ? (
-          <div className="stack">
-            <SaleTicket
-              sale={ticketSale}
-              currency={currency}
-              siteName={settings?.site_name}
-              storeName={ticketStoreName}
-              logoUrl={settings?.logo_url}
-              address={settings?.address}
-              phone={settings?.phone}
-              nit={settings?.nit}
-              thankYouMessage={settings?.thank_you_message}
-              returnPolicy={settings?.return_policy}
-              showQr={settings?.show_qr_on_ticket !== false}
-              printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
-              preview
-            />
-            <button className="primary" type="button" onClick={() => window.print()}>Imprimir ticket</button>
-          </div>
+          <SaleTicket
+            sale={ticketSale}
+            currency={currency}
+            siteName={settings?.site_name}
+            storeName={ticketStoreName}
+            logoUrl={settings?.logo_url}
+            address={settings?.address}
+            phone={settings?.phone}
+            nit={settings?.nit}
+            thankYouMessage={settings?.thank_you_message}
+            returnPolicy={settings?.return_policy}
+            showQr={settings?.show_qr_on_ticket !== false}
+            printerWidth={settings?.printer_width === '80mm' ? '80mm' : '58mm'}
+            preview
+          />
         ) : null}
       </Modal>
 

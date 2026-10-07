@@ -1,8 +1,10 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import QRCode from 'qrcode';
 import type { SaleResult } from '../api';
 import { paymentMethodLabel, saleStatusLabel } from '../payments';
 import { formatDate, formatMoney } from '../format';
+import { buildTicketText, buildWhatsAppUrl } from '../utils/ticketFormatter';
+import { downloadTicketPdf } from '../utils/pdfGenerator';
 
 interface SaleTicketProps {
   sale: SaleResult;
@@ -71,6 +73,9 @@ export default function SaleTicket({
 }: SaleTicketProps) {
   const [qrDataUrl, setQrDataUrl] = useState('');
   const [logoBroken, setLogoBroken] = useState(false);
+  const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfError, setPdfError] = useState('');
+  const ticketRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!showQr) {
@@ -99,8 +104,27 @@ export default function SaleTicket({
   const points = Number(sale.total_reward_points ?? 0);
   const showCustomer = Boolean(sale.customer_name) && sale.customer_name !== 'Cliente ocasional';
 
+  function handleWhatsApp() {
+    const text = buildTicketText({ sale, currency, siteName, thankYouMessage, address, nit });
+    window.open(buildWhatsAppUrl(text, sale.customer_phone), '_blank', 'noopener');
+  }
+
+  async function handlePdf() {
+    if (!ticketRef.current || pdfBusy) return;
+    setPdfBusy(true);
+    setPdfError('');
+    try {
+      await downloadTicketPdf(ticketRef.current, `ticket-${sale.id}.pdf`);
+    } catch (_error: unknown) {
+      setPdfError('No fue posible generar el PDF. Intenta de nuevo.');
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
   return (
-    <div className={`sale-ticket ${preview ? 'sale-ticket-preview' : 'print-receipt'} ${printerWidth === '80mm' ? 'sale-ticket--wide' : ''}`.trim()}>
+    <>
+      <div ref={ticketRef} className={`sale-ticket ${preview ? 'sale-ticket-preview' : 'print-receipt'} ${printerWidth === '80mm' ? 'sale-ticket--wide' : ''}`.trim()}>
       <div className="ticket-header">
         {logoUrl && !logoBroken ? (
           <img
@@ -179,6 +203,17 @@ export default function SaleTicket({
         <div className="ticket-legal">Comprobante de venta · {siteName || 'Tienderu POS'}</div>
         <div className="ticket-branding">Facturado con Tienderu POS - 3104039092</div>
       </div>
-    </div>
+      </div>
+      {preview ? (
+        <div className="ticket-actions">
+          <button type="button" className="btn-whatsapp" onClick={handleWhatsApp}>📱 Enviar por WhatsApp</button>
+          <button type="button" className="btn-pdf" onClick={handlePdf} disabled={pdfBusy}>
+            {pdfBusy ? 'Generando…' : '📄 Generar PDF'}
+          </button>
+          <button type="button" className="primary" onClick={() => window.print()}>🖨️ Imprimir</button>
+        </div>
+      ) : null}
+      {preview && pdfError ? <div className="ticket-action-error">{pdfError}</div> : null}
+    </>
   );
 }

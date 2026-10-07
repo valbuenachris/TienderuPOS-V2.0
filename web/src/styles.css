@@ -893,6 +893,26 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .discount-toggle button.active { background: #e4f5e9; color: #147d4a; }
 .confirm-totals .confirm-discount-line { color: #059669; font-weight: 700; }
 .ticket-discount { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+.ticket-actions { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; margin-top: 14px; }
+.ticket-actions button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 10px;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+}
+.ticket-actions button:disabled { cursor: wait; opacity: .6; }
+.btn-whatsapp { background: #25D366; }
+.btn-whatsapp:hover { background: #1ebe5b; }
+.btn-pdf { background: #DC2626; }
+.btn-pdf:hover { background: #b91c1c; }
+.ticket-action-error { margin-top: 6px; color: #dc2626; font-size: 12px; text-align: center; }
+@media (max-width: 520px) {
+  .ticket-actions { flex-direction: column; }
+  .ticket-actions button { width: 100%; }
+}
 .confirm-payment label { margin: 0; }
 .quick-cash { display: flex; flex-wrap: wrap; gap: 8px; }
 .quick-cash button {

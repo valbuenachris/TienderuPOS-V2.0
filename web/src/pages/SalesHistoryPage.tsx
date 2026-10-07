@@ -8,7 +8,7 @@ import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } 
 import { addSalePayment, deleteSale, updateSale } from '../api';
 import type { AddSalePaymentPayload, SaleDetail, SaleListRow, SaleResult, UpdateSalePayload } from '../api';
 import { paymentMethodLabel, saleStatusLabel } from '../payments';
-import { formatDate, formatMoney } from '../format';
+import { formatDate, formatDateOnly, formatMoney } from '../format';
 
 function isoDaysAgo(days: number): string {
   return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
@@ -318,12 +318,12 @@ export default function SalesHistoryPage() {
               {rows.map((sale) => (
                 <tr key={sale.id}>
                   <td>{sale.id}</td>
-                  <td>{formatDate(sale.created_at)}</td>
+                  <td>{formatDateOnly(sale.created_at)}</td>
                   <td>{sale.customer_name || 'Cliente ocasional'}</td>
                   <td>{sale.total_items ?? '—'}</td>
-                  <td>{money(sale.total)}</td>
-                  <td>{money(sale.grand_total)}</td>
-                  <td>{money(sale.paid)}</td>
+                  <td className="money-cell">{money(sale.total)}</td>
+                  <td className="money-cell">{money(sale.grand_total)}</td>
+                  <td className="money-cell">{money(sale.paid)}</td>
                   <td><span className={`badge ${sale.status ?? ''}`}>{saleStatusLabel(sale.status)}</span></td>
                   <td>
                     <div className="row-actions sale-actions">

@@ -936,6 +936,8 @@ label.checkbox input { width: 18px; min-width: 18px; height: 18px; min-height: 1
 .sale-status-badge.partial { background: #fef3c7; color: #b45309; }
 .sale-status-badge.due { background: #fee2e2; color: #b91c1c; }
 
+.data-table td.money-cell { white-space: nowrap; }
+
 .settings-form { display: grid; gap: 16px; }
 .settings-section {
   display: grid;

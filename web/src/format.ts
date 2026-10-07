@@ -5,7 +5,8 @@ export function formatMoney(value: string | number | null | undefined, prefix = 
   const normalized = (prefix || '').trim();
   // Settings may store an ISO code ("COP", "USD"); render the symbol instead of the code.
   const symbol = normalized && !/^[A-Za-z]{3}$/.test(normalized) ? normalized : '$';
-  return `${symbol} ${amount}`;
+  // Non-breaking space: the symbol and amount must never wrap onto separate lines.
+  return `${symbol}\u00A0${amount}`;
 }
 
 export function formatDate(value: string | null | undefined): string {
@@ -13,6 +14,13 @@ export function formatDate(value: string | null | undefined): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleString('es-CO', { dateStyle: 'medium', timeStyle: 'short' });
+}
+
+export function formatDateOnly(value: string | null | undefined): string {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleDateString('es-CO');
 }
 
 export function formatDay(value: string | null | undefined): string {

@@ -404,7 +404,8 @@ export class SalesService {
     const customerFilterValue = customer === undefined ? '' : customer.trim().slice(0, 100);
     const customerPattern = customerFilterValue === '' ? null : `%${escapeLike(customerFilterValue)}%`;
 
-    if (from && to) {
+    // Con filtro de cliente se ignora el rango de fechas: se busca en TODO el historial.
+    if (from && to && customerPattern === null) {
       const values: unknown[] = [tenantId, from, to];
       let storeFilter = '';
       if (!isAdmin) {

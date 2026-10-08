@@ -131,6 +131,10 @@ Notas del ticket: `show_qr_on_ticket`, `thank_you_message`, `return_policy` y `p
 
 Flujo de pago v1 (sin pasarela, sin datos de tarjeta): el tenant pulsa **Pagar** → `POST /api/billing/pay` crea un pago **pending** con referencia (`Solicitud del tenant · <factura>`); el super admin lo confirma en **Pagos de tenants → ✅ Confirmar** (`PATCH /api/tenant-management/payments/:id/confirm`), lo que marca el pago `completed` y activa/renueva la suscripción (+1 mes/año). El detalle de factura se puede **imprimir** desde el modal (sin PDF server-side); el precio del plan es final (sin IVA). Endpoints del tenant (admin): `GET /api/billing/invoices`, `GET /api/billing/current-invoice`, `POST /api/billing/pay`.
 
+## Escáner de códigos en el POS (v0.3.24)
+
+En **Nueva venta**, junto al buscador hay dos botones: 📷 (código de barras: EAN-13/8, UPC-A/E, Code-128/39, ITF, Codabar) y 🔳 (QR). Abren un modal con la cámara en vivo, guía de escaneo, animación láser, feedback verde/rojo y beep; incluyen **escaneo continuo** (contador de escaneados) y **entrada manual** como fallback. La cámara solo se enciende al abrir el modal y se libera al cerrarlo (stop + clear). El valor escaneado se parsea (texto, JSON `code|barcode|sku|id` o URL con `code`/`barcode`) y se resuelve contra `GET /api/catalog/products?store_id&q=` por `code` exacto y luego por nombre exacto; se ignora el mismo código repetido en 2 s y el producto entra al ticket con las mismas reglas del POS (combo, precio y stock). Requiere HTTPS (contexto seguro) y permiso de cámara; si se deniega o no hay cámara, queda la entrada manual. Sin cambios de backend.
+
 ## Plataforma de gestión de tenants (v0.3.11)
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:

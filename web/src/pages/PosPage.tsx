@@ -5,8 +5,11 @@ import CustomerSearch from '../components/CustomerSearch';
 import SaleConfirmationModal from '../components/SaleConfirmationModal';
 import type { SaleConfirmationData, SaleConfirmationPayload } from '../components/SaleConfirmationModal';
 import SaleTicket from '../components/SaleTicket';
+import ProductScanner from '../components/ProductScanner';
+import type { ScannerResult } from '../components/ProductScanner';
 import { useSession } from '../app/session';
 import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
+import { fetchProducts } from '../api';
 import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
 import { PAYMENT_METHOD_LABELS } from '../payments';
 import { formatMoney } from '../format';
@@ -45,6 +48,7 @@ export default function PosPage() {
   const [ticketPreviewOpen, setTicketPreviewOpen] = useState(false);
   const [notice, setNotice] = useState('');
   const [lastSale, setLastSale] = useState<SaleResult | null>(null);
+  const [scannerMode, setScannerMode] = useState<'barcode' | 'qr' | null>(null);
 
   const userStoreId = user?.store_id ?? null;
   const userStoreAvailable = userStoreId !== null && stores.some((store) => store.id === userStoreId);
@@ -111,20 +115,20 @@ export default function PosPage() {
     });
   }
 
-  function addToCart(product: Product) {
+  function addToCart(product: Product): ScannerResult {
     if (product.type === 'combo') {
       setNotice('Los combos se habilitarán después de validar sus componentes e inventario.');
-      return;
+      return { ok: false, message: 'Los combos no están habilitados todavía.' };
     }
     if (product.price === null) {
       setNotice('El producto no tiene un precio definido.');
-      return;
+      return { ok: false, message: 'El producto no tiene un precio definido.' };
     }
     const available = Number(product.available_quantity || 0);
     const currentQuantity = cart.find((line) => line.product.id === product.id)?.quantity ?? 0;
     if (currentQuantity + 1 > available) {
       setNotice('No hay existencias suficientes en esta tienda.');
-      return;
+      return { ok: false, message: 'No hay existencias suficientes en esta tienda.' };
     }
     setCart((current) => {
       const existing = current.find((line) => line.product.id === product.id);
@@ -132,6 +136,57 @@ export default function PosPage() {
       return [...current, { product, quantity: 1 }];
     });
     setNotice('');
+    return { ok: true, message: `${product.name || `Producto #${product.id}`} agregado (${currentQuantity + 1} en el ticket)` };
+  }
+
+  function parseScanValue(raw: string): string {
+    const value = raw.trim();
+    if (!value) return value;
+    if (value.startsWith('{')) {
+      try {
+        const parsed: unknown = JSON.parse(value);
+        if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) {
+          const record = parsed as Record<string, unknown>;
+          for (const key of ['code', 'barcode', 'sku']) {
+            const candidate = record[key];
+            if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+          }
+          for (const key of ['id', 'product_id']) {
+            const candidate = record[key];
+            if (typeof candidate === 'number') return String(candidate);
+            if (typeof candidate === 'string' && candidate.trim()) return candidate.trim();
+          }
+        }
+      } catch (_error: unknown) {
+        // Not JSON; keep the raw value.
+      }
+    }
+    try {
+      const url = new URL(value);
+      const codeParam = url.searchParams.get('code') ?? url.searchParams.get('barcode');
+      if (codeParam?.trim()) return codeParam.trim();
+      const segments = url.pathname.split('/').filter(Boolean);
+      if (segments.length > 0) return decodeURIComponent(segments[segments.length - 1]);
+    } catch (_error: unknown) {
+      // Not a URL; keep the raw value.
+    }
+    return value;
+  }
+
+  async function resolveScannedProduct(raw: string): Promise<ScannerResult> {
+    if (!storeId) return { ok: false, message: 'Selecciona una tienda antes de escanear.' };
+    const value = parseScanValue(raw);
+    try {
+      const results = await fetchProducts(storeId, value);
+      const normalized = value.trim().toLowerCase();
+      const product = results.find((item) => (item.code ?? '').trim().toLowerCase() === normalized)
+        ?? results.find((item) => (item.name ?? '').trim().toLowerCase() === normalized)
+        ?? null;
+      if (!product) return { ok: false, message: `Producto no encontrado: ${value}` };
+      return addToCart(product);
+    } catch (error: unknown) {
+      return { ok: false, message: error instanceof Error ? error.message : 'No fue posible buscar el producto.' };
+    }
   }
 
   function setQuantity(productId: number, quantity: number) {
@@ -208,7 +263,27 @@ export default function PosPage() {
           ) : <div className="store-pill">{stores[0]?.name || 'Tienda asignada'}</div>}
         </div>
         {notice ? <Notice>{notice}</Notice> : null}
-        <input className="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto por nombre o código…" />
+        <div className="search-row">
+          <input className="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar producto por nombre o código…" />
+          <button
+            className="icon-button"
+            type="button"
+            title="Escanear código de barras"
+            aria-label="Escanear código de barras"
+            onClick={() => setScannerMode('barcode')}
+          >
+            📷
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            title="Escanear código QR"
+            aria-label="Escanear código QR"
+            onClick={() => setScannerMode('qr')}
+          >
+            🔳
+          </button>
+        </div>
         {productsQuery.isError ? <Notice tone="error">No fue posible cargar el catálogo.</Notice> : null}
         <div className="product-grid">
           {productsQuery.isPending ? <div className="empty">Cargando productos…</div> : null}
@@ -332,6 +407,13 @@ export default function PosPage() {
           />
         </Modal>
       ) : null}
+
+      <ProductScanner
+        open={scannerMode !== null}
+        mode={scannerMode ?? 'barcode'}
+        onClose={() => setScannerMode(null)}
+        onScan={resolveScannedProduct}
+      />
     </div>
   );
 }

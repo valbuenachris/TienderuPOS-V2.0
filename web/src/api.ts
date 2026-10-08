@@ -613,31 +613,42 @@ export const switchTenant = (tenantId: string) =>
     body: JSON.stringify({ tenant_id: tenantId })
   });
 
-export interface GlobalDashboardTenant {
-  id: string;
-  name: string;
-  sales_count: number;
-  total: string;
+export interface GlobalPlanCount {
+  plan_id: string | null;
+  plan_name: string | null;
+  count: number;
+}
+
+export interface GlobalRecentSale {
+  tenant_id: string;
+  tenant_name: string;
+  plan_name: string | null;
+  amount: string;
+  date: string | null;
+  subscription_status: string | null;
 }
 
 export interface GlobalDashboard {
   date: string;
   tenants: { total: number; active: number };
-  users: number;
-  stores: number;
-  sales: { sales_count: number; subtotal: string; grand_total: string; paid: string };
-  payments: {
-    cash: string;
-    card: string;
-    transfer: string;
-    sistecredito: string;
-    adi: string;
-    credit: string;
-    paid_total: string;
+  active_subscriptions: { total: number; by_plan: GlobalPlanCount[] };
+  plan_sales_today: { count: number; revenue: string };
+  monthly_revenue: {
+    total: string;
     payments_count: number;
-    card_count: number;
+    new_subscriptions: number;
+    plan_changes: number;
+    cancellations: number;
   };
-  top_tenants: GlobalDashboardTenant[];
+  mrr: string;
+  recent_sales: GlobalRecentSale[];
+  payments_status: {
+    pending_count: number;
+    pending_amount: string;
+    overdue_count: number;
+    overdue_amount: string;
+  };
+  trials: { active: number; expiring_soon: number; converted: number };
 }
 
 export const fetchGlobalDashboard = () =>

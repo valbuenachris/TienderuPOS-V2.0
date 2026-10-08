@@ -1084,6 +1084,8 @@ label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
 .plan-option-body { display: grid; gap: 2px; }
 .plan-option-body small { color: #68736b; font-size: 12px; }
 .action-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.plan-bars { display: grid; gap: 12px; }
+.plan-bar-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: #4a554d; margin-bottom: 4px; }
 .invoice-print { display: grid; gap: 10px; }
 .invoice-print header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #e2e9e3; padding-bottom: 10px; }
 .invoice-lines { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }

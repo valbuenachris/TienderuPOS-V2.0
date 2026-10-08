@@ -1,129 +1,123 @@
-import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useGlobalDashboardQuery } from '../pos-queries';
-import { formatMoney } from '../format';
+import { formatDateOnly, formatMoney } from '../format';
+import StatusBadge from './tenant-management/components/StatusBadge';
 
 export default function GlobalDashboardPage() {
-  const navigate = useNavigate();
-  const { token, tenantId, isSuperAdmin, switchTenant, settings } = useSession();
+  const { token, tenantId, isSuperAdmin, settings } = useSession();
   const currency = settings?.currency_prefix || '$';
   const query = useGlobalDashboardQuery(token, tenantId, isSuperAdmin);
-  const [enteringId, setEnteringId] = useState<string | null>(null);
-  const [notice, setNotice] = useState('');
   const data = query.data;
 
-  async function enterTenant(id: string) {
-    if (enteringId !== null || id === tenantId) return;
-    setEnteringId(id);
-    setNotice('');
-    try {
-      await switchTenant(id);
-      navigate('/dashboard');
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : 'No fue posible cambiar de tenant');
-    } finally {
-      setEnteringId(null);
-    }
-  }
-
-  const topTenants = data?.top_tenants ?? [];
+  const byPlan = data?.active_subscriptions.by_plan ?? [];
+  const activeTotal = data?.active_subscriptions.total ?? 0;
+  const recentSales = data?.recent_sales ?? [];
 
   return (
     <>
       <PageHeader
         eyebrow="GLOBAL"
         title="Dashboard global"
-        actions={<Link className="primary link-button" to="/tenants">Administrar tenants</Link>}
+        actions={<Link className="primary link-button" to="/tenant-management/tenants">Administrar tenants</Link>}
       />
-      {notice ? <Notice tone="error">{notice}</Notice> : null}
-      {query.isError ? <Notice tone="error">No fue posible cargar el dashboard global.</Notice> : null}
-      {query.isPending ? <Notice>Cargando métricas globales…</Notice> : null}
+      {query.isError ? (
+        <Notice tone="error">No fue posible cargar las métricas de suscripciones. ¿Ejecutaste la migración v0.3.11?</Notice>
+      ) : null}
+      {query.isPending ? <Notice>Cargando métricas de negocio…</Notice> : null}
 
       <div className="stats-grid">
-        <article className="stat-card">
-          <span>Tenants activos</span>
-          <strong>{data?.tenants.active ?? '—'}</strong>
-          <small>{data?.tenants.total ?? 0} en total</small>
-        </article>
-        <article className="stat-card">
-          <span>Usuarios activos</span>
-          <strong>{data?.users ?? '—'}</strong>
-          <small>Todos los tenants</small>
-        </article>
-        <article className="stat-card">
-          <span>Tiendas</span>
-          <strong>{data?.stores ?? '—'}</strong>
-          <small>Todos los tenants</small>
+        <article className="stat-card stat-card--ganancia">
+          <span>Planes vendidos hoy</span>
+          <strong>{data?.plan_sales_today.count ?? '—'}</strong>
+          <small>{formatMoney(data?.plan_sales_today.revenue, currency)} · {data?.date ?? ''}</small>
         </article>
         <article className="stat-card stat-card--ventas">
-          <span>Ventas hoy</span>
-          <strong className="stat-value">{data?.sales.sales_count ?? '—'}</strong>
-          <small>{data?.date ?? ''}</small>
+          <span>Suscripciones activas</span>
+          <strong>{activeTotal}</strong>
+          <small>{data?.tenants.active ?? 0} tenants activos de {data?.tenants.total ?? 0}</small>
         </article>
-        <article className="stat-card money stat-card--ventas">
-          <span>Total hoy</span>
-          <strong className="stat-value">{formatMoney(data?.sales.grand_total, currency)}</strong>
-          <small>Subtotal {formatMoney(data?.sales.subtotal, currency)}</small>
+        <article className="stat-card money">
+          <span>Ingresos del mes</span>
+          <strong className="stat-value">{formatMoney(data?.monthly_revenue.total, currency)}</strong>
+          <small>
+            MRR {formatMoney(data?.mrr, currency)}/mes · {data?.monthly_revenue.payments_count ?? 0} pago(s)
+          </small>
         </article>
-        <article className="stat-card money stat-card--ganancia">
-          <span>Cobrado hoy</span>
-          <strong className="stat-value">{formatMoney(data?.sales.paid, currency)}</strong>
-          <small>Pagos registrados</small>
+        <article className="stat-card stat-card--gastos">
+          <span>Cobros vencidos</span>
+          <strong>{data?.payments_status.overdue_count ?? 0}</strong>
+          <small>
+            {formatMoney(data?.payments_status.overdue_amount, currency)} vencido ·{' '}
+            {data?.payments_status.pending_count ?? 0} por confirmar ({formatMoney(data?.payments_status.pending_amount, currency)})
+          </small>
         </article>
       </div>
 
       <Panel className="stack full-width">
         <div className="section-heading">
-          <div><p className="eyebrow">COBROS</p><h2>Formas de pago hoy</h2></div>
+          <div><p className="eyebrow">DISTRIBUCIÓN</p><h2>Suscripciones activas por plan</h2></div>
+          <span className="muted">{activeTotal} en total</span>
         </div>
-        <div className="stats-grid">
-          <article className="stat-card money stat-card--ventas"><span>Efectivo</span><strong className="stat-value">{formatMoney(data?.payments.cash, currency)}</strong></article>
-          <article className="stat-card money stat-card--compras"><span>Tarjeta</span><strong className="stat-value">{formatMoney(data?.payments.card, currency)}</strong></article>
-          <article className="stat-card money stat-card--gastos"><span>Transferencia</span><strong className="stat-value">{formatMoney(data?.payments.transfer, currency)}</strong></article>
-          <article className="stat-card money"><span>Sistecrédito</span><strong>{formatMoney(data?.payments.sistecredito, currency)}</strong></article>
-          <article className="stat-card money"><span>Addi</span><strong>{formatMoney(data?.payments.adi, currency)}</strong></article>
-          <article className="stat-card money"><span>Crédito tienda</span><strong>{formatMoney(data?.payments.credit, currency)}</strong></article>
+        {byPlan.length === 0 ? (
+          <div className="empty">Sin suscripciones activas.</div>
+        ) : (
+          <div className="plan-bars">
+            {byPlan.map((row) => {
+              const percent = activeTotal > 0 ? Math.round((row.count / activeTotal) * 100) : 0;
+              return (
+                <div className="plan-bar" key={row.plan_id ?? row.plan_name ?? 'sin-plan'}>
+                  <div className="plan-bar-head"><span>{row.plan_name ?? 'Sin plan'}</span><strong>{row.count}</strong></div>
+                  <div className="usage-bar"><span style={{ width: `${percent}%` }} /></div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Panel>
+
+      <Panel className="stack full-width">
+        <div className="section-heading">
+          <div><p className="eyebrow">ÚLTIMOS MOVIMIENTOS</p><h2>Planes vendidos recientemente</h2></div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr><th>Tenant</th><th>Plan</th><th>Fecha</th><th>Monto</th><th>Estado</th><th>Acciones</th></tr>
+            </thead>
+            <tbody>
+              {recentSales.map((sale, index) => (
+                <tr key={`${sale.tenant_id}-${sale.date ?? 'sin-fecha'}-${index}`}>
+                  <td>{sale.tenant_name}</td>
+                  <td>{sale.plan_name ?? '—'}</td>
+                  <td>{formatDateOnly(sale.date)}</td>
+                  <td className="money-cell">{formatMoney(sale.amount, currency)}</td>
+                  <td><StatusBadge status={sale.subscription_status ?? 'active'} /></td>
+                  <td className="row-actions">
+                    <Link className="quiet link-button" to={`/tenant-management/tenants/${sale.tenant_id}`}>Ver tenant</Link>
+                  </td>
+                </tr>
+              ))}
+              {recentSales.length === 0 && !query.isPending ? (
+                <tr><td colSpan={6} className="empty">Sin pagos de suscripción registrados.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
         </div>
       </Panel>
 
       <Panel className="stack full-width">
         <div className="section-heading">
-          <div><p className="eyebrow">RANKING</p><h2>Top tenants por ventas de hoy</h2></div>
+          <div><p className="eyebrow">ACTIVIDAD DEL MES</p><h2>Suscripciones y pruebas</h2></div>
         </div>
-        <div className="table-wrap">
-          <table className="data-table">
-            <thead>
-              <tr><th>Tenant</th><th>Ventas</th><th>Total</th><th>Acciones</th></tr>
-            </thead>
-            <tbody>
-              {topTenants.map((tenant) => (
-                <tr key={tenant.id}>
-                  <td>{tenant.name}</td>
-                  <td>{tenant.sales_count}</td>
-                  <td className="money-cell">{formatMoney(tenant.total, currency)}</td>
-                  <td className="row-actions">
-                    {tenant.id === tenantId ? (
-                      <span className="badge paid">Actual</span>
-                    ) : (
-                      <button
-                        className="quiet"
-                        type="button"
-                        onClick={() => { void enterTenant(tenant.id); }}
-                        disabled={enteringId !== null}
-                      >
-                        {enteringId === tenant.id ? 'Entrando…' : 'Entrar'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              {topTenants.length === 0 && !query.isPending ? (
-                <tr><td colSpan={4} className="empty">Sin ventas registradas hoy en ningún tenant.</td></tr>
-              ) : null}
-            </tbody>
-          </table>
+        <div className="detail-grid">
+          <div className="detail-item"><span>Nuevas suscripciones</span><strong>{data?.monthly_revenue.new_subscriptions ?? 0}</strong></div>
+          <div className="detail-item"><span>Cambios de plan</span><strong>{data?.monthly_revenue.plan_changes ?? 0}</strong></div>
+          <div className="detail-item"><span>Cancelaciones</span><strong>{data?.monthly_revenue.cancellations ?? 0}</strong></div>
+          <div className="detail-item"><span>Pruebas activas</span><strong>{data?.trials.active ?? 0}</strong></div>
+          <div className="detail-item"><span>Pruebas por vencer (7 días)</span><strong>{data?.trials.expiring_soon ?? 0}</strong></div>
+          <div className="detail-item"><span>Conversiones este mes</span><strong>{data?.trials.converted ?? 0}</strong></div>
         </div>
       </Panel>
     </>

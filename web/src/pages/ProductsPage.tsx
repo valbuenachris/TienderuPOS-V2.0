@@ -3,10 +3,13 @@ import type { FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import ProductImagesEditor from '../components/ProductImagesEditor';
+import ProductScanner from '../components/ProductScanner';
+import type { ScannerResult } from '../components/ProductScanner';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedProductsQuery } from '../pos-queries';
-import { createManagedProduct, setManagedProductStock, updateManagedProduct } from '../api';
+import { createManagedProduct, fetchManagedProducts, setManagedProductStock, updateManagedProduct } from '../api';
 import type { ManagedProduct, ManagedProductPayload } from '../api';
+import { parseScanValue } from '../scan';
 import { formatMoney } from '../format';
 
 export default function ProductsPage() {
@@ -29,6 +32,8 @@ export default function ProductsPage() {
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
   const [modalOpen, setModalOpen] = useState(false);
+  const [scannerMode, setScannerMode] = useState<'barcode' | 'qr' | null>(null);
+  const [scannedCode, setScannedCode] = useState<string | null>(null);
 
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
   const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, search, page, 20);
@@ -65,7 +70,39 @@ export default function ProductsPage() {
 
   function openCreate() {
     resetForm();
+    if (scannedCode) {
+      setCode(scannedCode);
+      setScannedCode(null);
+    }
     setModalOpen(true);
+  }
+
+  async function handleScannedCode(raw: string): Promise<ScannerResult> {
+    const value = parseScanValue(raw);
+    if (modalOpen) {
+      setCode(value);
+      setScannedCode(null);
+      window.setTimeout(() => document.getElementById('product-name')?.focus(), 80);
+      return { ok: true, message: `Código capturado: ${value}` };
+    }
+    if (!effectiveStoreId) return { ok: false, message: 'Selecciona una tienda antes de escanear.' };
+    try {
+      const result = await fetchManagedProducts(effectiveStoreId, value, 1, 20);
+      const normalized = value.trim().toLowerCase();
+      const product = result.data.find((item) => (item.code ?? '').trim().toLowerCase() === normalized) ?? null;
+      setSearch(value);
+      setPage(1);
+      if (!product) {
+        setScannedCode(value);
+        setNotice(`Producto no encontrado. Puede crearlo con el código: ${value}`);
+        return { ok: false, message: `Producto no encontrado. Código listo para crear: ${value}` };
+      }
+      setScannedCode(null);
+      setNotice(`Producto encontrado: ${product.name ?? product.code ?? `#${product.id}`}`);
+      return { ok: true, message: `Producto encontrado: ${product.name ?? product.code ?? `#${product.id}`}` };
+    } catch (error: unknown) {
+      return { ok: false, message: error instanceof Error ? error.message : 'No fue posible buscar el producto.' };
+    }
   }
 
   function startEdit(product: ManagedProduct) {
@@ -137,7 +174,7 @@ export default function ProductsPage() {
   return (
     <>
       <PageHeader eyebrow="CATÁLOGO" title="Productos" />
-      {notice ? <Notice tone={/no fue|error|inválid|invalid|required/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
+      {notice ? <Notice tone={/no fue|no encontrado|error|inválid|invalid|required/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
       {stores.length === 0 ? (
         <Notice tone="error">No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.</Notice>
       ) : null}
@@ -148,8 +185,33 @@ export default function ProductsPage() {
               {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
             </select>
           </label>
-          <label>Buscar
-            <input value={search} onChange={(event) => { setSearch(event.target.value); setPage(1); }} placeholder="Nombre o código" />
+          <label className="search-label">Buscar
+            <div className="search-row">
+              <input
+                className="search"
+                value={search}
+                onChange={(event) => { setSearch(event.target.value); setPage(1); }}
+                placeholder="Nombre o código"
+              />
+              <button
+                className="icon-button"
+                type="button"
+                title="Escanear código de barras"
+                aria-label="Escanear código de barras"
+                onClick={() => setScannerMode('barcode')}
+              >
+                📷
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                title="Escanear código QR"
+                aria-label="Escanear código QR"
+                onClick={() => setScannerMode('qr')}
+              >
+                🔳
+              </button>
+            </div>
           </label>
           <button className="primary" type="button" onClick={openCreate}>+ Crear producto</button>
         </div>
@@ -204,8 +266,30 @@ export default function ProductsPage() {
         onClose={resetForm}
       >
         <form className="form-grid" onSubmit={submitProduct}>
-          <label>Código<input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} /></label>
-          <label>Nombre<input value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
+          <label>Código
+            <div className="input-with-scanner">
+              <input value={code} onChange={(event) => setCode(event.target.value)} required maxLength={50} />
+              <button
+                className="icon-button"
+                type="button"
+                title="Escanear código de barras"
+                aria-label="Escanear código de barras"
+                onClick={() => setScannerMode('barcode')}
+              >
+                📷
+              </button>
+              <button
+                className="icon-button"
+                type="button"
+                title="Escanear código QR"
+                aria-label="Escanear código QR"
+                onClick={() => setScannerMode('qr')}
+              >
+                🔳
+              </button>
+            </div>
+          </label>
+          <label>Nombre<input id="product-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
           <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
           <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
           <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
@@ -245,6 +329,12 @@ export default function ProductsPage() {
           </div>
         </form>
       </Modal>
+      <ProductScanner
+        open={scannerMode !== null}
+        mode={scannerMode ?? 'barcode'}
+        onClose={() => setScannerMode(null)}
+        onScan={handleScannedCode}
+      />
     </>
   );
 }

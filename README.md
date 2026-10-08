@@ -125,6 +125,12 @@ El script es idempotente y backfillea a los tenants existentes: el **tenant más
 
 Notas del ticket: `show_qr_on_ticket`, `thank_you_message`, `return_policy` y `printer_width` se aplican en `SaleTicket`; con `80mm` se inyecta `@page { size: 80mm auto }`. `address`, `phone` y `nit` se imprimen en la cabecera si existen.
 
+## Facturación del tenant (v0.3.23)
+
+`/config` tiene ahora dos pestañas: **General** (la configuración existente) y **Facturación**, visible para el admin del tenant. Las facturas se **derivan** de las tablas existentes (sin DDL): los pagos `completed` de `tec_tenant_payments` salen como **Pagado**, los `failed/refunded` como **Cancelado**, y el período vigente según `next_billing_date`/`subscription_end_date` como **Pendiente** o **Vencido** (monto = precio del plan según `billing_cycle`; los tenants en prueba no generan facturas). Numeración `FAC-YYYYMMDD-XXXX` (pagos) y `FAC-YYYYMMDD-PEND|VENC` (período vigente).
+
+Flujo de pago v1 (sin pasarela, sin datos de tarjeta): el tenant pulsa **Pagar** → `POST /api/billing/pay` crea un pago **pending** con referencia (`Solicitud del tenant · <factura>`); el super admin lo confirma en **Pagos de tenants → ✅ Confirmar** (`PATCH /api/tenant-management/payments/:id/confirm`), lo que marca el pago `completed` y activa/renueva la suscripción (+1 mes/año). El detalle de factura se puede **imprimir** desde el modal (sin PDF server-side); el precio del plan es final (sin IVA). Endpoints del tenant (admin): `GET /api/billing/invoices`, `GET /api/billing/current-invoice`, `POST /api/billing/pay`.
+
 ## Plataforma de gestión de tenants (v0.3.11)
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:

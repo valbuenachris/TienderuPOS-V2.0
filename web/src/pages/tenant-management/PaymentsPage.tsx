@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Pagination, Panel } from '../../components/ui';
 import { useSession } from '../../app/session';
-import { useGlobalTenantPaymentsQuery, useTenantManagementQuery, useTenantPaymentSummaryQuery } from '../../pos-queries';
+import { useApiMutation, useGlobalTenantPaymentsQuery, useTenantManagementQuery, useTenantPaymentSummaryQuery } from '../../pos-queries';
+import { confirmTenantPayment } from '../../api';
 import type { TenantPaymentFilters } from '../../api';
 import { formatDateOnly, formatMoney, todayInBusinessTimezone } from '../../format';
 
@@ -20,6 +22,7 @@ function csvCell(value: string): string {
 
 export default function PaymentsPage() {
   const today = todayInBusinessTimezone();
+  const queryClient = useQueryClient();
   const { token, tenantId, isSuperAdmin, settings } = useSession();
   const currency = settings?.currency_prefix || '$';
 
@@ -31,6 +34,9 @@ export default function PaymentsPage() {
   const [minAmount, setMinAmount] = useState('');
   const [maxAmount, setMaxAmount] = useState('');
   const [page, setPage] = useState(1);
+  const [notice, setNotice] = useState('');
+
+  const confirmMutation = useApiMutation((paymentId: string) => confirmTenantPayment(paymentId));
 
   const filters = useMemo<TenantPaymentFilters>(() => ({
     tenant_id: tenantFilter || undefined,
@@ -87,6 +93,7 @@ export default function PaymentsPage() {
         actions={<button className="quiet" type="button" onClick={exportCsv} disabled={payments.length === 0}>⬇️ Exportar CSV</button>}
       />
       {paymentsQuery.isError ? <Notice tone="error">No fue posible cargar los pagos. ¿Ejecutaste la migración v0.3.11?</Notice> : null}
+      {notice ? <Notice tone={/error|no fue|inválid|invalid|no se pudo|solo/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
 
       <div className="stats-grid">
         <article className="stat-card stat-card--ganancia">
@@ -136,7 +143,7 @@ export default function PaymentsPage() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Fecha</th><th>Tenant</th><th>Plan</th><th>Monto</th><th>Método</th><th>Estado</th><th>Notas</th></tr>
+              <tr><th>Fecha</th><th>Tenant</th><th>Plan</th><th>Monto</th><th>Método</th><th>Estado</th><th>Notas</th><th>Acciones</th></tr>
             </thead>
             <tbody>
               {payments.map((payment) => (
@@ -152,10 +159,36 @@ export default function PaymentsPage() {
                     </span>
                   </td>
                   <td>{payment.notes || '—'}</td>
+                  <td className="row-actions">
+                    {payment.status === 'pending' ? (
+                      <button
+                        className="quiet"
+                        type="button"
+                        disabled={confirmMutation.isPending}
+                        title="Confirmar el pago y renovar la suscripción"
+                        onClick={() => {
+                          setNotice('');
+                          confirmMutation.mutate(payment.id, {
+                            onSuccess: async () => {
+                              setNotice('Pago confirmado: suscripción activada/renovada.');
+                              await queryClient.invalidateQueries({ queryKey: ['tenant-payments-global'] });
+                              await queryClient.invalidateQueries({ queryKey: ['tenant-payments-summary'] });
+                              await queryClient.invalidateQueries({ queryKey: ['tenant-management'] });
+                              await queryClient.invalidateQueries({ queryKey: ['billing-invoices'] });
+                              await queryClient.invalidateQueries({ queryKey: ['billing-current'] });
+                            },
+                            onError: (error: Error) => setNotice(error.message)
+                          });
+                        }}
+                      >
+                        ✅ Confirmar
+                      </button>
+                    ) : '—'}
+                  </td>
                 </tr>
               ))}
               {payments.length === 0 && !paymentsQuery.isPending ? (
-                <tr><td colSpan={7} className="empty">Sin pagos para los filtros seleccionados.</td></tr>
+                <tr><td colSpan={8} className="empty">Sin pagos para los filtros seleccionados.</td></tr>
               ) : null}
             </tbody>
           </table>

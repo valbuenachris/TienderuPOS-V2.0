@@ -131,6 +131,11 @@ export class TenantManagementController {
     return this.tenantManagement.listTenantPayments(parseUuid(id, 'id'), parsePagination(page, limit));
   }
 
+  @Patch('payments/:id/confirm')
+  confirmPayment(@Req() request: PosRequest, @Param('id') id: string) {
+    return this.tenantManagement.confirmPayment(parseUuid(id, 'id'), request.posUser?.id ?? null);
+  }
+
   @Post('tenants/:id/payments/record')
   recordPayment(@Req() request: PosRequest, @Param('id') id: string, @Body() body: RecordPaymentDto) {
     return this.tenantManagement.recordPayment(parseUuid(id, 'id'), body, request.posUser?.id ?? null);

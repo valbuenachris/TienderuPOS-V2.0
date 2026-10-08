@@ -6,6 +6,7 @@ import { useSession } from '../app/session';
 import { useApiMutation, useCustomersQuery, useManagedSettingsQuery } from '../pos-queries';
 import { deleteSettingsLogo, updateSettings, uploadSettingsLogo } from '../api';
 import type { PosSettings, UpdateSettingsPayload } from '../api';
+import BillingTab from './settings/BillingTab';
 
 const CURRENCIES = ['COP', 'USD', 'EUR', 'MXN', 'PEN', 'CLP', 'ARS', 'BRL'];
 const TIMEZONES = [
@@ -84,6 +85,7 @@ export default function SettingsPage() {
   const [logoRemoved, setLogoRemoved] = useState(false);
   const [logoBroken, setLogoBroken] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tab, setTab] = useState<'general' | 'billing'>('general');
 
   const saveMutation = useApiMutation((payload: UpdateSettingsPayload) => updateSettings(payload));
   const logoMutation = useApiMutation((file: File) => uploadSettingsLogo(file));
@@ -223,6 +225,16 @@ export default function SettingsPage() {
       ) : null}
       {notice ? <Notice tone={/error|inválid|invalid|obligatorio|no existe|formato/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
 
+      <div className="tabs">
+        <button type="button" className={`tab ${tab === 'general' ? 'active' : ''}`} onClick={() => setTab('general')}>
+          General
+        </button>
+        <button type="button" className={`tab ${tab === 'billing' ? 'active' : ''}`} onClick={() => setTab('billing')}>
+          Facturación
+        </button>
+      </div>
+
+      {tab === 'general' ? (
       <Panel className="stack full-width">
         <form className="settings-form" onSubmit={submit}>
           <section className="settings-section">
@@ -391,6 +403,9 @@ export default function SettingsPage() {
           </div>
         </form>
       </Panel>
+      ) : (
+        <BillingTab />
+      )}
     </>
   );
 }

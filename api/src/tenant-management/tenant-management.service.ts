@@ -691,22 +691,7 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
         [subscriptionId, tenantId, input.amount, paymentDate, input.payment_method?.trim() ?? null, input.notes?.trim() ?? null]
       );
 
-      await client.query(
-        `UPDATE public.tec_tenant_subscriptions
-         SET status = 'active',
-             last_payment_date = $2::date,
-             last_payment_amount = $3,
-             subscription_start_date = COALESCE(subscription_start_date, $2::date),
-             subscription_end_date = CASE WHEN $4 = 'yearly'
-               THEN ($2::date + INTERVAL '1 year')::date
-               ELSE ($2::date + INTERVAL '1 month')::date END,
-             next_billing_date = CASE WHEN $4 = 'yearly'
-               THEN ($2::date + INTERVAL '1 year')::date
-               ELSE ($2::date + INTERVAL '1 month')::date END,
-             updated_at = now()
-         WHERE id = $1`,
-        [subscriptionId, paymentDate, input.amount, effectiveCycle]
-      );
+      await this.applyCompletedPayment(client, subscriptionId, paymentDate, input.amount, effectiveCycle);
 
       return { payment: payment.rows[0], tenant_id: tenantId, subscription_id: subscriptionId };
     });
@@ -718,6 +703,74 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
       performedBy
     );
     return result;
+  }
+
+  async confirmPayment(paymentId: string, performedBy?: number | null): Promise<TenantPaymentRow> {
+    this.assertReady();
+    const found = await this.database.query<TenantPaymentRow & { billing_cycle: string | null }>(
+      `SELECT pay.id::text AS id, pay.subscription_id::text AS subscription_id,
+              pay.tenant_id::text AS tenant_id, pay.amount, pay.payment_date::text AS payment_date,
+              pay.payment_method, pay.status, pay.invoice_url, pay.notes, pay.created_at,
+              s.billing_cycle
+       FROM public.tec_tenant_payments pay
+       JOIN public.tec_tenant_subscriptions s ON s.id = pay.subscription_id
+       WHERE pay.id = $1
+       LIMIT 1`,
+      [paymentId]
+    );
+    const payment = found.rows[0];
+    if (!payment) throw new NotFoundException('Payment not found');
+    if ((payment.status ?? '') !== 'pending') {
+      throw new BadRequestException('Only pending payments can be confirmed');
+    }
+    const cycle: 'monthly' | 'yearly' = payment.billing_cycle === 'yearly' ? 'yearly' : 'monthly';
+    const paymentDate = (payment.payment_date ?? todayInBusinessTimezone()).slice(0, 10);
+
+    const updated = await this.database.transaction(async (client) => {
+      const result = await client.query<TenantPaymentRow>(
+        `UPDATE public.tec_tenant_payments
+         SET status = 'completed'
+         WHERE id = $1
+         RETURNING id::text AS id, subscription_id::text AS subscription_id, tenant_id::text AS tenant_id,
+                   amount, payment_date::text AS payment_date, payment_method, status, invoice_url, notes, created_at`,
+        [paymentId]
+      );
+      await this.applyCompletedPayment(client, payment.subscription_id, paymentDate, payment.amount, cycle);
+      return result.rows[0];
+    });
+
+    await this.logActivity(
+      payment.tenant_id,
+      'payment_confirmed',
+      { payment_id: paymentId, amount: payment.amount, payment_date: paymentDate },
+      performedBy
+    );
+    return updated;
+  }
+
+  private async applyCompletedPayment(
+    client: SqlExecutor,
+    subscriptionId: string,
+    paymentDate: string,
+    amount: string,
+    cycle: 'monthly' | 'yearly'
+  ): Promise<void> {
+    await client.query(
+      `UPDATE public.tec_tenant_subscriptions
+       SET status = 'active',
+           last_payment_date = $2::date,
+           last_payment_amount = $3,
+           subscription_start_date = COALESCE(subscription_start_date, $2::date),
+           subscription_end_date = CASE WHEN $4 = 'yearly'
+             THEN ($2::date + INTERVAL '1 year')::date
+             ELSE ($2::date + INTERVAL '1 month')::date END,
+           next_billing_date = CASE WHEN $4 = 'yearly'
+             THEN ($2::date + INTERVAL '1 year')::date
+             ELSE ($2::date + INTERVAL '1 month')::date END,
+           updated_at = now()
+       WHERE id = $1`,
+      [subscriptionId, paymentDate, amount, cycle]
+    );
   }
 
   async listTenantActivity(tenantId: string, pagination: PaginationQuery): Promise<Paginated<TenantActivityRow>> {

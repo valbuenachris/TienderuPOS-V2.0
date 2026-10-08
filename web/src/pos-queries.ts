@@ -7,6 +7,8 @@ import {
   fetchCurrentRegister,
   fetchCustomers,
   fetchDailyReport,
+  fetchBillingInvoices,
+  fetchCurrentInvoice,
   fetchExpenses,
   fetchGlobalDashboard,
   fetchManagedCustomers,
@@ -473,6 +475,24 @@ export function useTenantActivityQuery(
       return fetchTenantActivity(tenantUuid, page, limit);
     },
     enabled: Boolean(token && tenantId && tenantUuid),
+    retry: false
+  });
+}
+
+export function useBillingInvoicesQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['billing-invoices', tenantId],
+    queryFn: fetchBillingInvoices,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useCurrentInvoiceQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['billing-current', tenantId],
+    queryFn: fetchCurrentInvoice,
+    enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
 }

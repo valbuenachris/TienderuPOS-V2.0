@@ -554,6 +554,59 @@ export const fetchTenantActivity = (id: string, page = 1, limit = 20) =>
     withQuery(`/tenant-management/tenants/${id}/activity`, { page, limit })
   );
 
+export const confirmTenantPayment = (paymentId: string) =>
+  apiRequest<TenantPayment>(`/tenant-management/payments/${paymentId}/confirm`, { method: 'PATCH' });
+
+export type BillingInvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
+
+export interface BillingInvoice {
+  id: string;
+  invoice_number: string;
+  tenant_id: string;
+  subscription_id: string;
+  plan_name: string | null;
+  amount: string;
+  issue_date: string;
+  due_date: string;
+  paid_date: string | null;
+  status: BillingInvoiceStatus;
+  payment_method: string | null;
+  billing_cycle: string | null;
+  notes: string | null;
+}
+
+export interface BillingSubscriptionInfo {
+  subscription_id: string;
+  status: string | null;
+  plan_name: string | null;
+  billing_cycle: string | null;
+  auto_renew: boolean | null;
+  next_billing_date: string | null;
+  subscription_end_date: string | null;
+  trial_end_date: string | null;
+}
+
+export interface CurrentInvoiceResult {
+  subscription: BillingSubscriptionInfo | null;
+  overdue: BillingInvoice | null;
+  upcoming: BillingInvoice | null;
+}
+
+export interface BillingPaymentPayload {
+  payment_method: string;
+  notes?: string;
+}
+
+export const fetchBillingInvoices = () => apiRequest<BillingInvoice[]>('/billing/invoices');
+
+export const fetchCurrentInvoice = () => apiRequest<CurrentInvoiceResult>('/billing/current-invoice');
+
+export const requestBillingPayment = (invoiceId: string, payload: BillingPaymentPayload) =>
+  apiRequest<{ id: string | null; invoice_number: string; amount: string; status: string }>(
+    '/billing/pay',
+    { method: 'POST', body: JSON.stringify({ invoice_id: invoiceId, ...payload }) }
+  );
+
 export const switchTenant = (tenantId: string) =>
   apiRequest<SwitchTenantResult>('/auth/switch-tenant', {
     method: 'POST',

@@ -6,6 +6,7 @@ export interface PaginationMeta {
   page: number;
   limit: number;
   totalPages: number;
+  grand_total?: string;
 }
 
 export interface Paginated<T> {
@@ -55,6 +56,7 @@ export interface SaleResult {
   id: number;
   customer_name: string | null;
   customer_phone?: string | null;
+  cashier_name?: string | null;
   store_id: number;
   total: string;
   tax_total: string;
@@ -170,6 +172,7 @@ export interface ManagedProduct {
   details: string | null;
   store_quantity: number | null;
   store_price: string | null;
+  line_total_value?: string | null;
 }
 
 export interface ManagedProductPayload {
@@ -628,6 +631,15 @@ export interface GlobalRecentSale {
   subscription_status: string | null;
 }
 
+export interface GlobalPlanChange {
+  tenant_id: string;
+  tenant_name: string;
+  from_plan: string | null;
+  to_plan: string | null;
+  direction: string | null;
+  date: string | null;
+}
+
 export interface GlobalDashboard {
   date: string;
   tenants: { total: number; active: number };
@@ -638,10 +650,13 @@ export interface GlobalDashboard {
     payments_count: number;
     new_subscriptions: number;
     plan_changes: number;
+    upgrades: number;
+    downgrades: number;
     cancellations: number;
   };
   mrr: string;
   recent_sales: GlobalRecentSale[];
+  recent_plan_changes: GlobalPlanChange[];
   payments_status: {
     pending_count: number;
     pending_amount: string;
@@ -709,6 +724,7 @@ export interface SaleDetail extends SaleListRow {
   total_discount?: string | null;
   order_discount_id?: string | null;
   customer_phone?: string | null;
+  cashier_name?: string | null;
   items: SaleDetailItem[];
   payments: SalePayment[];
 }

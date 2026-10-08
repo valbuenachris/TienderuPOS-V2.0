@@ -1,3 +1,5 @@
+import { todayInBusinessTimezone } from './format';
+
 export const MONTH_NAMES = [
   'Enero',
   'Febrero',
@@ -20,10 +22,7 @@ export function toIsoDate(date: Date): string {
 }
 
 export function todayIso(): string {
-  const now = new Date();
-  const month = String(now.getMonth() + 1).padStart(2, '0');
-  const day = String(now.getDate()).padStart(2, '0');
-  return `${now.getFullYear()}-${month}-${day}`;
+  return todayInBusinessTimezone();
 }
 
 export function monthGrid(year: number, month: number): { from: string; to: string; days: Date[] } {

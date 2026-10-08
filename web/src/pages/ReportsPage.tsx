@@ -15,23 +15,22 @@ import {
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useReportSummaryQuery, useTopProductsQuery } from '../pos-queries';
-import { formatDay, formatMoney } from '../format';
+import { formatDay, formatMoney, daysAgoInBusinessTimezone, todayInBusinessTimezone } from '../format';
 
 function isoToday(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayInBusinessTimezone();
 }
 
 function isoDaysAgo(days: number): string {
-  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+  return daysAgoInBusinessTimezone(days);
 }
 
 function monthStart(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-01`;
+  return `${todayInBusinessTimezone().slice(0, 7)}-01`;
 }
 
 function yearStart(): string {
-  return `${new Date().getFullYear()}-01-01`;
+  return `${todayInBusinessTimezone().slice(0, 4)}-01-01`;
 }
 
 type Preset = { label: string; from: string; to: string };

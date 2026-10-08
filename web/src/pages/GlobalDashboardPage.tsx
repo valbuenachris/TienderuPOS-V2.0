@@ -1,9 +1,41 @@
 import { Link } from 'react-router-dom';
+import { Cell, Pie, PieChart, ResponsiveContainer, Tooltip } from 'recharts';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useGlobalDashboardQuery } from '../pos-queries';
 import { formatDateOnly, formatMoney } from '../format';
 import StatusBadge from './tenant-management/components/StatusBadge';
+
+interface PlanChartItem {
+  name: string;
+  value: number;
+  percent: number;
+  color: string;
+}
+
+function planColor(name: string | null, index: number): string {
+  const value = (name ?? '').toLowerCase();
+  if (value.includes('gratuito')) return '#8b968e';
+  if (value.includes('básico') || value.includes('basico')) return '#2563eb';
+  if (value.includes('profesional')) return '#147d4a';
+  if (value.includes('empresarial')) return '#7c3aed';
+  const fallback = ['#2563eb', '#147d4a', '#7c3aed', '#d97706', '#0ea5e9', '#8b968e'];
+  return fallback[index % fallback.length];
+}
+
+function PlanTooltip({ active, payload }: {
+  active?: boolean;
+  payload?: Array<{ payload: PlanChartItem }>;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+  const item = payload[0].payload;
+  return (
+    <div className="chart-tooltip">
+      <span className="status-dot" style={{ background: item.color, marginRight: 6 }} />
+      {item.name}: <strong>{item.value}</strong> ({item.percent}%)
+    </div>
+  );
+}
 
 export default function GlobalDashboardPage() {
   const { token, tenantId, isSuperAdmin, settings } = useSession();
@@ -14,6 +46,13 @@ export default function GlobalDashboardPage() {
   const byPlan = data?.active_subscriptions.by_plan ?? [];
   const activeTotal = data?.active_subscriptions.total ?? 0;
   const recentSales = data?.recent_sales ?? [];
+  const recentPlanChanges = data?.recent_plan_changes ?? [];
+  const chartData: PlanChartItem[] = byPlan.map((row, index) => ({
+    name: row.plan_name ?? 'Sin plan',
+    value: row.count,
+    percent: activeTotal > 0 ? Math.round((row.count / activeTotal) * 100) : 0,
+    color: planColor(row.plan_name, index)
+  }));
 
   return (
     <>
@@ -60,19 +99,38 @@ export default function GlobalDashboardPage() {
           <div><p className="eyebrow">DISTRIBUCIÓN</p><h2>Suscripciones activas por plan</h2></div>
           <span className="muted">{activeTotal} en total</span>
         </div>
-        {byPlan.length === 0 ? (
+        {chartData.length === 0 ? (
           <div className="empty">Sin suscripciones activas.</div>
         ) : (
-          <div className="plan-bars">
-            {byPlan.map((row) => {
-              const percent = activeTotal > 0 ? Math.round((row.count / activeTotal) * 100) : 0;
-              return (
-                <div className="plan-bar" key={row.plan_id ?? row.plan_name ?? 'sin-plan'}>
-                  <div className="plan-bar-head"><span>{row.plan_name ?? 'Sin plan'}</span><strong>{row.count}</strong></div>
-                  <div className="usage-bar"><span style={{ width: `${percent}%` }} /></div>
+          <div className="plan-chart-grid">
+            <div className="plan-chart">
+              <ResponsiveContainer width="100%" height={240}>
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={52}
+                    outerRadius={88}
+                    paddingAngle={2}
+                    stroke="#fff"
+                    strokeWidth={2}
+                  >
+                    {chartData.map((item) => <Cell key={item.name} fill={item.color} />)}
+                  </Pie>
+                  <Tooltip content={<PlanTooltip />} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            <div className="plan-legend">
+              {chartData.map((item) => (
+                <div className="plan-legend-row" key={item.name}>
+                  <span className="status-dot" style={{ background: item.color }} />
+                  <span>{item.name}</span>
+                  <strong>{item.value} · {item.percent}%</strong>
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
         )}
       </Panel>
@@ -109,11 +167,53 @@ export default function GlobalDashboardPage() {
 
       <Panel className="stack full-width">
         <div className="section-heading">
+          <div><p className="eyebrow">CAMBIOS DE PLAN</p><h2>Movimientos recientes de plan</h2></div>
+        </div>
+        <div className="table-wrap">
+          <table className="data-table">
+            <thead>
+              <tr><th>Tenant</th><th>Cambio</th><th>Tipo</th><th>Fecha</th><th /></tr>
+            </thead>
+            <tbody>
+              {recentPlanChanges.map((change, index) => (
+                <tr key={`${change.tenant_id}-${change.date ?? 'sin-fecha'}-${index}`}>
+                  <td>{change.tenant_name}</td>
+                  <td>{change.from_plan ?? '—'} → {change.to_plan ?? '—'}</td>
+                  <td>
+                    {change.direction === 'upgrade' ? <span className="badge paid">↑ Upgrade</span>
+                      : change.direction === 'downgrade' ? <span className="badge due">↓ Downgrade</span>
+                        : <span className="badge">• Cambio</span>}
+                  </td>
+                  <td>{formatDateOnly(change.date)}</td>
+                  <td className="row-actions">
+                    <Link className="quiet link-button" to={`/tenant-management/tenants/${change.tenant_id}`}>Ver tenant</Link>
+                  </td>
+                </tr>
+              ))}
+              {recentPlanChanges.length === 0 && !query.isPending ? (
+                <tr><td colSpan={5} className="empty">Sin cambios de plan registrados.</td></tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </Panel>
+
+      <Panel className="stack full-width">
+        <div className="section-heading">
           <div><p className="eyebrow">ACTIVIDAD DEL MES</p><h2>Suscripciones y pruebas</h2></div>
         </div>
         <div className="detail-grid">
           <div className="detail-item"><span>Nuevas suscripciones</span><strong>{data?.monthly_revenue.new_subscriptions ?? 0}</strong></div>
-          <div className="detail-item"><span>Cambios de plan</span><strong>{data?.monthly_revenue.plan_changes ?? 0}</strong></div>
+          <div className="detail-item">
+            <span>Cambios de plan</span>
+            <strong>
+              {data?.monthly_revenue.plan_changes ?? 0}
+              {' '}
+              <span className="text-green">↑ {data?.monthly_revenue.upgrades ?? 0}</span>
+              {' · '}
+              <span className="text-danger">↓ {data?.monthly_revenue.downgrades ?? 0}</span>
+            </strong>
+          </div>
           <div className="detail-item"><span>Cancelaciones</span><strong>{data?.monthly_revenue.cancellations ?? 0}</strong></div>
           <div className="detail-item"><span>Pruebas activas</span><strong>{data?.trials.active ?? 0}</strong></div>
           <div className="detail-item"><span>Pruebas por vencer (7 días)</span><strong>{data?.trials.expiring_soon ?? 0}</strong></div>

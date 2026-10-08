@@ -407,6 +407,9 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .data-table td { padding: 11px 12px; border-bottom: 1px solid #eef2ee; }
 .data-table tfoot th { border-top: 1px solid #e2e9e3; border-bottom: 0; }
 .low-stock td { background: #fff6f4; color: #a53c2d; }
+.inventory-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px; padding: 12px 14px; border-radius: 12px; background: #f0fdf4; border: 1px solid #bbe6c9; }
+.inventory-total span { font-size: 12px; font-weight: 800; letter-spacing: .04em; color: #147d4a; text-transform: uppercase; }
+.inventory-total strong { font-size: 20px; font-weight: 800; color: #147d4a; }
 .row-actions { display: flex; align-items: center; gap: 8px; }
 .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: #eef2ee; color: #536057; font-size: 11px; font-weight: 700; text-transform: capitalize; }
 .badge.paid { background: #e4f5e9; color: #147d4a; }
@@ -490,10 +493,18 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .ticket-legal { font-size: 9px; color: #555; overflow-wrap: anywhere; }
 .ticket-branding {
   margin-top: 12px;
+  display: grid;
+  justify-items: center;
+  gap: 2px;
   text-align: center;
-  font-weight: bold;
   font-size: 10px;
   color: #111;
+}
+.ticket-branding-line { font-weight: 700; }
+.ticket-branding-contact { font-weight: 700; font-size: 10px; color: #111; overflow-wrap: anywhere; }
+@media print {
+  .ticket-branding { margin-top: 6px; font-size: 9.5px; }
+  .ticket-branding-contact { font-size: 9.5px; }
 }
 .receipt-actions { display: flex; align-items: center; gap: 8px; }
 
@@ -1084,8 +1095,16 @@ label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
 .plan-option-body { display: grid; gap: 2px; }
 .plan-option-body small { color: #68736b; font-size: 12px; }
 .action-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.plan-bars { display: grid; gap: 12px; }
-.plan-bar-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 700; color: #4a554d; margin-bottom: 4px; }
+.plan-chart-grid { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 16px; align-items: center; }
+.plan-chart { width: 100%; }
+.plan-legend { display: grid; gap: 8px; }
+.plan-legend-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.plan-legend-row .status-dot { margin: 0; }
+.plan-legend-row strong { margin-left: auto; }
+.chart-tooltip { background: #fff; border: 1px solid #e2e9e3; border-radius: 10px; padding: 8px 10px; font-size: 12px; box-shadow: 0 6px 24px #18391f1a; }
+@media (max-width: 640px) {
+  .plan-chart-grid { grid-template-columns: 1fr; }
+}
 .invoice-print { display: grid; gap: 10px; }
 .invoice-print header { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; flex-wrap: wrap; border-bottom: 1px solid #e2e9e3; padding-bottom: 10px; }
 .invoice-lines { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }

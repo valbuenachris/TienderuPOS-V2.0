@@ -22,6 +22,7 @@ function buildTicketSale(detail: SaleDetail): SaleResult {
     id: detail.id,
     customer_name: detail.customer_name,
     customer_phone: detail.customer_phone ?? null,
+    cashier_name: detail.cashier_name ?? null,
     store_id: detail.store_id ?? 0,
     total: detail.total ?? '0.00',
     tax_total: detail.tax_total ?? '0.00',
@@ -535,9 +536,11 @@ export default function SalesHistoryPage() {
             currency={currency}
             siteName={settings?.site_name}
             storeName={ticketStoreName}
+            cashierName={ticketSale.cashier_name ?? undefined}
             logoUrl={settings?.logo_url}
             address={settings?.address}
             phone={settings?.phone}
+            email={settings?.email}
             nit={settings?.nit}
             thankYouMessage={settings?.thank_you_message}
             returnPolicy={settings?.return_policy}

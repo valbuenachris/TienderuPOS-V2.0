@@ -18,6 +18,11 @@ type ProductAdminRow = Pick<
   tax: string | null;
   store_quantity: number | null;
   store_price: string | null;
+  line_total_value: string | null;
+};
+
+export type ProductAdminPage = Paginated<ProductAdminRow> & {
+  meta: Paginated<ProductAdminRow>['meta'] & { grand_total: string };
 };
 type ProductIdRow = Pick<TableRow<'tec_products'>, 'id'>;
 type ProductImageRow = Pick<TableRow<'tec_products'>, 'id' | 'image' | 'image_2' | 'image_3'>;
@@ -82,7 +87,7 @@ export class ProductsService {
     storeId: number,
     search: string,
     pagination: PaginationQuery
-  ): Promise<Paginated<ProductAdminRow>> {
+  ): Promise<ProductAdminPage> {
     const store = await this.database.query<StoreIdRow>(
       'SELECT id FROM public.tec_stores WHERE tenant_id = $1 AND id = $2 LIMIT 1',
       [tenantId, storeId]
@@ -90,20 +95,31 @@ export class ProductsService {
     if (store.rowCount !== 1) throw new NotFoundException('Store not found in this tenant');
 
     const pattern = `%${escapeLike(search.trim().slice(0, 100))}%`;
-    const result = await this.database.query<ProductAdminRow & { total_count: number }>(
-      `SELECT p.id, p.code, p.name, p.type, p.reward_points,
-              p.image, p.image_2, p.image_3, p.details,
-              p.price::text AS price, p.cost::text AS cost, p.tax::text AS tax,
-              q.quantity AS store_quantity, q.price::text AS store_price,
-              COUNT(*) OVER() AS total_count
-       FROM public.tec_products p
-       LEFT JOIN public.tec_product_store_qty q
-         ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
-       WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)
-       ORDER BY p.name
-       LIMIT $4 OFFSET $5`,
-      [tenantId, storeId, pattern, pagination.limit, pagination.offset]
-    );
+    const [result, grandTotal] = await Promise.all([
+      this.database.query<ProductAdminRow & { total_count: number }>(
+        `SELECT p.id, p.code, p.name, p.type, p.reward_points,
+                p.image, p.image_2, p.image_3, p.details,
+                p.price::text AS price, p.cost::text AS cost, p.tax::text AS tax,
+                q.quantity AS store_quantity, COALESCE(q.price, p.price)::text AS store_price,
+                ROUND((COALESCE(q.price, p.price))::numeric * COALESCE(q.quantity, 0), 2)::text AS line_total_value,
+                COUNT(*) OVER() AS total_count
+         FROM public.tec_products p
+         LEFT JOIN public.tec_product_store_qty q
+           ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
+         WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)
+         ORDER BY p.name
+         LIMIT $4 OFFSET $5`,
+        [tenantId, storeId, pattern, pagination.limit, pagination.offset]
+      ),
+      this.database.query<{ grand_total: string }>(
+        `SELECT ROUND(COALESCE(SUM((COALESCE(q.price, p.price))::numeric * COALESCE(q.quantity, 0)), 0), 2)::text AS grand_total
+         FROM public.tec_products p
+         LEFT JOIN public.tec_product_store_qty q
+           ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
+         WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)`,
+        [tenantId, storeId, pattern]
+      )
+    ]);
     const total = result.rows[0]?.total_count ?? 0;
     const data = result.rows.map(({ total_count: _totalCount, ...row }) => ({
       ...row,
@@ -111,7 +127,8 @@ export class ProductsService {
       image_2: this.toPublicUrl(row.image_2),
       image_3: this.toPublicUrl(row.image_3)
     }));
-    return buildPaginated(data, total, pagination);
+    const page = buildPaginated(data, total, pagination);
+    return { ...page, meta: { ...page.meta, grand_total: grandTotal.rows[0]?.grand_total ?? '0.00' } };
   }
 
   async create(tenantId: string, input: CreateProductDto) {
@@ -188,7 +205,8 @@ export class ProductsService {
       image_2: this.toPublicUrl(updated.image_2),
       image_3: this.toPublicUrl(updated.image_3),
       store_quantity: null,
-      store_price: null
+      store_price: null,
+      line_total_value: null
     };
   }
 

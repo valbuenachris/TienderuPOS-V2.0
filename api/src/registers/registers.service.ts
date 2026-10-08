@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { PosUser } from '../auth/auth.types';
 import { DatabaseService } from '../database/database.service';
 import { isAdminRole } from '../common/roles';
-import { BUSINESS_TIMEZONE, todayInBusinessTimezone } from '../common/timezone';
+import { TenantTimezoneService } from '../common/tenant-timezone.service';
+import { todayInTimeZone } from '../common/timezone';
 import { CloseRegisterDto, OpenRegisterDto } from './register.dto';
 
 type RegisterRow = {
@@ -47,7 +48,10 @@ const REGISTER_FIELDS = `id, date, user_id, cash_in_hand::text AS cash_in_hand, 
 
 @Injectable()
 export class RegistersService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly timezone: TenantTimezoneService
+  ) {}
 
   async list(tenantId: string, user: PosUser, limit = 20): Promise<RegisterRow[]> {
     const isAdmin = isAdminRole(user.group_name);
@@ -95,7 +99,8 @@ export class RegistersService {
 
   async summary(tenantId: string, user: PosUser, date: string | undefined, requestedStoreId?: number) {
     const isAdmin = isAdminRole(user.group_name);
-    const day = date ?? todayInBusinessTimezone();
+    const timezone = await this.timezone.forTenant(tenantId);
+    const day = date ?? todayInTimeZone(timezone);
     const storeId = isAdmin ? await this.resolveStore(tenantId, user, requestedStoreId) : (user.store_id ?? null);
     const scopeFilter = isAdmin ? 's.store_id = $2' : 's.created_by = $2';
     const scopeValue: unknown = isAdmin ? storeId : user.id;
@@ -115,7 +120,7 @@ export class RegistersService {
        WHERE pay.tenant_id = $1 AND ${scopeFilter}
          AND pay.created_at >= ($3::date::timestamp AT TIME ZONE $4)
          AND pay.created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $4)`,
-      [tenantId, scopeValue, day, BUSINESS_TIMEZONE]
+      [tenantId, scopeValue, day, timezone]
     );
 
     const sales = await this.database.query<SalesSummaryRow>(
@@ -127,7 +132,7 @@ export class RegistersService {
        WHERE tenant_id = $1 AND ${isAdmin ? 'store_id' : 'created_by'} = $2
          AND created_at >= ($3::date::timestamp AT TIME ZONE $4)
          AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $4)`,
-      [tenantId, scopeValue, day, BUSINESS_TIMEZONE]
+      [tenantId, scopeValue, day, timezone]
     );
 
     return {

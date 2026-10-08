@@ -12,7 +12,7 @@ import {
 } from '../pos-queries';
 import { createPurchase, updatePurchase } from '../api';
 import type { PurchasePayload } from '../api';
-import { formatDate, formatMoney } from '../format';
+import { formatDate, formatMoney, todayInBusinessTimezone } from '../format';
 
 interface PurchaseRow {
   key: number;
@@ -23,7 +23,7 @@ interface PurchaseRow {
 }
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayInBusinessTimezone();
 }
 
 function emptyRow(): PurchaseRow {

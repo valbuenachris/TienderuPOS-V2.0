@@ -365,6 +365,7 @@ export default function PosPage() {
             logoUrl={settings?.logo_url}
             address={settings?.address}
             phone={settings?.phone}
+            email={settings?.email}
             nit={settings?.nit}
             thankYouMessage={settings?.thank_you_message}
             returnPolicy={settings?.return_policy}

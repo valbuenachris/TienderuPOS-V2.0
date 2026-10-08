@@ -6,10 +6,10 @@ import { useSession } from '../app/session';
 import { useApiMutation, useExpensesQuery } from '../pos-queries';
 import { createExpense, updateExpense } from '../api';
 import type { ExpensePayload, ExpenseRecord } from '../api';
-import { formatMoney } from '../format';
+import { formatMoney, todayInBusinessTimezone } from '../format';
 
 function today(): string {
-  return new Date().toISOString().slice(0, 10);
+  return todayInBusinessTimezone();
 }
 
 export default function ExpensesPage() {

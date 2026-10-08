@@ -24,8 +24,9 @@ function parseLimit(value: unknown, fallback: number, max: number): number {
   return parsed;
 }
 
-function defaultDate(offsetDays: number): string {
-  return new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
+function optionalDate(value: unknown, field: string): string | undefined {
+  if (value === undefined || value === '') return undefined;
+  return parseDate(value, field);
 }
 
 function parseGroup(value: unknown): 'day' | 'month' {
@@ -41,11 +42,7 @@ export class ReportsController {
 
   @Get('summary')
   summary(@Req() request: PosRequest, @Query('from') from?: string, @Query('to') to?: string) {
-    return this.reports.summary(
-      request.tenantId!,
-      from === undefined ? defaultDate(-29) : parseDate(from, 'from'),
-      to === undefined ? defaultDate(0) : parseDate(to, 'to')
-    );
+    return this.reports.summary(request.tenantId!, optionalDate(from, 'from'), optionalDate(to, 'to'));
   }
 
   @Get('calendar')
@@ -57,8 +54,8 @@ export class ReportsController {
   ) {
     return this.reports.calendar(
       request.tenantId!,
-      from === undefined ? defaultDate(-29) : parseDate(from, 'from'),
-      to === undefined ? defaultDate(0) : parseDate(to, 'to'),
+      optionalDate(from, 'from'),
+      optionalDate(to, 'to'),
       parseGroup(group)
     );
   }
@@ -72,8 +69,8 @@ export class ReportsController {
   ) {
     return this.reports.topProducts(
       request.tenantId!,
-      from === undefined ? defaultDate(-29) : parseDate(from, 'from'),
-      to === undefined ? defaultDate(0) : parseDate(to, 'to'),
+      optionalDate(from, 'from'),
+      optionalDate(to, 'to'),
       parseLimit(limit, 10, 50)
     );
   }

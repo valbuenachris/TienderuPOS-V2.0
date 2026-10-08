@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { TenantTimezoneService } from '../common/tenant-timezone.service';
+import { daysAgoInTimeZone, todayInTimeZone } from '../common/timezone';
 import { DatabaseService } from '../database/database.service';
 
 type ReportDayRow = {
@@ -62,8 +64,13 @@ type CalendarPoint = {
   net_profit: string;
 };
 
-const RANGE_START = `$2::date::timestamp AT TIME ZONE 'UTC'`;
-const RANGE_END = `($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC'`;
+const DEFAULT_RANGE_DAYS = 29;
+
+// $2 = from, $3 = to, $4 = tenant IANA timezone (bound parameter).
+const RANGE_START = '($2::date::timestamp AT TIME ZONE $4)';
+const RANGE_END = "(($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $4)";
+// Pure DATE columns (purchases/expenses) do not need a timezone.
+const DATE_RANGE_END = "($3::date + INTERVAL '1 day')::date";
 
 function monthKeys(from: string, to: string): string[] {
   const keys: string[] = [];
@@ -91,10 +98,17 @@ function bucketKeys(from: string, to: string, group: CalendarGroup): string[] {
 
 @Injectable()
 export class ReportsService {
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly timezone: TenantTimezoneService
+  ) {}
 
-  async summary(tenantId: string, from: string, to: string) {
+  async summary(tenantId: string, fromInput?: string, toInput?: string) {
+    const timezone = await this.timezone.forTenant(tenantId);
+    const from = fromInput ?? daysAgoInTimeZone(timezone, DEFAULT_RANGE_DAYS);
+    const to = toInput ?? todayInTimeZone(timezone);
     this.assertRange(from, to);
+    const values = [tenantId, from, to, timezone];
 
     const [
       daysResult,
@@ -106,7 +120,7 @@ export class ReportsService {
       expensesTotalResult
     ] = await Promise.all([
       this.database.query<ReportDayRow>(
-        `SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+        `SELECT TO_CHAR(created_at AT TIME ZONE $4, 'YYYY-MM-DD') AS day,
                 COUNT(*)::integer AS sales_count,
                 COALESCE(SUM(total), 0)::text AS total,
                 COALESCE(SUM(grand_total), 0)::text AS grand_total,
@@ -116,9 +130,9 @@ export class ReportsService {
          WHERE tenant_id = $1
            AND created_at >= ${RANGE_START}
            AND created_at < ${RANGE_END}
-         GROUP BY TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')
-         ORDER BY day`,
-        [tenantId, from, to]
+         GROUP BY 1
+         ORDER BY 1`,
+        values
       ),
       this.database.query<SalesTotalsRow>(
         `SELECT COUNT(*)::integer AS sales_count,
@@ -130,10 +144,10 @@ export class ReportsService {
          WHERE tenant_id = $1
            AND created_at >= ${RANGE_START}
            AND created_at < ${RANGE_END}`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<MonthlyRow>(
-        `SELECT TO_CHAR(date_trunc('month', created_at AT TIME ZONE 'UTC'), 'YYYY-MM') AS month,
+        `SELECT TO_CHAR(date_trunc('month', created_at AT TIME ZONE $4), 'YYYY-MM') AS month,
                 COALESCE(SUM(grand_total), 0)::text AS total
          FROM public.tec_sales
          WHERE tenant_id = $1
@@ -141,7 +155,7 @@ export class ReportsService {
            AND created_at < ${RANGE_END}
          GROUP BY 1
          ORDER BY 1`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<MonthlyRow>(
         `SELECT TO_CHAR(date_trunc('month', date), 'YYYY-MM') AS month,
@@ -149,10 +163,10 @@ export class ReportsService {
          FROM public.tec_purchases
          WHERE tenant_id = $1
            AND date >= $2::date
-           AND date < ${RANGE_END}
+           AND date < ${DATE_RANGE_END}
          GROUP BY 1
          ORDER BY 1`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<MonthlyRow>(
         `SELECT TO_CHAR(date_trunc('month', date), 'YYYY-MM') AS month,
@@ -160,22 +174,22 @@ export class ReportsService {
          FROM public.tec_expenses
          WHERE tenant_id = $1
            AND date >= $2::date
-           AND date < ${RANGE_END}
+           AND date < ${DATE_RANGE_END}
          GROUP BY 1
          ORDER BY 1`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<TotalRow>(
         `SELECT COALESCE(SUM(total), 0)::text AS total
          FROM public.tec_purchases
-         WHERE tenant_id = $1 AND date >= $2::date AND date < ${RANGE_END}`,
-        [tenantId, from, to]
+         WHERE tenant_id = $1 AND date >= $2::date AND date < ${DATE_RANGE_END}`,
+        values
       ),
       this.database.query<TotalRow>(
         `SELECT COALESCE(SUM(amount), 0)::text AS total
          FROM public.tec_expenses
-         WHERE tenant_id = $1 AND date >= $2::date AND date < ${RANGE_END}`,
-        [tenantId, from, to]
+         WHERE tenant_id = $1 AND date >= $2::date AND date < ${DATE_RANGE_END}`,
+        values
       )
     ]);
 
@@ -221,10 +235,15 @@ export class ReportsService {
     };
   }
 
-  async calendar(tenantId: string, from: string, to: string, group: CalendarGroup) {
+  async calendar(tenantId: string, fromInput?: string, toInput?: string, group: CalendarGroup = 'day') {
+    const timezone = await this.timezone.forTenant(tenantId);
+    const from = fromInput ?? daysAgoInTimeZone(timezone, DEFAULT_RANGE_DAYS);
+    const to = toInput ?? todayInTimeZone(timezone);
     this.assertRange(from, to);
+    const values = [tenantId, from, to, timezone];
+
     const format = group === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM';
-    const salesBucket = `TO_CHAR(created_at AT TIME ZONE 'UTC', '${format}')`;
+    const salesBucket = `TO_CHAR(created_at AT TIME ZONE $4, '${format}')`;
     const dateBucket = `TO_CHAR(date, '${format}')`;
 
     const [sales, purchases, expenses] = await Promise.all([
@@ -238,7 +257,7 @@ export class ReportsService {
            AND created_at >= ${RANGE_START}
            AND created_at < ${RANGE_END}
          GROUP BY 1`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<BucketAggRow>(
         `SELECT ${dateBucket} AS bucket,
@@ -247,9 +266,9 @@ export class ReportsService {
          FROM public.tec_purchases
          WHERE tenant_id = $1
            AND date >= $2::date
-           AND date < ${RANGE_END}
+           AND date < ${DATE_RANGE_END}
          GROUP BY 1`,
-        [tenantId, from, to]
+        values
       ),
       this.database.query<BucketAggRow>(
         `SELECT ${dateBucket} AS bucket,
@@ -258,9 +277,9 @@ export class ReportsService {
          FROM public.tec_expenses
          WHERE tenant_id = $1
            AND date >= $2::date
-           AND date < ${RANGE_END}
+           AND date < ${DATE_RANGE_END}
          GROUP BY 1`,
-        [tenantId, from, to]
+        values
       )
     ]);
 
@@ -343,7 +362,10 @@ export class ReportsService {
     };
   }
 
-  async topProducts(tenantId: string, from: string, to: string, limit: number): Promise<TopProductRow[]> {
+  async topProducts(tenantId: string, fromInput?: string, toInput?: string, limit = 10): Promise<TopProductRow[]> {
+    const timezone = await this.timezone.forTenant(tenantId);
+    const from = fromInput ?? daysAgoInTimeZone(timezone, DEFAULT_RANGE_DAYS);
+    const to = toInput ?? todayInTimeZone(timezone);
     this.assertRange(from, to);
     const result = await this.database.query<TopProductRow>(
       `SELECT si.product_id,
@@ -357,12 +379,12 @@ export class ReportsService {
        LEFT JOIN public.tec_products p
          ON p.id = si.product_id AND p.tenant_id = $1
        WHERE si.tenant_id = $1
-         AND s.created_at >= ${RANGE_START}
-         AND s.created_at < ${RANGE_END}
+         AND s.created_at >= ($2::date::timestamp AT TIME ZONE $5)
+         AND s.created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $5)
        GROUP BY si.product_id, p.code, p.name
        ORDER BY SUM(si.quantity) DESC
        LIMIT $4`,
-      [tenantId, from, to, limit]
+      [tenantId, from, to, limit, timezone]
     );
     return result.rows;
   }

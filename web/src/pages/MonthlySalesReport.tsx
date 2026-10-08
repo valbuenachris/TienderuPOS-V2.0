@@ -4,13 +4,13 @@ import { Modal, Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useReportCalendarQuery } from '../pos-queries';
 import { MONTH_NAMES, monthRange, yearRange } from '../calendar';
-import { formatDay, formatMoney } from '../format';
+import { formatDay, formatMoney, todayInBusinessTimezone } from '../format';
 import type { ReportCalendarPoint } from '../api';
 
 export default function MonthlySalesReport() {
   const { token, tenantId, settings } = useSession();
   const currency = settings?.currency_prefix || '$';
-  const [year, setYear] = useState(() => new Date().getFullYear());
+  const [year, setYear] = useState(() => Number(todayInBusinessTimezone().slice(0, 4)));
   const [selectedMonth, setSelectedMonth] = useState<number | null>(null);
 
   const range = useMemo(() => yearRange(year), [year]);

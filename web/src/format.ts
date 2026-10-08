@@ -30,12 +30,33 @@ export function formatDay(value: string | null | undefined): string {
   return date.toLocaleDateString('es-CO', { dateStyle: 'medium' });
 }
 
-const businessDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' });
+const DEFAULT_TIMEZONE = 'America/Bogota';
+let businessTimeZone = DEFAULT_TIMEZONE;
+const dateOnlyFormatters = new Map<string, Intl.DateTimeFormat>();
+
+function dateOnlyFormatter(timeZone: string): Intl.DateTimeFormat {
+  let formatter = dateOnlyFormatters.get(timeZone);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat('en-CA', { timeZone });
+    dateOnlyFormatters.set(timeZone, formatter);
+  }
+  return formatter;
+}
+
+export function setBusinessTimeZone(timeZone: string | null | undefined): void {
+  if (!timeZone || timeZone === businessTimeZone) return;
+  try {
+    new Intl.DateTimeFormat('en-CA', { timeZone });
+    businessTimeZone = timeZone;
+  } catch (_error: unknown) {
+    // Invalid IANA name: keep the current business timezone.
+  }
+}
 
 export function todayInBusinessTimezone(): string {
-  return businessDateFormatter.format(new Date());
+  return dateOnlyFormatter(businessTimeZone).format(new Date());
 }
 
 export function daysAgoInBusinessTimezone(days: number): string {
-  return businessDateFormatter.format(new Date(Date.now() - days * 86400000));
+  return dateOnlyFormatter(businessTimeZone).format(new Date(Date.now() - days * 86400000));
 }

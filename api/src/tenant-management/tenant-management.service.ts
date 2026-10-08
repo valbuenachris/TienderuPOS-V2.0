@@ -116,7 +116,14 @@ type PlanRow = {
 };
 
 type SubscriptionIdRow = { id: string; billing_cycle: string | null };
-type SubscriptionPatchRow = { id: string; plan_id: string | null; plan_name: string | null; billing_cycle: string | null };
+type SubscriptionPatchRow = {
+  id: string;
+  plan_id: string | null;
+  plan_name: string | null;
+  billing_cycle: string | null;
+  price_monthly: string | null;
+  price_yearly: string | null;
+};
 type TenantBasicRow = { id: string; name: string; status: string };
 type CountRow = { count: number };
 type PaymentSummaryRow = {
@@ -206,6 +213,18 @@ function mapPlan(row: PlanRow): PlanRecord {
     created_at: row.created_at,
     tenants_count: row.tenants_count ?? 0
   };
+}
+
+function planMonthlyValue(priceMonthly: string | null, priceYearly: string | null): number | null {
+  if (priceMonthly !== null) {
+    const monthly = Number(priceMonthly);
+    if (Number.isFinite(monthly)) return monthly;
+  }
+  if (priceYearly !== null) {
+    const yearly = Number(priceYearly);
+    if (Number.isFinite(yearly)) return yearly / 12;
+  }
+  return null;
 }
 
 @Injectable()
@@ -445,10 +464,21 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
     if (input.plan_id !== undefined && input.plan_id !== subscription.plan_id) {
       const plan = await this.getActivePlan(input.plan_id);
       if (plan.id !== subscription.plan_id) {
+        const oldValue = planMonthlyValue(subscription.price_monthly, subscription.price_yearly);
+        const newValue = planMonthlyValue(plan.price_monthly, plan.price_yearly);
+        const direction = oldValue === null || newValue === null
+          ? 'change'
+          : newValue > oldValue ? 'upgrade' : newValue < oldValue ? 'downgrade' : 'change';
         await this.logActivity(
           tenantId,
           'plan_changed',
-          { from: subscription.plan_name, to: plan.name, plan_id: plan.id },
+          {
+            from: subscription.plan_name,
+            to: plan.name,
+            from_plan_id: subscription.plan_id,
+            to_plan_id: plan.id,
+            direction
+          },
           performedBy
         );
       }
@@ -923,7 +953,8 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
 
   private async latestSubscription(tenantId: string): Promise<SubscriptionPatchRow | null> {
     const result = await this.database.query<SubscriptionPatchRow>(
-      `SELECT s.id::text AS id, s.plan_id::text AS plan_id, p.name AS plan_name, s.billing_cycle
+      `SELECT s.id::text AS id, s.plan_id::text AS plan_id, p.name AS plan_name, s.billing_cycle,
+              p.price_monthly, p.price_yearly
        FROM public.tec_tenant_subscriptions s
        LEFT JOIN public.tec_subscription_plans p ON p.id = s.plan_id
        WHERE s.tenant_id = $1

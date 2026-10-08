@@ -8,6 +8,15 @@ type SalesTodayRow = { count: number; revenue: string };
 type MonthlyRevenueRow = { revenue: string; payments_count: number };
 type MrrRow = { mrr: string };
 type MonthCountRow = { count: number };
+type PlanChangesRow = { count: number; upgrades: number; downgrades: number };
+type RecentPlanChangeRow = {
+  tenant_id: string;
+  tenant_name: string;
+  from_plan: string | null;
+  to_plan: string | null;
+  direction: string | null;
+  date: string | null;
+};
 type RecentSaleRow = {
   tenant_id: string;
   tenant_name: string;
@@ -48,6 +57,7 @@ export class DashboardService {
         planChanges,
         cancellations,
         recentSales,
+        recentPlanChanges,
         paymentsStatus,
         trials
       ] = await Promise.all([
@@ -100,8 +110,10 @@ export class DashboardService {
            WHERE s.created_at >= (date_trunc('month', $1::date)::timestamp AT TIME ZONE $2)`,
           values
         ),
-        this.database.query<MonthCountRow>(
-          `SELECT COUNT(*)::integer AS count
+        this.database.query<PlanChangesRow>(
+          `SELECT COUNT(*)::integer AS count,
+                  COUNT(*) FILTER (WHERE details->>'direction' = 'upgrade')::integer AS upgrades,
+                  COUNT(*) FILTER (WHERE details->>'direction' = 'downgrade')::integer AS downgrades
            FROM public.tec_tenant_activity_logs
            WHERE action = 'plan_changed'
              AND performed_at >= (date_trunc('month', $1::date)::timestamp AT TIME ZONE $2)`,
@@ -126,6 +138,16 @@ export class DashboardService {
            WHERE pay.status = 'completed'
            ORDER BY pay.payment_date DESC NULLS LAST, pay.created_at DESC NULLS LAST
            LIMIT 8`
+        ),
+        this.database.query<RecentPlanChangeRow>(
+          `SELECT t.id::text AS tenant_id, t.name AS tenant_name,
+                  a.details->>'from' AS from_plan, a.details->>'to' AS to_plan,
+                  a.details->>'direction' AS direction, a.performed_at::text AS date
+           FROM public.tec_tenant_activity_logs a
+           JOIN public.tec_tenants t ON t.id = a.tenant_id
+           WHERE a.action = 'plan_changed'
+           ORDER BY a.performed_at DESC, a.id DESC
+           LIMIT 6`
         ),
         this.database.query<PaymentsStatusRow>(
           `SELECT
@@ -174,10 +196,13 @@ export class DashboardService {
           payments_count: monthlyRevenue.rows[0]?.payments_count ?? 0,
           new_subscriptions: newSubscriptions.rows[0]?.count ?? 0,
           plan_changes: planChanges.rows[0]?.count ?? 0,
+          upgrades: planChanges.rows[0]?.upgrades ?? 0,
+          downgrades: planChanges.rows[0]?.downgrades ?? 0,
           cancellations: cancellations.rows[0]?.count ?? 0
         },
         mrr: mrr.rows[0]?.mrr ?? '0.00',
         recent_sales: recentSales.rows,
+        recent_plan_changes: recentPlanChanges.rows,
         payments_status: paymentsStatus.rows[0] ?? {
           pending_count: 0,
           pending_amount: '0.00',

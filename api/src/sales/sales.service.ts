@@ -5,7 +5,8 @@ import { TableRow } from '../database/database.types';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { isAdminRole } from '../common/roles';
-import { BUSINESS_TIMEZONE, todayInBusinessTimezone } from '../common/timezone';
+import { TenantTimezoneService } from '../common/tenant-timezone.service';
+import { todayInTimeZone } from '../common/timezone';
 import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
@@ -67,6 +68,7 @@ type SaleDetailHeaderRow = SalesListRow & {
   total_discount: string | null;
   order_discount_id: string | null;
   customer_phone: string | null;
+  cashier_name: string | null;
 };
 
 type PaymentableSaleRow = {
@@ -88,7 +90,10 @@ function escapeLike(value: string): string {
 export class SalesService {
   private readonly logger = new Logger(SalesService.name);
 
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly timezone: TenantTimezoneService
+  ) {}
 
   async create(tenantId: string, user: PosUser, input: CreateSaleDto) {
     const isAdmin = isAdminRole(user.group_name);
@@ -366,7 +371,8 @@ export class SalesService {
     if (!isAdmin && !user.store_id) {
       throw new BadRequestException('Assign this POS user to a store before viewing sales');
     }
-    const day = date ?? todayInBusinessTimezone();
+    const timezone = await this.timezone.forTenant(tenantId);
+    const day = date ?? todayInTimeZone(timezone);
     const result = await this.database.query<DailyReportRow>(
       `SELECT TO_CHAR(created_at AT TIME ZONE $5, 'YYYY-MM-DD') AS day,
               COUNT(*)::integer AS sales_count,
@@ -379,7 +385,7 @@ export class SalesService {
          AND created_at < (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE $5)
          AND ($3::boolean OR store_id = $4)
        GROUP BY TO_CHAR(created_at AT TIME ZONE $5, 'YYYY-MM-DD')`,
-      [tenantId, day, isAdmin, user.store_id ?? 0, BUSINESS_TIMEZONE]
+      [tenantId, day, isAdmin, user.store_id ?? 0, timezone]
     );
     return result.rows[0] ?? {
       day,
@@ -409,6 +415,7 @@ export class SalesService {
 
     // Con filtro de cliente se ignora el rango de fechas: se busca en TODO el historial.
     if (from && to && customerPattern === null) {
+      const timezone = await this.timezone.forTenant(tenantId);
       const values: unknown[] = [tenantId, from, to];
       let storeFilter = '';
       if (!isAdmin) {
@@ -421,6 +428,8 @@ export class SalesService {
         customerFilter = ` AND customer_name ILIKE $${values.length}`;
       }
       values.push(pagination.limit, pagination.offset);
+      values.push(timezone);
+      const timezoneIndex = values.length;
       const result = await this.database.query<SalesListRow & { total_count: number }>(
         `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
                 grand_total::text AS grand_total, paid::text AS paid, total_items,
@@ -429,12 +438,12 @@ export class SalesService {
                 COUNT(*) OVER() AS total_count
          FROM public.tec_sales
          WHERE tenant_id = $1
-           AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
-           AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')
+           AND created_at >= ($2::date::timestamp AT TIME ZONE $${timezoneIndex})
+           AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $${timezoneIndex})
            ${storeFilter}
            ${customerFilter}
          ORDER BY created_at DESC, id DESC
-         LIMIT $${values.length - 1} OFFSET $${values.length}`,
+         LIMIT $${values.length - 2} OFFSET $${values.length - 1}`,
         values
       );
       const total = result.rows[0]?.total_count ?? 0;
@@ -491,10 +500,13 @@ export class SalesService {
               s.total_quantity::text AS total_quantity, s.status, s.created_at, s.created_by,
               s.store_id, s.total_reward_points, s.status_delivery,
               s.total_discount::text AS total_discount, s.order_discount_id,
-              c.phone AS customer_phone
+              c.phone AS customer_phone,
+              COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username) AS cashier_name
        FROM public.tec_sales s
        LEFT JOIN public.tec_customers c
          ON c.id = s.customer_id AND c.tenant_id = s.tenant_id
+       LEFT JOIN public.tec_users u
+         ON u.id = s.created_by AND u.tenant_id = s.tenant_id
        WHERE s.tenant_id = $1 AND s.id = $2${storeFilter}
        LIMIT 1`,
       values

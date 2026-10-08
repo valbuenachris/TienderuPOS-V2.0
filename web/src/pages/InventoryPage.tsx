@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useManagedProductsQuery } from '../pos-queries';
+import { formatMoney } from '../format';
 
 export default function InventoryPage() {
-  const { token, tenantId, stores } = useSession();
+  const { token, tenantId, stores, settings } = useSession();
+  const currency = settings?.currency_prefix || '$';
   const [storeId, setStoreId] = useState<number | null>(null);
   const [page, setPage] = useState(1);
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
@@ -32,7 +34,7 @@ export default function InventoryPage() {
         <div className="table-wrap">
           <table className="data-table">
             <thead>
-              <tr><th>Código</th><th>Nombre</th><th>Existencia</th><th>Precio tienda</th><th>Precio base</th></tr>
+              <tr><th>Código</th><th>Nombre</th><th>Existencia</th><th>Precio base</th><th>Precio tienda</th><th>Valor total</th></tr>
             </thead>
             <tbody>
               {products.map((product) => {
@@ -42,13 +44,14 @@ export default function InventoryPage() {
                     <td>{product.code || `#${product.id}`}</td>
                     <td>{product.name || '—'}</td>
                     <td><strong>{product.store_quantity ?? 0}</strong></td>
-                    <td>{product.store_price ?? '—'}</td>
-                    <td>{product.price ?? '—'}</td>
+                    <td>{product.cost === null || product.cost === undefined ? '—' : formatMoney(product.cost, currency)}</td>
+                    <td>{product.store_price === null || product.store_price === undefined ? '—' : formatMoney(product.store_price, currency)}</td>
+                    <td className="money-cell">{product.line_total_value === null || product.line_total_value === undefined ? '—' : formatMoney(product.line_total_value, currency)}</td>
                   </tr>
                 );
               })}
               {products.length === 0 && !productsQuery.isPending ? (
-                <tr><td colSpan={5} className="empty">No hay inventario para esta tienda.</td></tr>
+                <tr><td colSpan={6} className="empty">No hay inventario para esta tienda.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -59,6 +62,10 @@ export default function InventoryPage() {
           total={meta?.total ?? 0}
           onChange={setPage}
         />
+        <div className="inventory-total">
+          <span>Valor total del inventario</span>
+          <strong>{formatMoney(meta?.grand_total, currency)}</strong>
+        </div>
       </Panel>
     </>
   );

@@ -44,8 +44,20 @@ const ACTION_LABELS: Record<string, string> = {
   trial_extended: 'Prueba extendida',
   tenant_suspended: 'Tenant suspendido',
   tenant_reactivated: 'Tenant reactivado',
-  payment_recorded: 'Pago registrado'
+  payment_recorded: 'Pago registrado',
+  payment_requested: 'Solicitud de pago del tenant',
+  payment_confirmed: 'Pago confirmado'
 };
+
+function planChangeLabel(details: unknown): string | null {
+  if (!details || typeof details !== 'object' || Array.isArray(details)) return null;
+  const record = details as Record<string, unknown>;
+  const from = typeof record.from === 'string' ? record.from : null;
+  const to = typeof record.to === 'string' ? record.to : null;
+  if (!from && !to) return null;
+  const arrow = record.direction === 'upgrade' ? ' ↑' : record.direction === 'downgrade' ? ' ↓' : '';
+  return `${from ?? '—'} → ${to ?? '—'}${arrow}`;
+}
 
 export default function TenantDetailPage() {
   const { id = '' } = useParams();
@@ -228,7 +240,7 @@ export default function TenantDetailPage() {
                         <td>{formatDateOnly(entry.performed_at)}</td>
                         <td>{ACTION_LABELS[entry.action] ?? entry.action}</td>
                         <td>{entry.performed_by ?? '—'}</td>
-                        <td>{formatDetails(entry.details)}</td>
+                        <td>{entry.action === 'plan_changed' ? (planChangeLabel(entry.details) ?? formatDetails(entry.details)) : formatDetails(entry.details)}</td>
                       </tr>
                     ))}
                     {(activityQuery.data?.data ?? []).length === 0 && !activityQuery.isPending ? (

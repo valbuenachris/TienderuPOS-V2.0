@@ -11,9 +11,8 @@ import type { ReportCalendarPoint } from '../api';
 export default function DailySalesReport() {
   const { token, tenantId, settings } = useSession();
   const currency = settings?.currency_prefix || '$';
-  const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
+  const [year, setYear] = useState(() => Number(todayIso().slice(0, 4)));
+  const [month, setMonth] = useState(() => Number(todayIso().slice(5, 7)));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
 
   const grid = useMemo(() => monthGrid(year, month), [year, month]);

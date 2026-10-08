@@ -15,6 +15,7 @@ interface SaleTicketProps {
   logoUrl?: string | null;
   address?: string | null;
   phone?: string | null;
+  email?: string | null;
   nit?: string | null;
   thankYouMessage?: string | null;
   returnPolicy?: string | null;
@@ -64,6 +65,7 @@ export default function SaleTicket({
   logoUrl,
   address,
   phone,
+  email,
   nit,
   thankYouMessage,
   returnPolicy,
@@ -201,7 +203,12 @@ export default function SaleTicket({
         <div className="ticket-thanks">{thankYouMessage?.trim() || '¡Gracias por su compra!'}</div>
         {returnPolicy?.trim() ? <div className="ticket-legal">{returnPolicy}</div> : null}
         <div className="ticket-legal">Comprobante de venta · {siteName || 'Tienderu POS'}</div>
-        <div className="ticket-branding">Facturado con Tienderu POS - 3104039092</div>
+        <div className="ticket-branding">
+          <div className="ticket-branding-line">Facturado con Tienderu POS</div>
+          <div className="ticket-branding-contact">
+            {email?.trim() || 'info@tienderu.com'} - {phone?.trim() || '3104039092'}
+          </div>
+        </div>
       </div>
       </div>
       {preview ? (

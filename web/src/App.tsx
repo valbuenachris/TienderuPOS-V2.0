@@ -77,8 +77,8 @@ export default function App() {
               <Route path="/gastos" element={<AdminOnly><ExpensesPage /></AdminOnly>} />
               <Route path="/caja" element={<CashRegisterPage />} />
               <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />
+              <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             </Route>
-            <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             <Route path="/dashboard/global" element={<SuperAdminOnly><GlobalDashboardPage /></SuperAdminOnly>} />
             <Route path="/tenants" element={<SuperAdminOnly><TenantsPage /></SuperAdminOnly>} />
             <Route path="/tenant-management/tenants" element={<SuperAdminOnly><TenantsOverviewPage /></SuperAdminOnly>} />

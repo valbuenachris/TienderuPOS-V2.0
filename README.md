@@ -129,7 +129,7 @@ Notas del ticket: `show_qr_on_ticket`, `thank_you_message`, `return_policy` y `p
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:
 
-- **Vista global** (estado inicial del super admin, sin tenant): el selector muestra "Seleccionar tenant…" y el sidebar lista Dashboard global (🌍, en `/dashboard/global`), Gestión de tenants con sub-ítems (Tenants, Planes, Pagos de tenants, Datos de tenants) y Configuración. Las rutas de POS redirigen a `/dashboard/global`.
+- **Vista global** (estado inicial del super admin, sin tenant): el selector muestra "Seleccionar tenant…" y el sidebar lista Dashboard global (🌍, en `/dashboard/global`) y Gestión de tenants con sub-ítems (Tenants, Planes, Pagos de tenants, Datos de tenants). **Configuración no aparece** (es por tenant): las rutas de POS y `/config` redirigen a `/dashboard/global`.
 - **Vista tenant** (al elegir un tenant en el selector o con "Entrar" desde gestión): sidebar POS completo de ese tenant (POS, Dashboard, Ventas, …, Configuración) y el token pasa a ese contexto. Para volver a la vista global, elegir "Seleccionar tenant…" en el selector.
 
 Páginas de gestión:

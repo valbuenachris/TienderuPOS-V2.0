@@ -34,8 +34,7 @@ const GLOBAL_ITEMS: NavItem[] = [
   { to: '/tenant-management/tenants', label: 'Tenants', icon: '🏢', sub: true },
   { to: '/tenant-management/plans', label: 'Planes', icon: '💳', sub: true },
   { to: '/tenant-management/payments', label: 'Pagos de tenants', icon: '💰', sub: true },
-  { to: '/tenants', label: 'Datos de tenants', icon: '🗂️', sub: true },
-  { to: '/config', label: 'Configuración', icon: '⚙️' }
+  { to: '/tenants', label: 'Datos de tenants', icon: '🗂️', sub: true }
 ];
 
 const COLLAPSE_KEY = 'pos-gres-v2-sidebar-collapsed';
@@ -74,6 +73,7 @@ export default function AppLayout() {
   }, [collapsed]);
 
   const showGlobalMenu = isSuperAdmin && selectedTenantId === null;
+  const brandName = showGlobalMenu ? 'Tienderu POS · Manager' : settings?.site_name || 'POS';
   const items = TENANT_ITEMS.filter((item) => !item.admin || isAdmin);
 
   async function handleTenantChange(nextTenantId: string) {
@@ -100,7 +100,7 @@ export default function AppLayout() {
         <div className="sidebar-head">
           <div className="sidebar-brand">
             <span className="brand-mark small">P</span>
-            <strong>{settings?.site_name || 'POS'}</strong>
+            <strong>{brandName}</strong>
           </div>
           <button
             className="sidebar-collapse"

@@ -7,6 +7,7 @@ import CashRegisterPage from './pages/CashRegisterPage';
 import CustomersPage from './pages/CustomersPage';
 import DailySalesReport from './pages/DailySalesReport';
 import ExpensesPage from './pages/ExpensesPage';
+import GlobalDashboardPage from './pages/GlobalDashboardPage';
 import InventoryPage from './pages/InventoryPage';
 import LoginPage from './pages/LoginPage';
 import MonthlySalesReport from './pages/MonthlySalesReport';
@@ -19,6 +20,10 @@ import SettingsPage from './pages/SettingsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import TenantsPage from './pages/TenantsPage';
 import UsersPage from './pages/UsersPage';
+import TenantsOverviewPage from './pages/tenant-management/TenantsOverviewPage';
+import SubscriptionPlansPage from './pages/tenant-management/SubscriptionPlansPage';
+import TenantDetailPage from './pages/tenant-management/TenantDetailPage';
+import PaymentsPage from './pages/tenant-management/PaymentsPage';
 
 function RequireAuth() {
   const { token, user, loading, sessionError } = useSession();
@@ -43,6 +48,12 @@ function SuperAdminOnly({ children }: { children: ReactElement }) {
   return children;
 }
 
+function RequireTenantSelection() {
+  const { isSuperAdmin, selectedTenantId } = useSession();
+  if (isSuperAdmin && selectedTenantId === null) return <Navigate to="/dashboard/global" replace />;
+  return <Outlet />;
+}
+
 export default function App() {
   return (
     <SessionProvider>
@@ -51,22 +62,29 @@ export default function App() {
         <Route element={<RequireAuth />}>
           <Route element={<AppLayout />}>
             <Route index element={<Navigate to="/pos" replace />} />
-            <Route path="/pos" element={<PosPage />} />
-            <Route path="/dashboard" element={<DashboardPage />} />
-            <Route path="/ventas" element={<SalesHistoryPage />} />
-            <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
-            <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
-            <Route path="/clientes" element={<CustomersPage />} />
-            <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
-            <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
-            <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />
-            <Route path="/reportes/ventas-diarias" element={<AdminOnly><DailySalesReport /></AdminOnly>} />
-            <Route path="/reportes/ventas-mensuales" element={<AdminOnly><MonthlySalesReport /></AdminOnly>} />
-            <Route path="/gastos" element={<AdminOnly><ExpensesPage /></AdminOnly>} />
-            <Route path="/caja" element={<CashRegisterPage />} />
-            <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />
+            <Route element={<RequireTenantSelection />}>
+              <Route path="/pos" element={<PosPage />} />
+              <Route path="/dashboard" element={<DashboardPage />} />
+              <Route path="/ventas" element={<SalesHistoryPage />} />
+              <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
+              <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
+              <Route path="/clientes" element={<CustomersPage />} />
+              <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
+              <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
+              <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />
+              <Route path="/reportes/ventas-diarias" element={<AdminOnly><DailySalesReport /></AdminOnly>} />
+              <Route path="/reportes/ventas-mensuales" element={<AdminOnly><MonthlySalesReport /></AdminOnly>} />
+              <Route path="/gastos" element={<AdminOnly><ExpensesPage /></AdminOnly>} />
+              <Route path="/caja" element={<CashRegisterPage />} />
+              <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />
+            </Route>
             <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
+            <Route path="/dashboard/global" element={<SuperAdminOnly><GlobalDashboardPage /></SuperAdminOnly>} />
             <Route path="/tenants" element={<SuperAdminOnly><TenantsPage /></SuperAdminOnly>} />
+            <Route path="/tenant-management/tenants" element={<SuperAdminOnly><TenantsOverviewPage /></SuperAdminOnly>} />
+            <Route path="/tenant-management/tenants/:id" element={<SuperAdminOnly><TenantDetailPage /></SuperAdminOnly>} />
+            <Route path="/tenant-management/plans" element={<SuperAdminOnly><SubscriptionPlansPage /></SuperAdminOnly>} />
+            <Route path="/tenant-management/payments" element={<SuperAdminOnly><PaymentsPage /></SuperAdminOnly>} />
             <Route path="*" element={<Navigate to="/pos" replace />} />
           </Route>
         </Route>

@@ -9,6 +9,7 @@ interface SessionValue {
   token: string | null;
   user: PosUser | null;
   tenantId: string | null;
+  selectedTenantId: string | null;
   isAdmin: boolean;
   isSuperAdmin: boolean;
   stores: Store[];
@@ -19,6 +20,7 @@ interface SessionValue {
   sessionError: boolean;
   login(identity: string, password: string): Promise<void>;
   switchTenant(tenantId: string): Promise<void>;
+  clearTenantSelection(): void;
   logout(): void;
 }
 
@@ -28,6 +30,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [token, setAuthToken] = useState<string | null>(() => getToken());
   const [loggingIn, setLoggingIn] = useState(false);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
 
   const meQuery = usePosUserQuery(token);
   const user = meQuery.data?.user ?? null;
@@ -39,6 +42,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     token,
     user,
     tenantId,
+    selectedTenantId,
     isAdmin: ['admin', 'super_admin'].includes(user?.group_name?.toLowerCase() ?? ''),
     isSuperAdmin: meQuery.data?.super === true || user?.group_name?.toLowerCase() === 'super_admin',
     stores: storesQuery.data ?? [],
@@ -54,6 +58,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         queryClient.clear();
         setToken(result.access_token);
         setAuthToken(result.access_token);
+        setSelectedTenantId(null);
       } finally {
         setLoggingIn(false);
       }
@@ -63,6 +68,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       queryClient.clear();
       setToken(result.access_token);
       setAuthToken(result.access_token);
+      setSelectedTenantId(targetTenantId);
+    },
+    clearTenantSelection() {
+      setSelectedTenantId(null);
     },
     logout() {
       void logoutPos()
@@ -70,10 +79,11 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         .then(() => {
           setToken(null);
           setAuthToken(null);
+          setSelectedTenantId(null);
           queryClient.clear();
         });
     }
-  }), [token, user, tenantId, meQuery.data?.super, storesQuery.data, settingsQuery.data, settingsQuery.isLoading, meQuery.isLoading, meQuery.isError, loggingIn, queryClient]);
+  }), [token, user, tenantId, selectedTenantId, meQuery.data?.super, storesQuery.data, settingsQuery.data, settingsQuery.isLoading, meQuery.isLoading, meQuery.isError, loggingIn, queryClient]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

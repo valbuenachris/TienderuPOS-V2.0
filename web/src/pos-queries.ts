@@ -8,6 +8,7 @@ import {
   fetchCustomers,
   fetchDailyReport,
   fetchExpenses,
+  fetchGlobalDashboard,
   fetchManagedCustomers,
   fetchManagedProducts,
   fetchPosUser,
@@ -24,6 +25,13 @@ import {
   fetchSettings,
   fetchStores,
   fetchSuppliers,
+  fetchSubscriptionPlans,
+  fetchTenantActivity,
+  fetchTenantManagement,
+  fetchTenantPaymentSummary,
+  fetchTenantPayments,
+  fetchTenantPaymentsByTenant,
+  fetchTenantSubscription,
   fetchTenants,
   fetchTopProducts,
   fetchUsers,
@@ -34,7 +42,7 @@ import {
   updateManagedCustomer,
   updateManagedProduct
 } from './api';
-import type { ReportCalendarGroup } from './api';
+import type { ReportCalendarGroup, TenantPaymentFilters } from './api';
 
 export function useApiMutation<TInput, TResult>(mutationFn: (input: TInput) => Promise<TResult>) {
   return useMutation<TResult, Error, TInput>({ mutationFn });
@@ -124,6 +132,15 @@ export function useTenantsQuery(token: string | null, tenantId: string | null, e
   return useQuery({
     queryKey: ['tenants', tenantId],
     queryFn: fetchTenants,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useGlobalDashboardQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['global-dashboard'],
+    queryFn: fetchGlobalDashboard,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
@@ -365,6 +382,97 @@ export function useRegisterSummaryQuery(
     queryKey: ['register-summary', tenantId, storeId, date],
     queryFn: () => fetchRegisterSummary(date, storeId ?? undefined),
     enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useSubscriptionPlansQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['subscription-plans', tenantId],
+    queryFn: fetchSubscriptionPlans,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useTenantManagementQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['tenant-management', tenantId],
+    queryFn: fetchTenantManagement,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useTenantSubscriptionQuery(token: string | null, tenantId: string | null, tenantUuid: string | null) {
+  return useQuery({
+    queryKey: ['tenant-subscription', tenantId, tenantUuid],
+    queryFn: () => {
+      if (tenantUuid === null) throw new Error('A tenant id is required to load the subscription');
+      return fetchTenantSubscription(tenantUuid);
+    },
+    enabled: Boolean(token && tenantId && tenantUuid),
+    retry: false
+  });
+}
+
+export function useTenantPaymentsQuery(
+  token: string | null,
+  tenantId: string | null,
+  tenantUuid: string | null,
+  page = 1,
+  limit = 20
+) {
+  return useQuery({
+    queryKey: ['tenant-payments', tenantId, tenantUuid, page, limit],
+    queryFn: () => {
+      if (tenantUuid === null) throw new Error('A tenant id is required to load payments');
+      return fetchTenantPaymentsByTenant(tenantUuid, page, limit);
+    },
+    enabled: Boolean(token && tenantId && tenantUuid),
+    retry: false
+  });
+}
+
+export function useGlobalTenantPaymentsQuery(
+  token: string | null,
+  tenantId: string | null,
+  filters: TenantPaymentFilters,
+  page = 1,
+  limit = 20,
+  enabled = false
+) {
+  return useQuery({
+    queryKey: ['tenant-payments-global', tenantId, filters, page, limit],
+    queryFn: () => fetchTenantPayments(filters, page, limit),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useTenantPaymentSummaryQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['tenant-payments-summary', tenantId],
+    queryFn: fetchTenantPaymentSummary,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useTenantActivityQuery(
+  token: string | null,
+  tenantId: string | null,
+  tenantUuid: string | null,
+  page = 1,
+  limit = 20
+) {
+  return useQuery({
+    queryKey: ['tenant-activity', tenantId, tenantUuid, page, limit],
+    queryFn: () => {
+      if (tenantUuid === null) throw new Error('A tenant id is required to load the activity log');
+      return fetchTenantActivity(tenantUuid, page, limit);
+    },
+    enabled: Boolean(token && tenantId && tenantUuid),
     retry: false
   });
 }

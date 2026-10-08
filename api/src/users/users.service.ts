@@ -1,10 +1,10 @@
-import { createHash } from 'node:crypto';
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { hashPassword } from '../auth/password.util';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
+import { hashForStorage, PasswordStorageMethod } from '../common/password';
 import { DatabaseService } from '../database/database.service';
+import { TenantManagementService } from '../tenant-management/tenant-management.service';
 import { CreateUserDto, UpdateUserDto } from './user.dto';
 
 type UserListRow = {
@@ -39,10 +39,14 @@ function escapeLike(value: string): string {
 
 @Injectable()
 export class UsersService {
-  private readonly passwordMethod: 'sha1' | 'bcrypt';
+  private readonly passwordMethod: PasswordStorageMethod;
   private readonly bcryptRounds: number;
 
-  constructor(private readonly database: DatabaseService, config: ConfigService) {
+  constructor(
+    private readonly database: DatabaseService,
+    config: ConfigService,
+    private readonly tenantManagement: TenantManagementService
+  ) {
     this.passwordMethod = config.get<string>('USER_PASSWORD_METHOD') === 'bcrypt' ? 'bcrypt' : 'sha1';
     this.bcryptRounds = Number(config.get('BCRYPT_ROUNDS') ?? 12);
   }
@@ -66,11 +70,12 @@ export class UsersService {
   }
 
   async create(tenantId: string, input: CreateUserDto): Promise<UserListRow> {
+    await this.tenantManagement.assertCanAddUser(tenantId);
     await this.assertUnique(tenantId, input.username, input.email);
     const group = await this.resolveGroup(tenantId, input.role);
     await this.assertStore(tenantId, input.store_id);
 
-    const passwordHash = await this.hashForStorage(input.password);
+    const passwordHash = await hashForStorage(input.password, this.passwordMethod, this.bcryptRounds);
     const result = await this.database.query<UserListRow>(
       `INSERT INTO public.tec_users
          (tenant_id, username, email, first_name, last_name, password, group_id, store_id, active)
@@ -115,7 +120,7 @@ export class UsersService {
     }
 
     let passwordHash: string | null = null;
-    if (input.password !== undefined) passwordHash = await this.hashForStorage(input.password);
+    if (input.password !== undefined) passwordHash = await hashForStorage(input.password, this.passwordMethod, this.bcryptRounds);
 
     const result = await this.database.query<UserListRow>(
       `UPDATE public.tec_users
@@ -255,8 +260,4 @@ export class UsersService {
     }
   }
 
-  private async hashForStorage(password: string): Promise<string> {
-    if (this.passwordMethod === 'bcrypt') return hashPassword(password, this.bcryptRounds);
-    return createHash('sha1').update(password, 'utf8').digest('hex');
-  }
 }

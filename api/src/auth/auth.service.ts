@@ -26,6 +26,7 @@ type AuthenticatedUser = Omit<UserCandidate, 'tenant_id' | 'active'> & {
   active: 1;
   group_name: string | null;
 };
+type LoginLookupRow = UserCandidate & { tenant_status: string | null };
 type NewSession = Pick<TableRow<'tec_sessions'>, 'id'> & {
   tenant_id: string;
   ip_address: string | null;
@@ -69,7 +70,11 @@ export class AuthService {
 
   async login(identityInput: string, password: string, host: string, ipAddress: string) {
     const identity = identityInput.trim();
-    const tenantId = this.hostTenantMap.get(host.toLowerCase()) ?? this.defaultTenantId;
+    // Single-domain SaaS: the tenant comes from the user's own `tenant_id`, never
+    // from the HTTP Host header. Host is only a fallback bucket for lockout records
+    // when the identity does not match any user.
+    const matched = await this.findUserByIdentity(identity);
+    const tenantId = matched?.tenant_id?.toLowerCase() ?? this.resolveTenantFallback(host);
     const lockoutStart = Math.floor(Date.now() / 1000) - this.lockoutSeconds;
     const attempts = await this.supabase.client
       .from('tec_login_attempts')
@@ -82,25 +87,16 @@ export class AuthService {
       throw new HttpException('Too many failed logins; try again later', HttpStatus.TOO_MANY_REQUESTS);
     }
 
-    const userSelect = 'id, tenant_id, username, email, first_name, last_name, group_id, store_id, active, password';
-    const [usernameResult, emailResult] = await Promise.all([
-      this.supabase.client.from('tec_users').select(userSelect)
-        .eq('tenant_id', tenantId).eq('active', 1).eq('username', identity).limit(2),
-      this.supabase.client.from('tec_users').select(userSelect)
-        .eq('tenant_id', tenantId).eq('active', 1).eq('email', identity).limit(2)
-    ]);
-    if (usernameResult.error || emailResult.error) throw new Error('Could not look up POS user');
-
-    const userCandidates = new Map<number, UserCandidate>();
-    for (const row of [...(usernameResult.data ?? []), ...(emailResult.data ?? [])]) {
-      userCandidates.set(row.id, row);
-    }
-    if (userCandidates.size !== 1) {
+    if (!matched) {
       await this.recordFailure(tenantId, ipAddress, identity);
       throw new UnauthorizedException('Invalid username or password');
     }
+    if (matched.tenant_status === 'inactive' || matched.tenant_status === 'deleted') {
+      await this.recordFailure(tenantId, ipAddress, identity);
+      throw new ForbiddenException('El tenant está inactivo o suspendido');
+    }
 
-    const row = [...userCandidates.values()][0];
+    const row = matched;
     let groupName: string | null = null;
     if (row.group_id !== null) {
       const tenantGroup = await this.supabase.client.from('tec_groups')
@@ -261,6 +257,32 @@ export class AuthService {
         ? String((error as { code?: unknown }).code) : 'UNKNOWN';
       console.error('Login failure audit deferred', { code });
     }
+  }
+
+  private async findUserByIdentity(identity: string): Promise<LoginLookupRow | null> {
+    const result = await this.database.query<LoginLookupRow>(
+      `SELECT u.id, u.tenant_id::text AS tenant_id, u.username, u.email, u.first_name, u.last_name,
+              u.group_id, u.store_id, u.active, u.password, t.status AS tenant_status
+       FROM public.tec_users u
+       LEFT JOIN public.tec_tenants t ON t.id = u.tenant_id
+       WHERE u.active = 1
+         AND (lower(u.username) = lower($1) OR lower(u.email) = lower($1))
+       ORDER BY (lower(u.username) = lower($1)) DESC, u.id ASC
+       LIMIT 3`,
+      [identity]
+    );
+    const rows = result.rows;
+    if (rows.length === 0) return null;
+    const exactUsername = rows.filter((row) => row.username?.toLowerCase() === identity.toLowerCase());
+    const exactEmail = rows.filter((row) => row.email?.toLowerCase() === identity.toLowerCase());
+    const matches = exactUsername.length > 0 ? exactUsername : exactEmail;
+    // Ambiguous or no exact match: fail as invalid credentials (no tenant enumeration).
+    return matches.length === 1 ? matches[0] : null;
+  }
+
+  private resolveTenantFallback(host: string): string {
+    const hostname = (host || '').toLowerCase();
+    return this.hostTenantMap.get(hostname) ?? this.defaultTenantId;
   }
 
   private validateUuid(value: string): string {

@@ -1,6 +1,6 @@
 # POS v2
 
-Nuevo POS con NestJS/TypeScript y React/TypeScript, separado del PHP legacy. No contiene migraciones ni DDL.
+Nuevo POS con NestJS/TypeScript y React/TypeScript, separado del PHP legacy. No genera migraciones automáticas ni DDL en runtime: los scripts DDL aprobados viven en `docs/migrations/` y los ejecuta el operador una sola vez.
 
 ## Reglas de datos
 
@@ -89,9 +89,9 @@ En la edición de producto hay una galería de 3 ranuras: subir, cambiar o elimi
 
 ## Configuración editable (solo admin)
 
-La página `/config` es editable y usa `PUT /api/settings` (solo admin). `GET /api/settings` (campos editables + `supported`) y `PUT /api/settings`/logo quedaron **solo admin/super_admin**; `GET /api/settings/pos` (autenticado) devuelve solo el subconjunto de visualización que usan la sesión y el ticket (nombre, moneda, logo, textos, QR/ancho). La API **no asume columnas**: consulta `information_schema.columns` de `public.tec_settings` (caché de 30 s) y solo lee/escribe la intersección con su lista blanca (`site_name`, `currency_prefix`, `default_customer`, `address`, `phone`, `email`, `nit`, `timezone`, `language`, `default_tax`, `decimal_digits`, `thank_you_message`, `return_policy`, `show_qr_on_ticket`, `printer_width`, `logo_url`). Los campos sin columna aparecen deshabilitados y la respuesta incluye `supported`. Los campos SMTP nunca se exponen ni se editan. El logo se elige con vista previa inmediata y se sube junto con "Guardar cambios" (`POST /api/settings/logo`, máx. 2 MB, PNG/JPG/WEBP/SVG) al bucket de productos bajo el prefijo `logos/`; "Eliminar" lo borra del storage y pone `logo_url = NULL`. Nginx permite hasta 5 MB en `/api/`.
+La página `/config` es editable y usa `PUT /api/settings` (solo admin). `GET /api/settings` (campos editables + `supported`) y `PUT /api/settings`/logo quedaron **solo admin/super_admin**; `GET /api/settings/pos` (autenticado) devuelve solo el subconjunto de visualización que usan la sesión y el ticket (nombre, moneda, logo, textos, QR/ancho). La API **no asume columnas**: consulta `information_schema.columns` de `public.tec_settings` (caché de 30 s) y solo lee/escribe la intersección con su lista blanca (`site_name`, `currency_prefix`, `default_customer`, `address`, `phone`, `email`, `nit`, `timezone`, `language`, `default_tax`, `decimal_digits`, `thank_you_message`, `return_policy`, `show_qr_on_ticket`, `printer_width`, `logo_url`). Los campos sin columna aparecen deshabilitados y la respuesta incluye `supported`. Los campos SMTP nunca se exponen ni se editan. El logo se elige con vista previa inmediata y se sube junto con "Guardar cambios" (`POST /api/settings/logo`, máx. 2 MB, PNG/JPG/WEBP/SVG) al bucket de productos bajo el prefijo `logos/`; "Eliminar" lo borra del storage y pone `logo_url = NULL`. Nginx permite hasta 5 MB en `/api/`. El **proxy frontal (Nginx Proxy Manager)** también debe permitirlo: en Advanced del Proxy Host añadir `client_max_body_size 5m;` (sin esto, archivos >1 MB fallan con 413). El bucket `SUPABASE_PRODUCT_BUCKET` (default `productos`) debe existir y ser público (`docs/migrations/v0.3.20-storage-bucket.sql` o Dashboard → Storage → New bucket). Los logs de la API registran tenant/tamaño/path/error de cada subida de logo.
 
-`tec_settings` es **global** (no tiene `tenant_id`): hoy la edición afecta a todos los tenants y usa la primera fila (`setting_id = 1`). Para habilitar los campos que falten, ejecutar una sola vez (DDL manual aprobada):
+`tec_settings` es la tabla **legada** (global, primera fila): desde v0.3.16 solo se usa como fuente del backfill y como fallback mientras `tec_tenant_settings` no exista; no debe editarse para configurar tenants individuales. Para habilitar en ella los campos que falten (solo necesario en modo legacy/fallback), ejecutar una sola vez (DDL manual aprobada):
 
 ```sql
 ALTER TABLE public.tec_settings
@@ -110,21 +110,64 @@ ALTER TABLE public.tec_settings
   ADD COLUMN IF NOT EXISTS logo_url varchar(500);
 ```
 
-Para que la configuración sea **por tenant** (opcional; el código detecta `tenant_id` automáticamente y usa la fila del tenant si existe):
+Configuración **por tenant** (v0.3.16, DDL aprobado): la API lee/escribe `public.tec_tenant_settings` (una fila por tenant, `tenant_id` único) con branding, datos fiscales/contacto, moneda/zona/idioma, impuestos y campos del ticket. Antes de desplegar v0.3.16, ejecutar una vez:
 
-```sql
-ALTER TABLE public.tec_settings ADD COLUMN IF NOT EXISTS tenant_id uuid;
-UPDATE public.tec_settings SET tenant_id = '<UUID_DEL_TENANT_ORIGINAL>' WHERE tenant_id IS NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS tec_settings_tenant_uq
-  ON public.tec_settings (tenant_id) WHERE tenant_id IS NOT NULL;
--- Duplicar la fila base para cada tenant adicional:
--- INSERT INTO public.tec_settings (site_name, currency_prefix, default_customer, tenant_id)
--- SELECT site_name, currency_prefix, default_customer, '<UUID_TENANT_NUEVO>'
--- FROM public.tec_settings WHERE tenant_id = '<UUID_DEL_TENANT_ORIGINAL>';
+```sh
+psql "$DATABASE_URL" -f docs/migrations/v0.3.16-tenant-settings.sql
 ```
+
+El script es idempotente y backfillea a los tenants existentes: el **tenant más antiguo** hereda la fila legada completa de `tec_settings` (así "Skin" queda igual) y los demás arrancan con `site_name = nombre del tenant` y los defaults globales (moneda/zona/idioma, impuestos, ticket). Reglas:
+
+- Si la tabla existe, `GET /api/settings`, `GET /api/settings/pos`, `PUT /api/settings` y los logos (`POST/DELETE /api/settings/logo`) operan **solo sobre la fila del tenant activo**; si falta, se provisiona con `site_name = nombre del tenant`.
+- Al crear un tenant (`POST /api/tenants`) se crea su fila de settings automáticamente.
+- Si la tabla aún no existe, la API mantiene el modo global anterior sobre `tec_settings` (avisa en logs) y **la detecta sola en ≤30 s** cuando la crees; ya no hace falta reiniciar, basta refrescar la página.
+- `tec_settings` queda como legado (fuente del backfill y del modo fallback) y no debe usarse para configurar tenants individuales.
 
 Notas del ticket: `show_qr_on_ticket`, `thank_you_message`, `return_policy` y `printer_width` se aplican en `SaleTicket`; con `80mm` se inyecta `@page { size: 80mm auto }`. `address`, `phone` y `nit` se imprimen en la cabecera si existen.
 
+## Plataforma de gestión de tenants (v0.3.11)
+
+El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:
+
+- **Vista global** (estado inicial del super admin, sin tenant): el selector muestra "Seleccionar tenant…" y el sidebar lista Dashboard global (🌍, en `/dashboard/global`), Gestión de tenants con sub-ítems (Tenants, Planes, Pagos de tenants, Datos de tenants) y Configuración. Las rutas de POS redirigen a `/dashboard/global`.
+- **Vista tenant** (al elegir un tenant en el selector o con "Entrar" desde gestión): sidebar POS completo de ese tenant (POS, Dashboard, Ventas, …, Configuración) y el token pasa a ese contexto. Para volver a la vista global, elegir "Seleccionar tenant…" en el selector.
+
+Páginas de gestión:
+
+- `/tenant-management/tenants`: tarjetas de resumen (activos, en prueba, por vencer en 7 días, suspendidos), filtros por estado/plan/por vencer y búsqueda por nombre, host o email del admin; acciones rápidas para cambiar plan, extender prueba y suspender/reactivar.
+- `/tenant-management/tenants/:id`: ficha con pestañas **Resumen** (suscripción, fechas y uso vs límites del plan), **Pagos** (historial + registrar pago manual), **Actividad** (auditoría de eventos) y **Acciones** (entrar al tenant, editar datos, cambiar plan, extender prueba, suspender/reactivar, eliminar).
+- `/tenant-management/plans`: CRUD de planes (precio mensual/anual, límites de usuarios/tiendas —`-1` = ilimitado—, características, activar/desactivar y tenants por plan).
+- `/tenant-management/payments`: pagos globales con filtros por fechas, tenant, estado, método y rango de monto; resumen del mes (ingresos, completados, pendientes, fallidos) y exportación CSV de la página actual.
+- `/tenants` sigue disponible como **Datos de tenants** (alta, edición, activar/desactivar, entrar y eliminar).
+
+Antes del despliegue, ejecutar una sola vez el script aprobado:
+
+```sh
+psql "$DATABASE_URL" -f docs/migrations/v0.3.11-tenant-management.sql
+```
+
+Crea `tec_subscription_plans`, `tec_tenant_subscriptions`, `tec_tenant_payments` y `tec_tenant_activity_logs` con sus índices, siembra los planes **Gratuito, Básico, Profesional y Empresarial** y asigna Plan Gratuito activo a los tenants existentes que no tengan suscripción. `performed_by` es INTEGER porque los IDs de `tec_users` son enteros. Si la API arranca sin las tablas, los endpoints de gestión devuelven **503** con un mensaje claro y el resto del POS sigue operando; reiniciar la API tras ejecutar el script.
+
+Endpoints (todos `SuperAdminGuard`): `GET/POST /api/tenant-management/plans`, `PATCH /api/tenant-management/plans/:id`, `GET /api/tenant-management/tenants`, `GET/PATCH /api/tenant-management/tenants/:id/subscription`, `POST /api/tenant-management/tenants/:id/trial/extend`, `POST .../suspend`, `POST .../reactivate`, `GET /api/tenant-management/payments`, `GET /api/tenant-management/payments/summary`, `GET /api/tenant-management/tenants/:id/payments`, `POST /api/tenant-management/tenants/:id/payments/record`, `GET /api/tenant-management/tenants/:id/activity`.
+
+Reglas de negocio: los tenants nuevos se crean en **prueba de 14 días** con el plan gratuito (o el elegido si es gratis); si al crear se elige un plan **de pago** (precio > 0), la suscripción nace **activa mensual** con `subscription_end_date`/`next_billing_date` a +1 mes (se registra como `plan_changed`/pago después con "Registrar pago"); un trabajo interno revisa vencimientos al arrancar y cada 6 h (pruebas sin suscripción vencidas y suscripciones con `auto_renew = false` vencidas pasan a `expired`); suspender desactiva también el tenant (bloquea login) y reactivar restaura ambos; registrar un pago activa la suscripción y fija `subscription_end_date`/`next_billing_date` (+1 mes o año según el ciclo); al crear usuarios se aplica el límite `max_users` del plan (los tenants sin plan no se bloquean; `assertCanAddStore` ya existe pero aún no hay endpoint de creación de tiendas). Los recordatorios por email quedan para una fase futura (no hay servicio de correo).
+
+## Dominio único (v0.3.18)
+
+Todos los tenants entran por `https://pos.tienderu.com`; el tenant se resuelve por las credenciales del usuario (`tec_users.tenant_id`, el Host ya no identifica al tenant) y el super admin arranca en vista global y cambia de contexto con el selector **Tenant activo** (`/api/auth/switch-tenant`). Antes del despliegue, ejecutar una vez (no borra nada: solo actualiza `tec_tenants.host` y elimina el índice/constraint único de `host`, DDL aprobado; si prefieres no tocar constraints usa `SET host = NULL` y omite esos pasos):
+
+```sh
+psql "$DATABASE_URL" -f docs/migrations/v0.3.18-single-domain.sql
+```
+
+Checklist DNS + Nginx Proxy Manager:
+
+1. **DNS**: registro A `pos.tienderu.com` → IP del VPS del proxy.
+2. **NPM**: Proxy Host `pos.tienderu.com` → Forward Hostname `pos-gres-v2-web`, Port `80`, red `npm_net`, Websockets activo, `client_max_body_size 5m`.
+3. **Redirect opcional**: Proxy Host `skin.tienderu.com` con Custom Nginx `return 301 https://pos.tienderu.com$request_uri;` (o mantener el proxy actual: los hosts viejos siguen funcionando porque el login ya no depende del host).
+4. **SSL**: emitir/renovar el certificado del nuevo dominio en NPM.
+5. Probar el login de un usuario de cada tenant y el switch del super admin antes de retirar hosts antiguos.
+
 ## Super administrador (Fase 1 — backend)
 
-Registro de tenants aprobado como única excepción de DDL: `tec_tenants (id uuid PK, name, host, status, created_at)`. El super admin es un grupo **compartido** `tec_groups(name='super_admin', tenant_id IS NULL)` y un `tec_users` en el tenant default. Endpoints: `GET/POST /api/tenants` y `POST /api/auth/switch-tenant` (todos con `SuperAdminGuard`). `AdminGuard` acepta `admin` y `super_admin`. **Todos los tokens llevan `home_tenant_id`** (igual a `tenant_id` en el login; tras `switch-tenant` queda el hogar y `tenant_id` es el destino) y **`super: true`** cuando el grupo resuelto es `super_admin`. La sesión refleja `homeTenantId` y `super`, y `TenantContextGuard` rechaza cualquier inconsistencia; el scope cross-tenant exige `claims.super === true` **y** grupo `super_admin`. `GET /api/auth/me` devuelve `super: boolean`. La auditoría queda en logs del API (MVP). En el frontend, el super admin ve un selector de **tenant activo** en el sidebar (llama `switch-tenant`, reemplaza el token y limpia la caché de React Query) y la página `/tenants` (ruta `SuperAdminOnly`) con métricas (usuarios/tiendas/ventas), alta de tenants y botón "Entrar".
+Registro de tenants aprobado como única excepción de DDL: `tec_tenants (id uuid PK, name, host, status, created_at)`. El super admin es un grupo **compartido** `tec_groups(name='super_admin', tenant_id IS NULL)` y un `tec_users` en el tenant default. Endpoints: `GET/POST /api/tenants`, `GET /api/dashboard/global` y `POST /api/auth/switch-tenant` (todos con `SuperAdminGuard`). `AdminGuard` acepta `admin` y `super_admin`. **Todos los tokens llevan `home_tenant_id`** (igual a `tenant_id` en el login; tras `switch-tenant` queda el hogar y `tenant_id` es el destino) y **`super: true`** cuando el grupo resuelto es `super_admin`. La sesión refleja `homeTenantId` y `super`, y `TenantContextGuard` rechaza cualquier inconsistencia; el scope cross-tenant exige `claims.super === true` **y** grupo `super_admin`. `GET /api/auth/me` devuelve `super: boolean`. La auditoría queda en logs del API (MVP). En el frontend, el super admin ve un selector de **tenant activo** en el sidebar (llama `switch-tenant`, reemplaza el token y limpia la caché de React Query), la página `/tenants` (ruta `SuperAdminOnly`) con métricas (usuarios/tiendas/ventas), alta de tenants y botón "Entrar", y la página `/dashboard/global` (ítem "Dashboard global", `SuperAdminOnly`) con métricas agregadas de todos los tenants, desglose de cobros de hoy y el top 5 de tenants por ventas del día (con acción "Entrar"). Al crear un tenant, el backend aprovisiona en una transacción el registro, la tienda `Tienda Principal` y un **usuario admin** (`<slug>_admin`, con sufijo numérico si colisiona) con contraseña generada; la respuesta incluye `admin_username`/`admin_password` (solo una vez) y la UI muestra un modal de credenciales con botones de copiado y el aviso de que no se volverán a mostrar. El login es **por credenciales** (dominio único): la API busca el usuario por `username`/`email` en `tec_users` y usa su `tenant_id`; el header Host ya no identifica al tenant. `TENANT_HOST_MAP`/`DEFAULT_TENANT_ID` quedan solo como bucket de intentos fallidos para identidades desconocidas. Los tenants se pueden **editar** (nombre, host —opcional/limpiable— y estado) con `PATCH /api/tenants/:id` y **activar/desactivar** desde la tabla; los inactivos se atenúan, bloquean "Entrar" y no resuelven login. También se pueden **eliminar** (`DELETE /api/tenants/:id`, 204) cuando no tienen ventas, usuarios activos (distintos del admin) ni inventario: es un **soft delete** (`status='deleted'` y `host=NULL`) que no borra datos ni requiere DDL; el tenant activo no puede eliminarse a sí mismo.

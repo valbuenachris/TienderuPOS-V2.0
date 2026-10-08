@@ -309,6 +309,9 @@ export async function apiRequest<T>(path: string, init: RequestInit = {}): Promi
   if (response.status === 204) return undefined as T;
   const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
+    if (response.status === 413) {
+      throw new Error('El archivo supera el límite del proxy (413). Ajusta client_max_body_size a 5m en Nginx Proxy Manager.');
+    }
     throw new Error(readErrorMessage(payload));
   }
   return payload as T;
@@ -352,14 +355,240 @@ export interface SwitchTenantResult {
 
 export const fetchTenants = () => apiRequest<TenantRecord[]>('/tenants');
 
+export interface TenantBootstrapResult extends TenantRecord {
+  admin_username: string;
+  admin_password: string;
+}
+
 export const createTenant = (payload: CreateTenantPayload) =>
-  apiRequest<TenantRecord>('/tenants', { method: 'POST', body: JSON.stringify(payload) });
+  apiRequest<TenantBootstrapResult>('/tenants', { method: 'POST', body: JSON.stringify(payload) });
+
+export interface UpdateTenantPayload {
+  name?: string;
+  host?: string | null;
+  status?: 'active' | 'inactive';
+}
+
+export const updateTenant = (id: string, payload: UpdateTenantPayload) =>
+  apiRequest<TenantRecord>(`/tenants/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const deleteTenant = (id: string) =>
+  apiRequest<void>(`/tenants/${id}`, { method: 'DELETE' });
+
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  description: string | null;
+  price_monthly: string | null;
+  price_yearly: string | null;
+  max_users: number | null;
+  max_stores: number | null;
+  features: string[];
+  is_active: boolean;
+  created_at: string | null;
+  tenants_count: number;
+}
+
+export interface SubscriptionPlanPayload {
+  name: string;
+  description?: string;
+  price_monthly?: string;
+  price_yearly?: string;
+  max_users?: number;
+  max_stores?: number;
+  features?: string[];
+  is_active?: boolean;
+}
+
+export interface TenantManagementRow {
+  id: string;
+  name: string;
+  host: string | null;
+  tenant_status: string;
+  created_at: string | null;
+  users_count: number;
+  stores_count: number;
+  admin_email: string | null;
+  subscription_id: string | null;
+  subscription_status: string | null;
+  trial_start_date: string | null;
+  trial_end_date: string | null;
+  subscription_start_date: string | null;
+  subscription_end_date: string | null;
+  billing_cycle: string | null;
+  last_payment_date: string | null;
+  last_payment_amount: string | null;
+  next_billing_date: string | null;
+  auto_renew: boolean | null;
+  plan_id: string | null;
+  plan_name: string | null;
+  price_monthly: string | null;
+  price_yearly: string | null;
+  max_users: number | null;
+  max_stores: number | null;
+}
+
+export interface UpdateTenantSubscriptionPayload {
+  plan_id?: string;
+  billing_cycle?: 'monthly' | 'yearly';
+  auto_renew?: boolean;
+}
+
+export interface ExtendTrialPayload {
+  trial_end_date: string;
+  reason?: string;
+}
+
+export interface SuspendManagedTenantPayload {
+  reason: string;
+  end_date?: string;
+}
+
+export interface TenantPayment {
+  id: string;
+  subscription_id: string;
+  tenant_id: string;
+  tenant_name?: string | null;
+  plan_name?: string | null;
+  amount: string;
+  payment_date: string | null;
+  payment_method: string | null;
+  status: string | null;
+  invoice_url: string | null;
+  notes: string | null;
+  created_at: string | null;
+}
+
+export interface RecordTenantPaymentPayload {
+  amount: string;
+  payment_date?: string;
+  payment_method?: string;
+  notes?: string;
+}
+
+export interface TenantPaymentFilters {
+  tenant_id?: string;
+  status?: string;
+  method?: string;
+  from?: string;
+  to?: string;
+  min_amount?: string;
+  max_amount?: string;
+}
+
+export interface TenantPaymentSummary {
+  month: string;
+  revenue_this_month: string;
+  pending_total: string;
+  failed_total: string;
+  refunded_total: string;
+  completed_this_month: number;
+}
+
+export interface TenantActivityLog {
+  id: string;
+  tenant_id: string;
+  action: string;
+  details: unknown;
+  performed_by: number | null;
+  performed_at: string | null;
+}
+
+export const fetchSubscriptionPlans = () =>
+  apiRequest<SubscriptionPlan[]>('/tenant-management/plans');
+
+export const createSubscriptionPlan = (payload: SubscriptionPlanPayload) =>
+  apiRequest<SubscriptionPlan>('/tenant-management/plans', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateSubscriptionPlan = (id: string, payload: Partial<SubscriptionPlanPayload>) =>
+  apiRequest<SubscriptionPlan>(`/tenant-management/plans/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
+
+export const fetchTenantManagement = () =>
+  apiRequest<TenantManagementRow[]>('/tenant-management/tenants');
+
+export const fetchTenantSubscription = (id: string) =>
+  apiRequest<TenantManagementRow>(`/tenant-management/tenants/${id}/subscription`);
+
+export const updateTenantSubscription = (id: string, payload: UpdateTenantSubscriptionPayload) =>
+  apiRequest<TenantManagementRow>(`/tenant-management/tenants/${id}/subscription`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const extendTenantTrial = (id: string, payload: ExtendTrialPayload) =>
+  apiRequest<TenantManagementRow>(`/tenant-management/tenants/${id}/trial/extend`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const suspendManagedTenant = (id: string, payload: SuspendManagedTenantPayload) =>
+  apiRequest<TenantManagementRow>(`/tenant-management/tenants/${id}/suspend`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const reactivateManagedTenant = (id: string) =>
+  apiRequest<TenantManagementRow>(`/tenant-management/tenants/${id}/reactivate`, { method: 'POST' });
+
+export const fetchTenantPayments = (filters: TenantPaymentFilters, page = 1, limit = 20) =>
+  apiRequest<Paginated<TenantPayment>>(
+    withQuery('/tenant-management/payments', { ...filters, page, limit })
+  );
+
+export const fetchTenantPaymentsByTenant = (id: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<TenantPayment>>(
+    withQuery(`/tenant-management/tenants/${id}/payments`, { page, limit })
+  );
+
+export const fetchTenantPaymentSummary = () =>
+  apiRequest<TenantPaymentSummary>('/tenant-management/payments/summary');
+
+export const recordTenantPayment = (id: string, payload: RecordTenantPaymentPayload) =>
+  apiRequest<{ payment: TenantPayment; tenant_id: string; subscription_id: string }>(
+    `/tenant-management/tenants/${id}/payments/record`,
+    { method: 'POST', body: JSON.stringify(payload) }
+  );
+
+export const fetchTenantActivity = (id: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<TenantActivityLog>>(
+    withQuery(`/tenant-management/tenants/${id}/activity`, { page, limit })
+  );
 
 export const switchTenant = (tenantId: string) =>
   apiRequest<SwitchTenantResult>('/auth/switch-tenant', {
     method: 'POST',
     body: JSON.stringify({ tenant_id: tenantId })
   });
+
+export interface GlobalDashboardTenant {
+  id: string;
+  name: string;
+  sales_count: number;
+  total: string;
+}
+
+export interface GlobalDashboard {
+  date: string;
+  tenants: { total: number; active: number };
+  users: number;
+  stores: number;
+  sales: { sales_count: number; subtotal: string; grand_total: string; paid: string };
+  payments: {
+    cash: string;
+    card: string;
+    transfer: string;
+    sistecredito: string;
+    adi: string;
+    credit: string;
+    paid_total: string;
+    payments_count: number;
+    card_count: number;
+  };
+  top_tenants: GlobalDashboardTenant[];
+}
+
+export const fetchGlobalDashboard = () =>
+  apiRequest<GlobalDashboard>('/dashboard/global');
 
 export const fetchStores = () => apiRequest<Store[]>('/catalog/stores');
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { NavLink, Outlet } from 'react-router-dom';
+import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
 import { useTenantsQuery } from '../pos-queries';
 
@@ -8,10 +8,11 @@ interface NavItem {
   label: string;
   icon: string;
   admin?: boolean;
-  superAdmin?: boolean;
+  sub?: boolean;
+  header?: boolean;
 }
 
-const NAV_ITEMS: NavItem[] = [
+const TENANT_ITEMS: NavItem[] = [
   { to: '/pos', label: 'Punto de venta', icon: '🛒' },
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
   { to: '/ventas', label: 'Ventas', icon: '🧾' },
@@ -24,14 +25,34 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/gastos', label: 'Gastos', icon: '💵', admin: true },
   { to: '/caja', label: 'Cierre de caja', icon: '🔒' },
   { to: '/usuarios', label: 'Usuarios', icon: '🧑‍💼', admin: true },
-  { to: '/config', label: 'Configuración', icon: '⚙️', admin: true },
-  { to: '/tenants', label: 'Tenants', icon: '🏢', superAdmin: true }
+  { to: '/config', label: 'Configuración', icon: '⚙️', admin: true }
+];
+
+const GLOBAL_ITEMS: NavItem[] = [
+  { to: '/dashboard/global', label: 'Dashboard global', icon: '🌍' },
+  { to: 'gestion', label: 'Gestión de tenants', icon: '', header: true },
+  { to: '/tenant-management/tenants', label: 'Tenants', icon: '🏢', sub: true },
+  { to: '/tenant-management/plans', label: 'Planes', icon: '💳', sub: true },
+  { to: '/tenant-management/payments', label: 'Pagos de tenants', icon: '💰', sub: true },
+  { to: '/tenants', label: 'Datos de tenants', icon: '🗂️', sub: true },
+  { to: '/config', label: 'Configuración', icon: '⚙️' }
 ];
 
 const COLLAPSE_KEY = 'pos-gres-v2-sidebar-collapsed';
 
 export default function AppLayout() {
-  const { token, tenantId, isAdmin, isSuperAdmin, settings, switchTenant, logout } = useSession();
+  const navigate = useNavigate();
+  const {
+    token,
+    tenantId,
+    selectedTenantId,
+    isAdmin,
+    isSuperAdmin,
+    settings,
+    switchTenant,
+    clearTenantSelection,
+    logout
+  } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [switchingTenant, setSwitchingTenant] = useState(false);
   const [tenantError, setTenantError] = useState('');
@@ -52,11 +73,17 @@ export default function AppLayout() {
     }
   }, [collapsed]);
 
-  const items = NAV_ITEMS.filter((item) => (!item.admin || isAdmin) && (!item.superAdmin || isSuperAdmin));
+  const showGlobalMenu = isSuperAdmin && selectedTenantId === null;
+  const items = TENANT_ITEMS.filter((item) => !item.admin || isAdmin);
 
   async function handleTenantChange(nextTenantId: string) {
-    if (!nextTenantId || nextTenantId === tenantId || switchingTenant) return;
+    if (nextTenantId === (selectedTenantId ?? '') || switchingTenant) return;
     setTenantError('');
+    if (nextTenantId === '') {
+      clearTenantSelection();
+      navigate('/dashboard/global');
+      return;
+    }
     setSwitchingTenant(true);
     try {
       await switchTenant(nextTenantId);
@@ -91,11 +118,12 @@ export default function AppLayout() {
             <label>
               <span className="nav-label">Tenant activo</span>
               <select
-                value={tenantId ?? ''}
+                value={selectedTenantId ?? ''}
                 onChange={(event) => { void handleTenantChange(event.target.value); }}
                 disabled={switchingTenant || tenantsQuery.isPending}
                 aria-label="Cambiar de tenant"
               >
+                <option value="">Seleccionar tenant…</option>
                 {(tenantsQuery.data ?? []).map((tenant) => (
                   <option key={tenant.id} value={tenant.id}>
                     {tenant.name}{tenant.status !== 'active' ? ' (inactivo)' : ''}
@@ -104,23 +132,39 @@ export default function AppLayout() {
               </select>
             </label>
             {switchingTenant ? <small className="muted">Cambiando…</small> : null}
+            {showGlobalMenu ? <small className="muted">Vista global</small> : null}
             {tenantError ? <small className="tenant-switcher-error">{tenantError}</small> : null}
           </div>
         ) : null}
 
         <nav className="sidebar-nav">
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              title={item.label}
-              className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
-              onClick={() => setMenuOpen(false)}
-            >
-              <span className="nav-icon" aria-hidden>{item.icon}</span>
-              <span className="nav-label">{item.label}</span>
-            </NavLink>
-          ))}
+          {showGlobalMenu
+            ? GLOBAL_ITEMS.map((item) => item.header ? (
+                <p key={item.to} className="nav-group">{item.label}</p>
+              ) : (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  title={item.label}
+                  className={({ isActive }) => `nav-item ${item.sub ? 'sub' : ''} ${isActive ? 'active' : ''}`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span className="nav-icon" aria-hidden>{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))
+            : items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  title={item.label}
+                  className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span className="nav-icon" aria-hidden>{item.icon}</span>
+                  <span className="nav-label">{item.label}</span>
+                </NavLink>
+              ))}
         </nav>
 
         <div className="sidebar-footer">

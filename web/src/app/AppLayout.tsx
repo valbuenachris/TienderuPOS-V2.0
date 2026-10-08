@@ -1,12 +1,14 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useSession } from './session';
+import { useTenantsQuery } from '../pos-queries';
 
 interface NavItem {
   to: string;
   label: string;
   icon: string;
   admin?: boolean;
+  superAdmin?: boolean;
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -22,14 +24,18 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/gastos', label: 'Gastos', icon: '💵', admin: true },
   { to: '/caja', label: 'Cierre de caja', icon: '🔒' },
   { to: '/usuarios', label: 'Usuarios', icon: '🧑‍💼', admin: true },
-  { to: '/config', label: 'Configuración', icon: '⚙️', admin: true }
+  { to: '/config', label: 'Configuración', icon: '⚙️', admin: true },
+  { to: '/tenants', label: 'Tenants', icon: '🏢', superAdmin: true }
 ];
 
 const COLLAPSE_KEY = 'pos-gres-v2-sidebar-collapsed';
 
 export default function AppLayout() {
-  const { isAdmin, settings, logout } = useSession();
+  const { token, tenantId, isAdmin, isSuperAdmin, settings, switchTenant, logout } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [switchingTenant, setSwitchingTenant] = useState(false);
+  const [tenantError, setTenantError] = useState('');
+  const tenantsQuery = useTenantsQuery(token, tenantId, isSuperAdmin);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       return localStorage.getItem(COLLAPSE_KEY) === 'true';
@@ -46,7 +52,20 @@ export default function AppLayout() {
     }
   }, [collapsed]);
 
-  const items = NAV_ITEMS.filter((item) => !item.admin || isAdmin);
+  const items = NAV_ITEMS.filter((item) => (!item.admin || isAdmin) && (!item.superAdmin || isSuperAdmin));
+
+  async function handleTenantChange(nextTenantId: string) {
+    if (!nextTenantId || nextTenantId === tenantId || switchingTenant) return;
+    setTenantError('');
+    setSwitchingTenant(true);
+    try {
+      await switchTenant(nextTenantId);
+    } catch (error) {
+      setTenantError(error instanceof Error ? error.message : 'No fue posible cambiar de tenant');
+    } finally {
+      setSwitchingTenant(false);
+    }
+  }
 
   return (
     <div className={`app-frame ${collapsed ? 'collapsed' : ''} ${menuOpen ? 'menu-open' : ''}`}>
@@ -66,6 +85,28 @@ export default function AppLayout() {
             {collapsed ? '»' : '«'}
           </button>
         </div>
+
+        {isSuperAdmin ? (
+          <div className="tenant-switcher">
+            <label>
+              <span className="nav-label">Tenant activo</span>
+              <select
+                value={tenantId ?? ''}
+                onChange={(event) => { void handleTenantChange(event.target.value); }}
+                disabled={switchingTenant || tenantsQuery.isPending}
+                aria-label="Cambiar de tenant"
+              >
+                {(tenantsQuery.data ?? []).map((tenant) => (
+                  <option key={tenant.id} value={tenant.id}>
+                    {tenant.name}{tenant.status !== 'active' ? ' (inactivo)' : ''}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {switchingTenant ? <small className="muted">Cambiando…</small> : null}
+            {tenantError ? <small className="tenant-switcher-error">{tenantError}</small> : null}
+          </div>
+        ) : null}
 
         <nav className="sidebar-nav">
           {items.map((item) => (

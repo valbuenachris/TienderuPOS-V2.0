@@ -25,6 +25,9 @@ export default function InventoryPage() {
       />
       <Panel className="stack">
         <p className="muted">Productos ordenados de menor a mayor existencia. Las filas en rojo tienen 5 unidades o menos.</p>
+        {stores.length === 0 ? (
+          <Notice tone="error">No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.</Notice>
+        ) : null}
         {productsQuery.isError ? <Notice tone="error">No fue posible cargar el inventario.</Notice> : null}
         <div className="table-wrap">
           <table className="data-table">

@@ -2,6 +2,7 @@ import { BadRequestException, Controller, ForbiddenException, Get, Query, Req, U
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { PosRequest } from '../auth/auth.types';
+import { isAdminRole } from '../common/roles';
 import { CatalogService } from './catalog.service';
 
 function optionalInteger(value: unknown): number | undefined {
@@ -38,7 +39,7 @@ export class CatalogController {
     const user = request.posUser!;
     const assignedStoreId = user.store_id;
     const requestedStoreId = optionalInteger(storeId);
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && assignedStoreId && requestedStoreId && requestedStoreId !== assignedStoreId) {
       throw new ForbiddenException('This POS user is not assigned to the selected store');
     }
@@ -54,7 +55,7 @@ export class CatalogController {
     const cleanSearch = parseSearch(search);
     const user = request.posUser!;
     const requestedStoreId = optionalInteger(storeId);
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && requestedStoreId && requestedStoreId !== user.store_id) {
       throw new ForbiddenException('This POS user is not assigned to the selected store');
     }

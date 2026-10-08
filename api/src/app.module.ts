@@ -13,6 +13,7 @@ import { ReportsModule } from './reports/reports.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
 import { SuppliersModule } from './suppliers/suppliers.module';
+import { TenantsModule } from './tenants/tenants.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -34,7 +35,8 @@ import { UsersModule } from './users/users.module';
     UsersModule,
     SuppliersModule,
     PurchasesModule,
-    RegistersModule
+    RegistersModule,
+    TenantsModule
   ],
   controllers: [HealthController]
 })

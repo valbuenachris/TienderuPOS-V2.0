@@ -163,6 +163,9 @@ export default function PurchasesPage() {
     <>
       <PageHeader eyebrow="ABASTECIMIENTO" title="Compras" />
       {notice ? <Notice tone={/error|inválid|invalid|required|insuficiente/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
+      {stores.length === 0 ? (
+        <Notice tone="error">No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.</Notice>
+      ) : null}
       <Panel className="stack full-width">
         <div className="toolbar">
           <button className="primary" type="button" onClick={openCreate}>+ Nueva compra</button>

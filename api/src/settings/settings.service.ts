@@ -24,6 +24,22 @@ const EDITABLE_COLUMNS = [
   'logo_url'
 ];
 
+const POS_DISPLAY_COLUMNS = [
+  'site_name',
+  'currency_prefix',
+  'default_customer',
+  'address',
+  'phone',
+  'nit',
+  'timezone',
+  'language',
+  'thank_you_message',
+  'return_policy',
+  'show_qr_on_ticket',
+  'printer_width',
+  'logo_url'
+];
+
 const ALLOWED_LOGO_TYPES: Record<string, string> = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -102,9 +118,17 @@ export class SettingsService {
   }
 
   async getGlobalForTenant(tenantId: string) {
+    return this.readSettings(tenantId, EDITABLE_COLUMNS);
+  }
+
+  async getPosForTenant(tenantId: string) {
+    return this.readSettings(tenantId, POS_DISPLAY_COLUMNS);
+  }
+
+  private async readSettings(tenantId: string, allowed: readonly string[]) {
     await this.assertTenant(tenantId);
     const existing = await this.existingColumns();
-    const columns = EDITABLE_COLUMNS.filter((column) => existing.has(column));
+    const columns = allowed.filter((column) => existing.has(column));
     const settingId = await this.resolveSettingsRowId(tenantId, existing);
     const select = columns.length > 0 ? `setting_id, ${columns.join(', ')}` : 'setting_id';
     const result = await this.database.query<Record<string, unknown>>(

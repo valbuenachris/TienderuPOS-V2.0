@@ -5,7 +5,8 @@ import { PosRequest } from './auth.types';
 export class AdminGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<PosRequest>();
-    if (request.posUser?.group_name?.toLowerCase() !== 'admin') {
+    const group = request.posUser?.group_name?.toLowerCase();
+    if (group !== 'admin' && group !== 'super_admin') {
       throw new ForbiddenException('Administrator access required');
     }
     return true;

@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import Decimal from 'decimal.js';
 import { PosUser } from '../auth/auth.types';
 import { resolvePublicBase, trimTrailingSlash } from '../common/image-url';
+import { isAdminRole } from '../common/roles';
 import { SupabaseService } from '../database/supabase.service';
 import { TableRow } from '../database/database.types';
 
@@ -74,7 +75,7 @@ export class CatalogService {
       .eq('tenant_id', tenantId)
       .order('name')
       .limit(100);
-    if (user.group_name?.toLowerCase() !== 'admin') {
+    if (!isAdminRole(user.group_name)) {
       if (!user.store_id) return [];
       query = query.eq('id', user.store_id);
     }

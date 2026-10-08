@@ -8,15 +8,7 @@ import { useApiMutation, useCustomersQuery, useSaleDetailQuery, useSalesQuery } 
 import { addSalePayment, deleteSale, updateSale } from '../api';
 import type { AddSalePaymentPayload, SaleDetail, SaleListRow, SaleResult, UpdateSalePayload } from '../api';
 import { paymentMethodLabel, saleStatusLabel } from '../payments';
-import { formatDate, formatDateOnly, formatMoney } from '../format';
-
-function isoDaysAgo(days: number): string {
-  return new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
-}
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { daysAgoInBusinessTimezone, formatDate, formatDateOnly, formatMoney, todayInBusinessTimezone } from '../format';
 
 function remainingCents(sale: { grand_total: string | null; paid: string | null }): number {
   return Math.max(
@@ -107,10 +99,10 @@ export default function SalesHistoryPage() {
   const queryClient = useQueryClient();
   const { token, tenantId, settings, isAdmin, stores } = useSession();
   const currency = settings?.currency_prefix || '$';
-  const [from, setFrom] = useState(() => isoDaysAgo(7));
-  const [to, setTo] = useState(() => today());
+  const [from, setFrom] = useState(() => daysAgoInBusinessTimezone(7));
+  const [to, setTo] = useState(() => todayInBusinessTimezone());
   const [customerInput, setCustomerInput] = useState('');
-  const [applied, setApplied] = useState(() => ({ from: isoDaysAgo(7), to: today(), customer: '' }));
+  const [applied, setApplied] = useState(() => ({ from: daysAgoInBusinessTimezone(7), to: todayInBusinessTimezone(), customer: '' }));
   const [page, setPage] = useState(1);
   const [notice, setNotice] = useState('');
   const [viewId, setViewId] = useState<number | null>(null);

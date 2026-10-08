@@ -1,7 +1,7 @@
 import { createContext, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { getToken, loginPos, logoutPos, setToken } from '../api';
+import { getToken, loginPos, logoutPos, setToken, switchTenant as requestTenantSwitch } from '../api';
 import type { PosSettings, PosUser, Store } from '../api';
 import { usePosUserQuery, useSettingsQuery, useStoresQuery } from '../pos-queries';
 
@@ -10,6 +10,7 @@ interface SessionValue {
   user: PosUser | null;
   tenantId: string | null;
   isAdmin: boolean;
+  isSuperAdmin: boolean;
   stores: Store[];
   settings: PosSettings | null;
   settingsLoading: boolean;
@@ -17,6 +18,7 @@ interface SessionValue {
   loggingIn: boolean;
   sessionError: boolean;
   login(identity: string, password: string): Promise<void>;
+  switchTenant(tenantId: string): Promise<void>;
   logout(): void;
 }
 
@@ -37,7 +39,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     token,
     user,
     tenantId,
-    isAdmin: user?.group_name?.toLowerCase() === 'admin',
+    isAdmin: ['admin', 'super_admin'].includes(user?.group_name?.toLowerCase() ?? ''),
+    isSuperAdmin: meQuery.data?.super === true || user?.group_name?.toLowerCase() === 'super_admin',
     stores: storesQuery.data ?? [],
     settings: settingsQuery.data ?? null,
     settingsLoading: Boolean(token && tenantId) && settingsQuery.isLoading,
@@ -55,6 +58,12 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setLoggingIn(false);
       }
     },
+    async switchTenant(targetTenantId: string) {
+      const result = await requestTenantSwitch(targetTenantId);
+      queryClient.clear();
+      setToken(result.access_token);
+      setAuthToken(result.access_token);
+    },
     logout() {
       void logoutPos()
         .catch(() => undefined)
@@ -64,7 +73,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           queryClient.clear();
         });
     }
-  }), [token, user, tenantId, storesQuery.data, settingsQuery.data, settingsQuery.isLoading, meQuery.isLoading, meQuery.isError, loggingIn, queryClient]);
+  }), [token, user, tenantId, meQuery.data?.super, storesQuery.data, settingsQuery.data, settingsQuery.isLoading, meQuery.isLoading, meQuery.isError, loggingIn, queryClient]);
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }

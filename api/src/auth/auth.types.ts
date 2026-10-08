@@ -4,6 +4,10 @@ export interface PosClaims {
   sub: string;
   tenant_id: string;
   sid: string;
+  /** Tenant the user belongs to. Equals tenant_id on login; differs after switch-tenant. */
+  home_tenant_id?: string;
+  /** True only for super administrators (group_name = 'super_admin'). */
+  super?: boolean;
   iat?: number;
   exp?: number;
 }

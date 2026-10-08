@@ -18,11 +18,13 @@ import {
   fetchRegisters,
   fetchReportSummary,
   fetchReportCalendar,
+  fetchPosSettings,
   fetchSales,
   fetchSaleDetail,
   fetchSettings,
   fetchStores,
   fetchSuppliers,
+  fetchTenants,
   fetchTopProducts,
   fetchUsers,
   loginPos,
@@ -103,8 +105,26 @@ export function useCustomerSearchQuery(
 export function useSettingsQuery(token: string | null, tenantId: string | null) {
   return useQuery({
     queryKey: ['global-pos-settings'],
+    queryFn: fetchPosSettings,
+    enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useManagedSettingsQuery(token: string | null, tenantId: string | null) {
+  return useQuery({
+    queryKey: ['global-pos-settings-manage'],
     queryFn: fetchSettings,
     enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useTenantsQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['tenants', tenantId],
+    queryFn: fetchTenants,
+    enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
 }
@@ -330,7 +350,7 @@ export function useCurrentRegisterQuery(token: string | null, tenantId: string |
   return useQuery({
     queryKey: ['register-current', tenantId, storeId],
     queryFn: () => fetchCurrentRegister(storeId ?? undefined),
-    enabled: Boolean(token && tenantId && storeId),
+    enabled: Boolean(token && tenantId),
     retry: false
   });
 }
@@ -344,7 +364,7 @@ export function useRegisterSummaryQuery(
   return useQuery({
     queryKey: ['register-summary', tenantId, storeId, date],
     queryFn: () => fetchRegisterSummary(date, storeId ?? undefined),
-    enabled: Boolean(token && tenantId && storeId),
+    enabled: Boolean(token && tenantId),
     retry: false
   });
 }

@@ -17,6 +17,7 @@ import ReportsPage from './pages/ReportsPage';
 import SalesHistoryPage from './pages/SalesHistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import SuppliersPage from './pages/SuppliersPage';
+import TenantsPage from './pages/TenantsPage';
 import UsersPage from './pages/UsersPage';
 
 function RequireAuth() {
@@ -33,6 +34,12 @@ function RequireAuth() {
 function AdminOnly({ children }: { children: ReactElement }) {
   const { isAdmin } = useSession();
   if (!isAdmin) return <Navigate to="/pos" replace />;
+  return children;
+}
+
+function SuperAdminOnly({ children }: { children: ReactElement }) {
+  const { isSuperAdmin } = useSession();
+  if (!isSuperAdmin) return <Navigate to="/pos" replace />;
   return children;
 }
 
@@ -59,6 +66,7 @@ export default function App() {
             <Route path="/caja" element={<CashRegisterPage />} />
             <Route path="/usuarios" element={<AdminOnly><UsersPage /></AdminOnly>} />
             <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
+            <Route path="/tenants" element={<SuperAdminOnly><TenantsPage /></SuperAdminOnly>} />
             <Route path="*" element={<Navigate to="/pos" replace />} />
           </Route>
         </Route>

@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
-import { useApiMutation, useCustomersQuery, useSettingsQuery } from '../pos-queries';
+import { useApiMutation, useCustomersQuery, useManagedSettingsQuery } from '../pos-queries';
 import { deleteSettingsLogo, updateSettings, uploadSettingsLogo } from '../api';
 import type { PosSettings, UpdateSettingsPayload } from '../api';
 
@@ -69,9 +69,9 @@ function toForm(settings: PosSettings | null): SettingsForm {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const { token, tenantId, stores, settings, settingsLoading } = useSession();
-  const settingsQuery = useSettingsQuery(token, tenantId);
-  const current = settingsQuery.data ?? settings ?? null;
+  const { token, tenantId, stores } = useSession();
+  const settingsQuery = useManagedSettingsQuery(token, tenantId);
+  const current = settingsQuery.data ?? null;
   const storeId = stores[0]?.id ?? null;
   const customersQuery = useCustomersQuery(token, tenantId, storeId);
   const customers = customersQuery.data ?? [];
@@ -172,7 +172,10 @@ export default function SettingsPage() {
       setLogoPreview(null);
       setLogoRemoved(false);
       setLogoBroken(false);
-      await queryClient.invalidateQueries({ queryKey: ['global-pos-settings'] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['global-pos-settings'] }),
+        queryClient.invalidateQueries({ queryKey: ['global-pos-settings-manage'] })
+      ]);
     } catch (error) {
       setNotice(error instanceof Error ? error.message : 'No fue posible guardar la configuración.');
     } finally {
@@ -215,7 +218,7 @@ export default function SettingsPage() {
   return (
     <>
       <PageHeader eyebrow="SISTEMA" title="Configuración" />
-      {!settingsLoading && settings === null && settingsQuery.isError ? (
+      {settingsQuery.isError ? (
         <Notice tone="error">No fue posible cargar la configuración.</Notice>
       ) : null}
       {notice ? <Notice tone={/error|inválid|invalid|obligatorio|no existe|formato/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}

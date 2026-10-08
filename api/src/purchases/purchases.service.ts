@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import Decimal from 'decimal.js';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
+import { isAdminRole } from '../common/roles';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreatePurchaseDto } from './purchase.dto';
@@ -98,7 +99,7 @@ export class PurchasesService {
   }
 
   async create(tenantId: string, user: PosUser, input: CreatePurchaseDto) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && input.store_id && input.store_id !== user.store_id) {
       throw new ForbiddenException('This POS user cannot purchase for another store');
     }
@@ -219,7 +220,7 @@ export class PurchasesService {
   }
 
   async update(tenantId: string, user: PosUser, purchaseId: number, input: CreatePurchaseDto) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && input.store_id && input.store_id !== user.store_id) {
       throw new ForbiddenException('This POS user cannot purchase for another store');
     }

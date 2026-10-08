@@ -29,3 +29,13 @@ export function formatDay(value: string | null | undefined): string {
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString('es-CO', { dateStyle: 'medium' });
 }
+
+const businessDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Bogota' });
+
+export function todayInBusinessTimezone(): string {
+  return businessDateFormatter.format(new Date());
+}
+
+export function daysAgoInBusinessTimezone(days: number): string {
+  return businessDateFormatter.format(new Date(Date.now() - days * 86400000));
+}

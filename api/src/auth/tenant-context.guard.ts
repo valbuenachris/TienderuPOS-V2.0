@@ -1,4 +1,4 @@
-import { CanActivate, ExecutionContext, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
+import { CanActivate, ExecutionContext, ForbiddenException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { SupabaseService } from '../database/supabase.service';
@@ -6,7 +6,9 @@ import { TableRow } from '../database/database.types';
 import { PosRequest, PosUser } from './auth.types';
 
 type SessionDataRow = Omit<Pick<TableRow<'tec_sessions'>, 'data'>, 'data'> & { data: Buffer | string };
-type SessionPayload = { tenantId: string; userId: number; issuedAt: number };
+type SessionPayload = { tenantId: string; userId: number; issuedAt: number; homeTenantId?: string; super?: boolean };
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -27,7 +29,15 @@ function parseSessionPayload(value: Buffer | string): SessionPayload | null {
     || !Number.isSafeInteger(parsed.issuedAt)) {
     return null;
   }
-  return { tenantId: parsed.tenantId, userId: parsed.userId, issuedAt: parsed.issuedAt };
+  if (parsed.homeTenantId !== undefined && typeof parsed.homeTenantId !== 'string') return null;
+  if (parsed.super !== undefined && typeof parsed.super !== 'boolean') return null;
+  return {
+    tenantId: parsed.tenantId,
+    userId: parsed.userId,
+    issuedAt: parsed.issuedAt,
+    homeTenantId: parsed.homeTenantId as string | undefined,
+    super: parsed.super as boolean | undefined
+  };
 }
 
 @Injectable()
@@ -43,9 +53,14 @@ export class TenantContextGuard implements CanActivate {
     const claims = request.posClaims;
     if (!claims?.tenant_id) throw new UnauthorizedException('Tenant-scoped token required');
     const tenantId = claims.tenant_id.toLowerCase();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(tenantId)) {
+    if (!UUID_RE.test(tenantId)) {
       throw new UnauthorizedException('Invalid tenant claim');
     }
+    const homeTenantId = claims.home_tenant_id?.toLowerCase();
+    if (homeTenantId !== undefined && !UUID_RE.test(homeTenantId)) {
+      throw new UnauthorizedException('Invalid home tenant claim');
+    }
+    const userTenantId = homeTenantId ?? tenantId;
 
     const minimumTimestamp = Math.floor(Date.now() / 1000) - Number(this.config.get('JWT_TTL_SECONDS') ?? 28800);
     const sessions = await this.database.query<SessionDataRow>(
@@ -63,11 +78,20 @@ export class TenantContextGuard implements CanActivate {
     if (!Number.isSafeInteger(userId) || sessionData.tenantId !== tenantId || sessionData.userId !== userId) {
       throw new UnauthorizedException('Session does not match token');
     }
+    if (homeTenantId !== undefined && sessionData.homeTenantId !== homeTenantId) {
+      throw new UnauthorizedException('Session does not match home tenant');
+    }
+    if (homeTenantId === undefined && sessionData.homeTenantId !== undefined) {
+      throw new UnauthorizedException('Session does not match token scope');
+    }
+    if ((claims.super === true) !== (sessionData.super === true)) {
+      throw new UnauthorizedException('Session does not match token scope');
+    }
 
     const userResult = await this.supabase.client.from('tec_users')
       .select('id, tenant_id, username, email, first_name, last_name, group_id, store_id, active')
       .eq('id', userId)
-      .eq('tenant_id', tenantId)
+      .eq('tenant_id', userTenantId)
       .eq('active', 1)
       .maybeSingle();
     if (userResult.error) throw new InternalServerErrorException('Could not validate POS user');
@@ -80,7 +104,7 @@ export class TenantContextGuard implements CanActivate {
       const tenantGroup = await this.supabase.client.from('tec_groups')
         .select('name')
         .eq('id', userResult.data.group_id)
-        .eq('tenant_id', tenantId)
+        .eq('tenant_id', userTenantId)
         .maybeSingle();
       if (tenantGroup.error) throw new InternalServerErrorException('Could not load POS permissions');
       if (tenantGroup.data) {
@@ -94,6 +118,12 @@ export class TenantContextGuard implements CanActivate {
         if (sharedGroup.error) throw new InternalServerErrorException('Could not load POS permissions');
         groupName = sharedGroup.data?.name ?? null;
       }
+    }
+
+    if (homeTenantId !== undefined
+      && homeTenantId !== tenantId
+      && (groupName?.toLowerCase() !== 'super_admin' || claims.super !== true)) {
+      throw new ForbiddenException('Cross-tenant access requires a super administrator');
     }
 
     const user: PosUser = { ...userResult.data, tenant_id: tenantId, active: 1, group_name: groupName };

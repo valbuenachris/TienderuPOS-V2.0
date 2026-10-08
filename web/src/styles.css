@@ -244,6 +244,20 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .app-frame.collapsed .nav-label { display: none; }
 .app-frame.collapsed .nav-item { justify-content: center; padding: 10px 0; }
 .sidebar-footer { flex: 0 0 auto; padding-top: 14px; border-top: 1px solid #2c4a37; }
+.tenant-switcher { display: grid; gap: 6px; padding: 10px 14px; border-top: 1px solid #2c4a37; }
+.tenant-switcher label {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  color: #9fb3a6;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.tenant-switcher select { width: 100%; min-height: 36px; border-radius: 9px; }
+.tenant-switcher-error { color: #fca5a5; font-size: 11px; }
+.app-frame.collapsed .tenant-switcher { display: none; }
 .nav-logout { width: 100%; border: 0; background: transparent; cursor: pointer; text-align: left; }
 .app-frame.collapsed .nav-logout { justify-content: center; padding: 10px 0; }
 .sidebar-nav { flex: 1 1 auto; min-height: 0; display: grid; gap: 4px; overflow-y: auto; }
@@ -510,6 +524,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
   .app-frame.collapsed .sidebar-head { flex-direction: row; gap: 10px; }
   .app-frame.collapsed .sidebar-brand strong,
   .app-frame.collapsed .nav-label { display: inline; }
+  .app-frame.collapsed .tenant-switcher { display: grid; }
   .app-frame.collapsed .nav-item { justify-content: flex-start; padding: 10px 12px; }
   .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 20; border: 0; background: #0f1f1655; }
 }

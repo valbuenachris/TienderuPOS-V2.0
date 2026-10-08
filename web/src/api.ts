@@ -323,7 +323,43 @@ export const loginPos = (identity: string, password: string) =>
 export const logoutPos = () => apiRequest('/auth/logout', { method: 'POST' });
 
 export const fetchPosUser = () =>
-  apiRequest<{ tenant_id: string; user: PosUser }>('/auth/me');
+  apiRequest<{ tenant_id: string; user: PosUser; super?: boolean }>('/auth/me');
+
+export interface TenantRecord {
+  id: string;
+  name: string;
+  host: string | null;
+  status: string;
+  created_at: string | null;
+  users_count: number;
+  stores_count: number;
+  sales_count: number;
+}
+
+export interface CreateTenantPayload {
+  name: string;
+  host?: string;
+  status?: 'active' | 'inactive';
+}
+
+export interface SwitchTenantResult {
+  access_token: string;
+  token_type: string;
+  expires_in: number;
+  tenant_id: string;
+  tenant: { id: string; name: string | null };
+}
+
+export const fetchTenants = () => apiRequest<TenantRecord[]>('/tenants');
+
+export const createTenant = (payload: CreateTenantPayload) =>
+  apiRequest<TenantRecord>('/tenants', { method: 'POST', body: JSON.stringify(payload) });
+
+export const switchTenant = (tenantId: string) =>
+  apiRequest<SwitchTenantResult>('/auth/switch-tenant', {
+    method: 'POST',
+    body: JSON.stringify({ tenant_id: tenantId })
+  });
 
 export const fetchStores = () => apiRequest<Store[]>('/catalog/stores');
 
@@ -331,6 +367,8 @@ export const fetchCustomers = (storeId: number, search = '') =>
   apiRequest<Customer[]>(withQuery('/catalog/customers', { store_id: storeId, q: search }));
 
 export const fetchSettings = () => apiRequest<PosSettings>('/settings');
+
+export const fetchPosSettings = () => apiRequest<PosSettings>('/settings/pos');
 
 export const updateSettings = (payload: UpdateSettingsPayload) =>
   apiRequest<PosSettings>('/settings', { method: 'PUT', body: JSON.stringify(payload) });
@@ -592,7 +630,7 @@ export interface RegisterRecord {
 }
 
 export interface RegisterSummary {
-  store_id: number;
+  store_id: number | null;
   date: string;
   payments: {
     cash: string;

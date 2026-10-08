@@ -83,6 +83,9 @@ export type Database = {
       tec_settings: Table<{
         setting_id: number; site_name: string; currency_prefix: string; default_customer: number | null;
       }>;
+      tec_tenants: Table<{
+        id: string; name: string; host: string | null; status: string; created_at: string | null;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

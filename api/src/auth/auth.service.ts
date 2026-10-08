@@ -1,11 +1,20 @@
 import { randomBytes } from 'node:crypto';
-import { HttpException, HttpStatus, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { SupabaseService } from '../database/supabase.service';
 import { TableRow } from '../database/database.types';
 import { DatabaseService } from '../database/database.service';
 import { hashPassword, verifyPassword } from './password.util';
+import { PosUser } from './auth.types';
 
 type UserCandidate = Pick<
   TableRow<'tec_users'>,
@@ -107,6 +116,7 @@ export class AuthService {
       }
     }
     const user: AuthenticatedUser = { ...row, tenant_id: tenantId, active: 1, group_name: groupName };
+    const isSuperAdmin = groupName?.toLowerCase() === 'super_admin';
 
     if (!user.password || Number(user.active) !== 1) {
       await this.recordFailure(tenantId, ipAddress, identity);
@@ -144,10 +154,22 @@ export class AuthService {
     const sessionId = randomBytes(20).toString('hex');
     const issuedAt = Math.floor(Date.now() / 1000);
     const accessToken = await this.jwt.signAsync(
-      { sub: String(user.id), tenant_id: tenantId, sid: sessionId },
+      {
+        sub: String(user.id),
+        tenant_id: tenantId,
+        sid: sessionId,
+        home_tenant_id: tenantId,
+        ...(isSuperAdmin ? { super: true } : {})
+      },
       { expiresIn: this.tokenTtl, issuer: 'pos-gres-v2', algorithm: 'HS256' }
     );
-    const sessionData = Buffer.from(JSON.stringify({ userId: user.id, tenantId, issuedAt }), 'utf8');
+    const sessionData = Buffer.from(JSON.stringify({
+      userId: user.id,
+      tenantId,
+      homeTenantId: tenantId,
+      ...(isSuperAdmin ? { super: true } : {}),
+      issuedAt
+    }), 'utf8');
     const session: NewSession = {
       id: sessionId,
       tenant_id: tenantId,
@@ -175,6 +197,54 @@ export class AuthService {
       'DELETE FROM public.tec_sessions WHERE id = $1 AND tenant_id = $2',
       [sessionId, tenantId]
     );
+  }
+
+  async switchTenant(user: PosUser, currentSessionId: string, targetTenantId: string, ipAddress: string) {
+    if (user.group_name?.toLowerCase() !== 'super_admin') {
+      throw new ForbiddenException('Super administrator access required');
+    }
+    const target = targetTenantId.toLowerCase();
+    const tenantResult = await this.database.query<{ id: string; name: string | null; status: string | null }>(
+      `SELECT id::text AS id, name, status
+       FROM public.tec_tenants
+       WHERE id = $1
+       LIMIT 1`,
+      [target]
+    );
+    const tenant = tenantResult.rows[0];
+    if (!tenant) throw new NotFoundException('Tenant not found');
+    if (tenant.status !== 'active') throw new BadRequestException('Tenant is not active');
+
+    const sessionId = randomBytes(20).toString('hex');
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const accessToken = await this.jwt.signAsync(
+      { sub: String(user.id), tenant_id: target, sid: sessionId, home_tenant_id: user.tenant_id, super: true },
+      { expiresIn: this.tokenTtl, issuer: 'pos-gres-v2', algorithm: 'HS256' }
+    );
+    const sessionData = Buffer.from(JSON.stringify({
+      userId: user.id,
+      tenantId: target,
+      homeTenantId: user.tenant_id,
+      super: true,
+      issuedAt
+    }), 'utf8');
+
+    await this.database.transaction(async (client) => {
+      await client.query('DELETE FROM public.tec_sessions WHERE id = $1', [currentSessionId]);
+      await client.query(
+        `INSERT INTO public.tec_sessions (id, tenant_id, ip_address, "timestamp", data)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [sessionId, target, ipAddress || null, issuedAt, sessionData]
+      );
+    });
+
+    return {
+      access_token: accessToken,
+      token_type: 'Bearer',
+      expires_in: this.tokenTtl,
+      tenant_id: target,
+      tenant: { id: tenant.id, name: tenant.name }
+    };
   }
 
   private async recordFailure(tenantId: string, ipAddress: string, identity: string): Promise<void> {

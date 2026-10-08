@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
+import { isAdminRole } from '../common/roles';
 import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { CreateCustomerDto, UpdateCustomerDto } from './customer.dto';
@@ -18,7 +19,7 @@ export class CustomersService {
   constructor(private readonly database: DatabaseService) {}
 
   private isAdmin(user: PosUser): boolean {
-    return user.group_name?.toLowerCase() === 'admin';
+    return isAdminRole(user.group_name);
   }
 
   private staffStoreId(user: PosUser): number {

@@ -138,6 +138,9 @@ export default function ProductsPage() {
     <>
       <PageHeader eyebrow="CATÁLOGO" title="Productos" />
       {notice ? <Notice tone={/no fue|error|inválid|invalid|required/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
+      {stores.length === 0 ? (
+        <Notice tone="error">No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.</Notice>
+      ) : null}
       <Panel className="stack full-width">
         <div className="toolbar">
           <label>Tienda

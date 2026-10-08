@@ -2,16 +2,12 @@ import { Link } from 'react-router-dom';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useDailyReportQuery, useSalesQuery } from '../pos-queries';
-import { formatDate, formatMoney } from '../format';
+import { formatDate, formatMoney, todayInBusinessTimezone } from '../format';
 import { saleStatusLabel } from '../payments';
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
 
 export default function DashboardPage() {
   const { token, tenantId, settings, isAdmin } = useSession();
-  const date = today();
+  const date = todayInBusinessTimezone();
   const daily = useDailyReportQuery(token, tenantId, date);
   const recent = useSalesQuery(token, tenantId, undefined, undefined, 1, 5);
   const currency = settings?.currency_prefix || 'COP';

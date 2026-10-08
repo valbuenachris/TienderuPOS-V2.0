@@ -1,4 +1,4 @@
-import { IsString, MaxLength, MinLength } from 'class-validator';
+import { IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
   @IsString()
@@ -10,4 +10,9 @@ export class LoginDto {
   @MinLength(1)
   @MaxLength(1024)
   password!: string;
+}
+
+export class SwitchTenantDto {
+  @IsUUID()
+  tenant_id!: string;
 }

@@ -4,6 +4,8 @@ import { DatabaseService } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
+import { isAdminRole } from '../common/roles';
+import { BUSINESS_TIMEZONE, todayInBusinessTimezone } from '../common/timezone';
 import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
@@ -89,7 +91,7 @@ export class SalesService {
   constructor(private readonly database: DatabaseService) {}
 
   async create(tenantId: string, user: PosUser, input: CreateSaleDto) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && user.store_id && input.store_id && input.store_id !== user.store_id) {
       throw new ForbiddenException('This POS user cannot sell from another store');
     }
@@ -359,27 +361,28 @@ export class SalesService {
     });
   }
 
-  async dailyReport(tenantId: string, date: string, user: PosUser) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+  async dailyReport(tenantId: string, date: string | undefined, user: PosUser) {
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && !user.store_id) {
       throw new BadRequestException('Assign this POS user to a store before viewing sales');
     }
+    const day = date ?? todayInBusinessTimezone();
     const result = await this.database.query<DailyReportRow>(
-      `SELECT TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS day,
+      `SELECT TO_CHAR(created_at AT TIME ZONE $5, 'YYYY-MM-DD') AS day,
               COUNT(*)::integer AS sales_count,
               COALESCE(SUM(total), 0)::text AS total,
               COALESCE(SUM(grand_total), 0)::text AS grand_total,
               COALESCE(SUM(paid), 0)::text AS paid
        FROM public.tec_sales
        WHERE tenant_id = $1
-         AND created_at >= ($2::date::timestamp AT TIME ZONE 'UTC')
-         AND created_at < (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE 'UTC')
+         AND created_at >= ($2::date::timestamp AT TIME ZONE $5)
+         AND created_at < (($2::date + INTERVAL '1 day')::timestamp AT TIME ZONE $5)
          AND ($3::boolean OR store_id = $4)
-       GROUP BY TO_CHAR(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD')`,
-      [tenantId, date, isAdmin, user.store_id ?? 0]
+       GROUP BY TO_CHAR(created_at AT TIME ZONE $5, 'YYYY-MM-DD')`,
+      [tenantId, day, isAdmin, user.store_id ?? 0, BUSINESS_TIMEZONE]
     );
     return result.rows[0] ?? {
-      day: date,
+      day,
       sales_count: 0,
       total: '0.00',
       grand_total: '0.00',
@@ -397,7 +400,7 @@ export class SalesService {
   ): Promise<Paginated<SalesListRow>> {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && !user.store_id) {
       throw new BadRequestException('Assign this POS user to a store before viewing sales');
     }
@@ -471,7 +474,7 @@ export class SalesService {
   }
 
   async detail(tenantId: string, user: PosUser, saleId: number) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && !user.store_id) {
       throw new BadRequestException('Assign this POS user to a store before viewing sales');
     }
@@ -530,7 +533,7 @@ export class SalesService {
   }
 
   async addPayment(tenantId: string, user: PosUser, saleId: number, input: AddSalePaymentDto) {
-    const isAdmin = user.group_name?.toLowerCase() === 'admin';
+    const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && !user.store_id) {
       throw new BadRequestException('Assign this POS user to a store before adding payments');
     }
@@ -598,7 +601,7 @@ export class SalesService {
   }
 
   async update(tenantId: string, user: PosUser, saleId: number, input: UpdateSaleDto) {
-    if (user.group_name?.toLowerCase() !== 'admin') {
+    if (!isAdminRole(user.group_name)) {
       throw new ForbiddenException('Administrator access required');
     }
 
@@ -852,7 +855,7 @@ export class SalesService {
   }
 
   async remove(tenantId: string, user: PosUser, saleId: number) {
-    if (user.group_name?.toLowerCase() !== 'admin') {
+    if (!isAdminRole(user.group_name)) {
       throw new ForbiddenException('Administrator access required');
     }
 

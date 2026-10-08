@@ -21,8 +21,8 @@ function optionalInteger(value: unknown, field: string): number | undefined {
   return parseInteger(value, field);
 }
 
-function parseDate(value?: unknown): string {
-  if (value === undefined || value === '') return new Date().toISOString().slice(0, 10);
+function parseDate(value?: unknown): string | undefined {
+  if (value === undefined || value === '') return undefined;
   if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) {
     throw new BadRequestException('Date must use YYYY-MM-DD');
   }

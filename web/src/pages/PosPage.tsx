@@ -46,7 +46,9 @@ export default function PosPage() {
   const [notice, setNotice] = useState('');
   const [lastSale, setLastSale] = useState<SaleResult | null>(null);
 
-  const storeId = selectedStoreId ?? user?.store_id ?? (isAdmin ? stores[0]?.id ?? null : null);
+  const userStoreId = user?.store_id ?? null;
+  const userStoreAvailable = userStoreId !== null && stores.some((store) => store.id === userStoreId);
+  const storeId = selectedStoreId ?? (userStoreAvailable ? userStoreId : stores[0]?.id ?? null);
   const productsQuery = useProductsQuery(token, tenantId, storeId, search);
   const saleMutation = useCreateSaleMutation();
 
@@ -146,14 +148,42 @@ export default function PosPage() {
     setCart((current) => current.map((item) => item.product.id === productId ? { ...item, quantity } : item));
   }
 
-  if (!storeId) {
+  if (!isAdmin && !userStoreId) {
     return (
       <div className="login-shell inline">
         <section className="login-card">
           <div className="brand-mark">P</div>
           <p className="eyebrow">POS · CONFIGURACIÓN</p>
           <h1>Falta asignar tienda</h1>
-          <p className="muted">Asigna una tienda al usuario POS, o inicia con un grupo administrador y una tienda disponible para el tenant.</p>
+          <p className="muted">Asigna una tienda al usuario POS para poder vender.</p>
+        </section>
+      </div>
+    );
+  }
+
+  if (stores.length === 0) {
+    return (
+      <div className="login-shell inline">
+        <section className="login-card">
+          <div className="brand-mark">P</div>
+          <p className="eyebrow">POS · CONFIGURACIÓN</p>
+          <h1>Sin tiendas configuradas</h1>
+          <p className="muted">
+            No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  if (!storeId) {
+    return (
+      <div className="login-shell inline">
+        <section className="login-card">
+          <div className="brand-mark">P</div>
+          <p className="eyebrow">POS · CONFIGURACIÓN</p>
+          <h1>Falta seleccionar tienda</h1>
+          <p className="muted">Selecciona una tienda disponible para continuar.</p>
         </section>
       </div>
     );

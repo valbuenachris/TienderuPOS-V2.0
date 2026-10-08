@@ -25,7 +25,15 @@ import { SettingsService } from './settings.service';
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 
+  @Get('pos')
+  async getPos(@Req() request: PosRequest) {
+    const settings = await this.settings.getPosForTenant(request.tenantId!);
+    if (!settings) throw new NotFoundException('Global POS settings are unavailable');
+    return settings;
+  }
+
   @Get()
+  @UseGuards(AdminGuard)
   async get(@Req() request: PosRequest) {
     const settings = await this.settings.getGlobalForTenant(request.tenantId!);
     if (!settings) throw new NotFoundException('Global POS settings are unavailable');

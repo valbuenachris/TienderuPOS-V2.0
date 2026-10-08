@@ -59,11 +59,7 @@ export class SalesController {
 
   @Get('daily')
   daily(@Req() request: PosRequest, @Query('date') date?: string) {
-    return this.sales.dailyReport(
-      request.tenantId!,
-      parseDate(date) ?? new Date().toISOString().slice(0, 10),
-      request.posUser!
-    );
+    return this.sales.dailyReport(request.tenantId!, parseDate(date), request.posUser!);
   }
 
   @Post()

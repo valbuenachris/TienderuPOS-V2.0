@@ -5,11 +5,7 @@ import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useCurrentRegisterQuery, useRegisterSummaryQuery, useRegistersQuery } from '../pos-queries';
 import { closeRegister, openRegister } from '../api';
-import { formatDate, formatMoney } from '../format';
-
-function today(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { formatDate, formatMoney, todayInBusinessTimezone } from '../format';
 
 export default function CashRegisterPage() {
   const queryClient = useQueryClient();
@@ -20,16 +16,18 @@ export default function CashRegisterPage() {
   const [cashInHand, setCashInHand] = useState('0');
   const [closeNote, setCloseNote] = useState('');
   const [countedCash, setCountedCash] = useState('');
-  const date = today();
+  const date = todayInBusinessTimezone();
 
-  const effectiveStoreId = storeId ?? user?.store_id ?? (isAdmin ? stores[0]?.id ?? null : null);
+  const userStoreId = user?.store_id ?? null;
+  const userStoreAvailable = userStoreId !== null && stores.some((store) => store.id === userStoreId);
+  const effectiveStoreId = storeId ?? (userStoreAvailable ? userStoreId : stores[0]?.id ?? null);
   const currentQuery = useCurrentRegisterQuery(token, tenantId, effectiveStoreId);
   const summaryQuery = useRegisterSummaryQuery(token, tenantId, date, effectiveStoreId);
   const registersQuery = useRegistersQuery(token, tenantId);
   const current = currentQuery.data ?? null;
   const summary = summaryQuery.data;
 
-  const openMutation = useApiMutation((input: { store_id: number; cash_in_hand: string }) => openRegister(input));
+  const openMutation = useApiMutation((input: { store_id?: number; cash_in_hand: string }) => openRegister(input));
   const closeMutation = useApiMutation((input: { id: number; payload: { note?: string; total_cash_submitted?: string } }) =>
     closeRegister(input.id, input.payload)
   );
@@ -42,11 +40,14 @@ export default function CashRegisterPage() {
 
   function submitOpen(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!effectiveStoreId) {
+    if (isAdmin && !effectiveStoreId) {
       setNotice('Selecciona una tienda.');
       return;
     }
-    openMutation.mutate({ store_id: effectiveStoreId, cash_in_hand: cashInHand.trim() || '0' }, {
+    openMutation.mutate({
+      ...(effectiveStoreId ? { store_id: effectiveStoreId } : {}),
+      cash_in_hand: cashInHand.trim() || '0'
+    }, {
       onSuccess: async () => {
         setNotice('Caja abierta.');
         await invalidateAll();
@@ -83,9 +84,12 @@ export default function CashRegisterPage() {
           <select value={effectiveStoreId ?? ''} onChange={(event) => setStoreId(Number(event.target.value) || null)} aria-label="Tienda">
             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
           </select>
-        ) : <span className="store-pill">{stores[0]?.name || 'Tienda asignada'}</span>}
+        ) : <span className="store-pill">{stores[0]?.name || 'Sin tienda asignada'}</span>}
       />
       {notice ? <Notice tone={/error|inválid|invalid|abierta|open/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
+      {isAdmin && stores.length === 0 ? (
+        <Notice tone="error">No hay tiendas configuradas en este tenant. Verifica el tenant activo o crea una tienda primero.</Notice>
+      ) : null}
 
       <div className="stat-grid">
         <article className="stat-card"><span>Ventas de hoy</span><strong>{summary?.sales.sales_count ?? '—'}</strong></article>
@@ -126,7 +130,7 @@ export default function CashRegisterPage() {
               <label>Fondo inicial en efectivo
                 <input value={cashInHand} onChange={(event) => setCashInHand(event.target.value)} inputMode="decimal" placeholder="0.00" />
               </label>
-              <button className="primary" type="submit" disabled={openMutation.isPending || !effectiveStoreId}>
+              <button className="primary" type="submit" disabled={openMutation.isPending || (isAdmin && !effectiveStoreId)}>
                 {openMutation.isPending ? 'Abriendo…' : 'Abrir caja'}
               </button>
             </form>

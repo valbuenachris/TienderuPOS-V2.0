@@ -16,6 +16,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
 import { SalesService } from './sales.service';
@@ -33,7 +34,7 @@ function parseDate(value?: unknown): string | undefined {
 }
 
 @Controller('sales')
-@UseGuards(JwtAuthGuard, TenantContextGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, TenantOperationalGuard)
 export class SalesController {
   constructor(private readonly sales: SalesService) {}
 

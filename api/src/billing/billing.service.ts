@@ -192,8 +192,8 @@ export class BillingService {
       throw new BadRequestException('La factura ya no está vigente; recarga la página');
     }
 
-    // Reutiliza un checkout Bold activo o libera pendientes manuales de la misma factura
-    // para no bloquear el pago indefinidamente.
+    // Reutiliza un checkout Bold activo; si el link murió, se reutiliza la MISMA fila
+    // (Opción A) con una referencia única nueva. Los pendientes manuales se liberan.
     const pending = await this.database.query<{
       id: string;
       bold_payment_id: string | null;
@@ -205,14 +205,16 @@ export class BillingService {
        ORDER BY created_at DESC NULLS LAST`,
       [tenantId, `%${current.invoice_number}%`]
     );
+    let reuseRowId: string | null = null;
     for (const row of pending.rows) {
       if (row.bold_payment_id && row.invoice_url) {
+        if (reuseRowId !== null) continue;
         let reusable = true;
         try {
           const link = await this.bold.getPaymentLinkStatus(row.bold_payment_id);
           if (link.status === 'REJECTED' || link.status === 'CANCELLED' || link.status === 'EXPIRED') {
             reusable = false;
-            await this.markBoldPaymentFailed(tenantId, row.id, link.status ?? 'UNKNOWN', performedBy);
+            reuseRowId = row.id;
           }
         } catch (_error: unknown) {
           // Si Bold no responde, preferimos reutilizar el link ya guardado.
@@ -248,27 +250,36 @@ export class BillingService {
       this.logger.warn(`Bold checkout: monto inválido (${current.amount})`);
       throw new BadRequestException('El monto de la factura no es válido');
     }
+    // Bold exige referencias únicas por link (PL_000); sufijo base36 en reintentos.
+    const reference = `${current.invoice_number}-${Date.now().toString(36)}`.slice(0, 60);
     const link = await this.bold.createPaymentLink({
       amount,
       description: `Plan ${current.plan_name ?? 'POS'} · ${current.invoice_number}`,
-      reference: current.invoice_number
+      reference
     });
     const paymentDate = todayInBusinessTimezone();
-    const inserted = await this.database.query<{ id: string }>(
-      `INSERT INTO public.tec_tenant_payments
-         (subscription_id, tenant_id, amount, payment_date, payment_method, status, notes, bold_payment_id, invoice_url)
-       VALUES ($1, $2, $3, $4::date, 'bold', 'pending', $5, $6, $7)
-       RETURNING id::text AS id`,
-      [
-        subscription.id,
-        tenantId,
-        current.amount,
-        paymentDate,
-        `Bold · ${current.invoice_number}`,
-        link.paymentLink,
-        link.url
-      ]
-    );
+    const notes = `Bold · ${current.invoice_number}`;
+    let paymentId: string | null = null;
+    if (reuseRowId !== null) {
+      const updated = await this.database.query<{ id: string }>(
+        `UPDATE public.tec_tenant_payments
+         SET status = 'pending', bold_payment_id = $2, invoice_url = $3,
+             notes = $4, payment_date = $5::date, amount = $6
+         WHERE id = $1
+         RETURNING id::text AS id`,
+        [reuseRowId, link.paymentLink, link.url, notes, paymentDate, current.amount]
+      );
+      paymentId = updated.rows[0]?.id ?? null;
+    } else {
+      const inserted = await this.database.query<{ id: string }>(
+        `INSERT INTO public.tec_tenant_payments
+           (subscription_id, tenant_id, amount, payment_date, payment_method, status, notes, bold_payment_id, invoice_url)
+         VALUES ($1, $2, $3, $4::date, 'bold', 'pending', $5, $6, $7)
+         RETURNING id::text AS id`,
+        [subscription.id, tenantId, current.amount, paymentDate, notes, link.paymentLink, link.url]
+      );
+      paymentId = inserted.rows[0]?.id ?? null;
+    }
     await this.tenantManagement.logActivity(
       tenantId,
       'payment_requested',
@@ -281,7 +292,7 @@ export class BillingService {
       performedBy ?? null
     );
     return {
-      id: inserted.rows[0]?.id ?? null,
+      id: paymentId,
       invoice_number: current.invoice_number,
       amount: current.amount,
       checkout_url: link.url

@@ -7,6 +7,7 @@ import {
   OnModuleInit,
   ServiceUnavailableException
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { todayInBusinessTimezone } from '../common/timezone';
 import { DatabaseService, SqlExecutor } from '../database/database.service';
@@ -230,10 +231,20 @@ function planMonthlyValue(priceMonthly: string | null, priceYearly: string | nul
 @Injectable()
 export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(TenantManagementService.name);
+  private readonly billingAutoSuspend: boolean;
+  private readonly billingGraceDays: number;
+  private readonly operationalCache = new Map<string, { blocked: boolean; at: number }>();
   private ready = false;
   private timer: NodeJS.Timeout | null = null;
 
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    config: ConfigService
+  ) {
+    this.billingAutoSuspend = config.get<string>('BILLING_AUTO_SUSPEND') === 'true';
+    const grace = Number(config.get('BILLING_GRACE_DAYS') ?? 3);
+    this.billingGraceDays = Number.isSafeInteger(grace) && grace >= 0 ? grace : 3;
+  }
 
   async onModuleInit(): Promise<void> {
     try {
@@ -254,7 +265,11 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     await this.refreshLifecycleStatuses();
-    this.timer = setInterval(() => { void this.refreshLifecycleStatuses(); }, 6 * 60 * 60 * 1000);
+    await this.refreshOverdueStatuses();
+    this.timer = setInterval(() => {
+      void this.refreshLifecycleStatuses();
+      void this.refreshOverdueStatuses();
+    }, 60 * 60 * 1000);
     if (typeof this.timer.unref === 'function') this.timer.unref();
   }
 
@@ -304,6 +319,87 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
     } catch (error: unknown) {
       this.logger.warn(`Tenant lifecycle refresh failed: ${error instanceof Error ? error.message : 'unknown error'}`);
       return { trials: 0, subscriptions: 0 };
+    }
+  }
+
+  async refreshOverdueStatuses(): Promise<number> {
+    if (!this.ready) return 0;
+    try {
+      const due = await this.database.query<{ id: string; tenant_id: string; due_date: string | null }>(
+        `SELECT s.id::text AS id, s.tenant_id::text AS tenant_id,
+                COALESCE(s.next_billing_date, s.subscription_end_date)::text AS due_date
+         FROM public.tec_tenant_subscriptions s
+         JOIN public.tec_tenants t
+           ON t.id = s.tenant_id AND (t.status IS NULL OR t.status <> 'deleted')
+         WHERE s.status = 'active'
+           AND COALESCE(s.next_billing_date, s.subscription_end_date) < (CURRENT_DATE - ($1::int * INTERVAL '1 day'))
+         ORDER BY COALESCE(s.next_billing_date, s.subscription_end_date)
+         LIMIT 100`,
+        [this.billingGraceDays]
+      );
+      if (due.rows.length === 0) return 0;
+      if (!this.billingAutoSuspend) {
+        this.logger.warn(
+          `Mora: ${due.rows.length} suscripción(es) vencida(s) hace más de ${this.billingGraceDays} día(s); BILLING_AUTO_SUSPEND=false (sin cambios)`
+        );
+        return 0;
+      }
+      let suspended = 0;
+      for (const row of due.rows) {
+        await this.database.transaction(async (client) => {
+          await client.query(
+            `UPDATE public.tec_tenant_subscriptions
+             SET status = 'suspended', updated_at = now()
+             WHERE id = $1 AND status = 'active'`,
+            [row.id]
+          );
+          await client.query(
+            `UPDATE public.tec_tenants SET status = 'inactive' WHERE id = $1 AND status <> 'deleted'`,
+            [row.tenant_id]
+          );
+          await client.query('DELETE FROM public.tec_sessions WHERE tenant_id = $1', [row.tenant_id]);
+        });
+        await this.logActivity(
+          row.tenant_id,
+          'subscription_suspended',
+          { reason: 'overdue', due_date: row.due_date, grace_days: this.billingGraceDays, automatic: true },
+          null
+        );
+        suspended += 1;
+      }
+      if (suspended > 0) {
+        this.logger.log(`Mora: ${suspended} suscripción(es) suspendidas automáticamente`);
+      }
+      return suspended;
+    } catch (error: unknown) {
+      this.logger.warn(`Overdue refresh failed: ${error instanceof Error ? error.message : 'unknown'}`);
+      return 0;
+    }
+  }
+
+  async operationalState(tenantId: string): Promise<{ blocked: boolean; status: string | null }> {
+    if (!this.ready) return { blocked: false, status: null };
+    const cached = this.operationalCache.get(tenantId);
+    if (cached && Date.now() - cached.at < 60000) {
+      return { blocked: cached.blocked, status: null };
+    }
+    try {
+      const result = await this.database.query<{ status: string | null }>(
+        `SELECT status FROM public.tec_tenant_subscriptions
+         WHERE tenant_id = $1
+         ORDER BY created_at DESC NULLS LAST, id DESC
+         LIMIT 1`,
+        [tenantId]
+      );
+      const status = result.rows[0]?.status ?? null;
+      const blocked = status === 'suspended' || status === 'expired';
+      this.operationalCache.set(tenantId, { blocked, at: Date.now() });
+      return { blocked, status };
+    } catch (error: unknown) {
+      this.logger.warn(
+        `No se pudo leer el estado de suscripción: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+      return { blocked: false, status: null };
     }
   }
 
@@ -568,6 +664,7 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
         `UPDATE public.tec_tenants SET status = 'inactive' WHERE id = $1 AND status <> 'deleted'`,
         [tenantId]
       );
+      await client.query('DELETE FROM public.tec_sessions WHERE tenant_id = $1', [tenantId]);
     });
     await this.logActivity(
       tenantId,
@@ -804,6 +901,13 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
            updated_at = now()
        WHERE id = $1`,
       [subscriptionId, paymentDate, amount, cycle]
+    );
+    // Un pago (manual, webhook o verificación) reactiva también el tenant suspendido por mora.
+    await client.query(
+      `UPDATE public.tec_tenants SET status = 'active'
+       WHERE status = 'inactive'
+         AND id = (SELECT tenant_id FROM public.tec_tenant_subscriptions WHERE id = $1)`,
+      [subscriptionId]
     );
   }
 

@@ -735,7 +735,11 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
     return result;
   }
 
-  async confirmPayment(paymentId: string, performedBy?: number | null): Promise<TenantPaymentRow> {
+  async confirmPayment(
+    paymentId: string,
+    performedBy?: number | null,
+    source: 'manual' | 'bold_webhook' | 'bold_verify' = 'manual'
+  ): Promise<TenantPaymentRow> {
     this.assertReady();
     const found = await this.database.query<TenantPaymentRow & { billing_cycle: string | null }>(
       `SELECT pay.id::text AS id, pay.subscription_id::text AS subscription_id,
@@ -772,7 +776,7 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
     await this.logActivity(
       payment.tenant_id,
       'payment_confirmed',
-      { payment_id: paymentId, amount: payment.amount, payment_date: paymentDate },
+      { payment_id: paymentId, amount: payment.amount, payment_date: paymentDate, source },
       performedBy
     );
     return updated;

@@ -109,6 +109,7 @@ export class ReportsService {
     const to = toInput ?? todayInTimeZone(timezone);
     this.assertRange(from, to);
     const values = [tenantId, from, to, timezone];
+    const dateValues = [tenantId, from, to];
 
     const [
       daysResult,
@@ -166,7 +167,7 @@ export class ReportsService {
            AND date < ${DATE_RANGE_END}
          GROUP BY 1
          ORDER BY 1`,
-        values
+        dateValues
       ),
       this.database.query<MonthlyRow>(
         `SELECT TO_CHAR(date_trunc('month', date), 'YYYY-MM') AS month,
@@ -177,19 +178,19 @@ export class ReportsService {
            AND date < ${DATE_RANGE_END}
          GROUP BY 1
          ORDER BY 1`,
-        values
+        dateValues
       ),
       this.database.query<TotalRow>(
         `SELECT COALESCE(SUM(total), 0)::text AS total
          FROM public.tec_purchases
          WHERE tenant_id = $1 AND date >= $2::date AND date < ${DATE_RANGE_END}`,
-        values
+        dateValues
       ),
       this.database.query<TotalRow>(
         `SELECT COALESCE(SUM(amount), 0)::text AS total
          FROM public.tec_expenses
          WHERE tenant_id = $1 AND date >= $2::date AND date < ${DATE_RANGE_END}`,
-        values
+        dateValues
       )
     ]);
 
@@ -241,6 +242,7 @@ export class ReportsService {
     const to = toInput ?? todayInTimeZone(timezone);
     this.assertRange(from, to);
     const values = [tenantId, from, to, timezone];
+    const dateValues = [tenantId, from, to];
 
     const format = group === 'day' ? 'YYYY-MM-DD' : 'YYYY-MM';
     const salesBucket = `TO_CHAR(created_at AT TIME ZONE $4, '${format}')`;
@@ -268,7 +270,7 @@ export class ReportsService {
            AND date >= $2::date
            AND date < ${DATE_RANGE_END}
          GROUP BY 1`,
-        values
+        dateValues
       ),
       this.database.query<BucketAggRow>(
         `SELECT ${dateBucket} AS bucket,
@@ -279,7 +281,7 @@ export class ReportsService {
            AND date >= $2::date
            AND date < ${DATE_RANGE_END}
          GROUP BY 1`,
-        values
+        dateValues
       )
     ]);
 

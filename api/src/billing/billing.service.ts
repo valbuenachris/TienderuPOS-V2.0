@@ -1,7 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { todayInBusinessTimezone } from '../common/timezone';
 import { DatabaseService } from '../database/database.service';
 import { TenantManagementService } from '../tenant-management/tenant-management.service';
+import { BoldService, BoldWebhookEvent } from './bold.service';
 import { RequestPaymentDto } from './billing.dto';
 
 export type BillingInvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
@@ -85,9 +86,12 @@ function formatInvoiceNumber(referenceDate: string, suffix: string): string {
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
+
   constructor(
     private readonly database: DatabaseService,
-    private readonly tenantManagement: TenantManagementService
+    private readonly tenantManagement: TenantManagementService,
+    private readonly bold: BoldService
   ) {}
 
   async listInvoices(tenantId: string): Promise<BillingInvoice[]> {
@@ -167,6 +171,263 @@ export class BillingService {
       amount: current.amount,
       status: 'pending'
     };
+  }
+
+  async createBoldCheckout(tenantId: string, invoiceId: string, performedBy?: number | null) {
+    if (!this.bold.isEnabled()) {
+      throw new ServiceUnavailableException('Bold no está configurado; usa el registro manual de pago');
+    }
+    const subscription = await this.subscriptionFor(tenantId);
+    if (!subscription?.id) {
+      this.logger.warn(`Bold checkout: tenant ${tenantId} sin suscripción`);
+      throw new BadRequestException('El tenant no tiene una suscripción registrada');
+    }
+    if (!invoiceId.startsWith('period:')) {
+      this.logger.warn(`Bold checkout: invoice_id no es de período (${invoiceId.slice(0, 40)})`);
+      throw new BadRequestException('Solo se pueden pagar facturas vigentes');
+    }
+    const current = this.currentPeriodInvoice(tenantId, subscription);
+    if (!current || current.id !== invoiceId) {
+      this.logger.warn(`Bold checkout: factura no vigente (recibida ${invoiceId.slice(0, 60)})`);
+      throw new BadRequestException('La factura ya no está vigente; recarga la página');
+    }
+
+    // Reutiliza un checkout Bold activo o libera pendientes manuales de la misma factura
+    // para no bloquear el pago indefinidamente.
+    const pending = await this.database.query<{
+      id: string;
+      bold_payment_id: string | null;
+      invoice_url: string | null;
+    }>(
+      `SELECT id::text AS id, bold_payment_id, invoice_url
+       FROM public.tec_tenant_payments
+       WHERE tenant_id = $1 AND status = 'pending' AND notes LIKE $2
+       ORDER BY created_at DESC NULLS LAST`,
+      [tenantId, `%${current.invoice_number}%`]
+    );
+    for (const row of pending.rows) {
+      if (row.bold_payment_id && row.invoice_url) {
+        let reusable = true;
+        try {
+          const link = await this.bold.getPaymentLinkStatus(row.bold_payment_id);
+          if (link.status === 'REJECTED' || link.status === 'CANCELLED' || link.status === 'EXPIRED') {
+            reusable = false;
+            await this.markBoldPaymentFailed(tenantId, row.id, link.status ?? 'UNKNOWN', performedBy);
+          }
+        } catch (_error: unknown) {
+          // Si Bold no responde, preferimos reutilizar el link ya guardado.
+          reusable = true;
+        }
+        if (reusable) {
+          this.logger.log(`Bold checkout reutilizado para ${current.invoice_number}`);
+          return {
+            id: row.id,
+            invoice_number: current.invoice_number,
+            amount: current.amount,
+            checkout_url: row.invoice_url
+          };
+        }
+      } else {
+        await this.database.query(
+          `UPDATE public.tec_tenant_payments
+           SET status = 'failed', notes = COALESCE(notes, '') || $2
+           WHERE id = $1 AND status = 'pending'`,
+          [row.id, ' · reemplazado por checkout Bold']
+        );
+        await this.tenantManagement.logActivity(
+          tenantId,
+          'payment_superseded',
+          { payment_id: row.id, gateway: 'bold' },
+          performedBy ?? null
+        );
+      }
+    }
+
+    const amount = Number(current.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      this.logger.warn(`Bold checkout: monto inválido (${current.amount})`);
+      throw new BadRequestException('El monto de la factura no es válido');
+    }
+    const link = await this.bold.createPaymentLink({
+      amount,
+      description: `Plan ${current.plan_name ?? 'POS'} · ${current.invoice_number}`,
+      reference: current.invoice_number
+    });
+    const paymentDate = todayInBusinessTimezone();
+    const inserted = await this.database.query<{ id: string }>(
+      `INSERT INTO public.tec_tenant_payments
+         (subscription_id, tenant_id, amount, payment_date, payment_method, status, notes, bold_payment_id, invoice_url)
+       VALUES ($1, $2, $3, $4::date, 'bold', 'pending', $5, $6, $7)
+       RETURNING id::text AS id`,
+      [
+        subscription.id,
+        tenantId,
+        current.amount,
+        paymentDate,
+        `Bold · ${current.invoice_number}`,
+        link.paymentLink,
+        link.url
+      ]
+    );
+    await this.tenantManagement.logActivity(
+      tenantId,
+      'payment_requested',
+      {
+        invoice_number: current.invoice_number,
+        amount: current.amount,
+        gateway: 'bold',
+        payment_link: link.paymentLink
+      },
+      performedBy ?? null
+    );
+    return {
+      id: inserted.rows[0]?.id ?? null,
+      invoice_number: current.invoice_number,
+      amount: current.amount,
+      checkout_url: link.url
+    };
+  }
+
+  async verifyBoldPayments(tenantId: string, performedBy?: number | null) {
+    if (!this.bold.isEnabled()) throw new ServiceUnavailableException('Bold no está configurado');
+    const rows = await this.database.query<{ id: string; bold_payment_id: string }>(
+      `SELECT id::text AS id, bold_payment_id FROM public.tec_tenant_payments
+       WHERE tenant_id = $1 AND status = 'pending' AND bold_payment_id IS NOT NULL
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT 10`,
+      [tenantId]
+    );
+    let confirmed = 0;
+    let failed = 0;
+    let pending = 0;
+    for (const row of rows.rows) {
+      try {
+        const link = await this.bold.getPaymentLinkStatus(row.bold_payment_id);
+        if (link.status === 'PAID') {
+          if (await this.settleBoldPayment(row.id, link.transactionId, performedBy, 'bold_verify')) confirmed += 1;
+          else pending += 1;
+        } else if (link.status === 'REJECTED' || link.status === 'CANCELLED' || link.status === 'EXPIRED') {
+          await this.markBoldPaymentFailed(tenantId, row.id, link.status, performedBy);
+          failed += 1;
+        } else {
+          pending += 1;
+        }
+      } catch (error: unknown) {
+        this.logger.warn(
+          `Bold verify failed for payment ${row.id}: ${error instanceof Error ? error.message : 'unknown'}`
+        );
+        pending += 1;
+      }
+    }
+    return { confirmed, failed, pending };
+  }
+
+  async handleBoldWebhook(event: BoldWebhookEvent): Promise<{ handled: boolean }> {
+    const type = event.type ?? '';
+    const data = event.data ?? {};
+    const paymentId = typeof data.payment_id === 'string' ? data.payment_id : null;
+    const metadata = typeof data.metadata === 'object' && data.metadata !== null && !Array.isArray(data.metadata)
+      ? data.metadata as Record<string, unknown>
+      : null;
+    const reference = typeof metadata?.reference === 'string' ? metadata.reference : null;
+    const amountData = typeof data.amount === 'object' && data.amount !== null && !Array.isArray(data.amount)
+      ? data.amount as Record<string, unknown>
+      : null;
+    const eventAmount = amountData?.total !== undefined && amountData?.total !== null
+      ? Number(amountData.total)
+      : null;
+    const candidates = [reference, paymentId].filter((value): value is string => Boolean(value));
+    if (candidates.length === 0) return { handled: false };
+
+    const found = await this.database.query<{ id: string; status: string | null; tenant_id: string; amount: string }>(
+      `SELECT id::text AS id, status, tenant_id::text AS tenant_id, amount
+       FROM public.tec_tenant_payments
+       WHERE bold_payment_id = ANY($1::text[])
+          OR invoice_url LIKE ANY($2::text[])
+          OR notes LIKE ANY($2::text[])
+       ORDER BY created_at DESC NULLS LAST
+       LIMIT 1`,
+      [candidates, candidates.map((candidate) => `%${candidate}%`)]
+    );
+    const payment = found.rows[0];
+    if (!payment) {
+      this.logger.warn(`Bold webhook ${type}: pago no encontrado (${candidates.join(', ')})`);
+      return { handled: false };
+    }
+
+    if (type === 'SALE_APPROVED') {
+      if (payment.status !== 'pending') return { handled: true };
+      if (eventAmount !== null && Number.isFinite(eventAmount) && Number(payment.amount) !== eventAmount) {
+        this.logger.error(
+          `Bold webhook SALE_APPROVED: monto no coincide (evento=${eventAmount} pago=${payment.amount}) id=${payment.id}`
+        );
+        await this.tenantManagement.logActivity(
+          payment.tenant_id,
+          'payment_amount_mismatch',
+          { payment_id: payment.id, gateway: 'bold', event_amount: eventAmount, payment_amount: payment.amount },
+          null
+        );
+        return { handled: false };
+      }
+      const settled = await this.settleBoldPayment(payment.id, paymentId, null, 'bold_webhook');
+      return { handled: settled };
+    }
+    if (type === 'SALE_REJECTED') {
+      if (payment.status === 'pending') {
+        await this.markBoldPaymentFailed(payment.tenant_id, payment.id, 'REJECTED', null);
+      }
+      return { handled: true };
+    }
+    await this.tenantManagement.logActivity(
+      payment.tenant_id,
+      'gateway_event',
+      { gateway: 'bold', type, payment_id: paymentId },
+      null
+    );
+    return { handled: true };
+  }
+
+  private async settleBoldPayment(
+    paymentId: string,
+    transactionId: string | null,
+    performedBy: number | null | undefined,
+    source: 'bold_webhook' | 'bold_verify'
+  ): Promise<boolean> {
+    try {
+      await this.tenantManagement.confirmPayment(paymentId, performedBy ?? null, source);
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Bold settle skipped for payment ${paymentId}: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+      return false;
+    }
+    if (transactionId) {
+      await this.database.query(
+        `UPDATE public.tec_tenant_payments SET notes = COALESCE(notes, '') || $2 WHERE id = $1`,
+        [paymentId, ` · txn:${transactionId}`]
+      );
+    }
+    return true;
+  }
+
+  private async markBoldPaymentFailed(
+    tenantId: string,
+    paymentId: string,
+    status: string,
+    performedBy?: number | null
+  ): Promise<void> {
+    await this.database.query(
+      `UPDATE public.tec_tenant_payments
+       SET status = 'failed', notes = COALESCE(notes, '') || $2
+       WHERE id = $1 AND status = 'pending'`,
+      [paymentId, ` · bold:${status}`]
+    );
+    await this.tenantManagement.logActivity(
+      tenantId,
+      'payment_failed',
+      { payment_id: paymentId, gateway: 'bold', status },
+      performedBy ?? null
+    );
   }
 
   private async subscriptionFor(tenantId: string): Promise<SubscriptionRow | null> {

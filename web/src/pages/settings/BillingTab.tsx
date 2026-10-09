@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, Panel } from '../../components/ui';
 import { useSession } from '../../app/session';
 import { useApiMutation, useBillingInvoicesQuery, useCurrentInvoiceQuery } from '../../pos-queries';
-import { requestBillingPayment } from '../../api';
+import { requestBillingPayment, startBoldPayment, verifyBoldPayments } from '../../api';
 import type { BillingInvoice, BillingInvoiceStatus } from '../../api';
 import { formatDateOnly, formatMoney } from '../../format';
 import { daysUntil } from '../tenant-management/utils';
@@ -42,10 +43,37 @@ export default function BillingTab() {
   const [detailTarget, setDetailTarget] = useState<BillingInvoice | null>(null);
   const [method, setMethod] = useState(PAY_METHODS[0].value);
   const [notes, setNotes] = useState('');
+  const [payError, setPayError] = useState('');
 
   const payMutation = useApiMutation((input: { invoiceId: string; method: string; notes: string }) =>
     requestBillingPayment(input.invoiceId, { payment_method: input.method, notes: input.notes || undefined })
   );
+  const boldMutation = useApiMutation((invoiceId: string) => startBoldPayment(invoiceId));
+  const verifyMutation = useApiMutation(() => verifyBoldPayments());
+  const [searchParams] = useSearchParams();
+  const verifiedRef = useRef(false);
+
+  useEffect(() => {
+    const payment = searchParams.get('payment');
+    if (!payment || verifiedRef.current) return;
+    verifiedRef.current = true;
+    window.history.replaceState({}, '', window.location.pathname);
+    if (payment === 'cancelled') {
+      setNotice('Pago cancelado en Bold. Puedes intentarlo de nuevo.');
+      return;
+    }
+    if (payment === 'success' || payment === 'return') {
+      verifyMutation.mutate(undefined, {
+        onSuccess: async (result) => {
+          setNotice(result.confirmed > 0
+            ? 'Pago confirmado por Bold: suscripción activada/renovada.'
+            : 'Estamos confirmando tu pago con Bold; si no se refleja en unos minutos, actualiza la página.');
+          await refresh();
+        },
+        onError: (error: Error) => setNotice(error.message)
+      });
+    }
+  }, [searchParams, verifyMutation]);
 
   const current = currentQuery.data;
   const overdue = current?.overdue ?? null;
@@ -62,6 +90,7 @@ export default function BillingTab() {
 
   function openPay(invoice: BillingInvoice) {
     setNotice('');
+    setPayError('');
     setMethod(PAY_METHODS[0].value);
     setNotes('');
     setPayTarget(invoice);
@@ -155,9 +184,10 @@ export default function BillingTab() {
           <div className="stack">
             <Notice>
               Monto a pagar: <strong>{formatMoney(payTarget.amount, currency)}</strong> ({payTarget.plan_name ?? 'plan'} ·{' '}
-              {payTarget.billing_cycle === 'yearly' ? 'anual' : 'mensual'}). La solicitud queda <strong>pendiente de
-              confirmación</strong> por el administrador; no se solicitan datos de tarjeta.
+              {payTarget.billing_cycle === 'yearly' ? 'anual' : 'mensual'}). Al continuar serás redirigido a{' '}
+              <strong>Bold</strong> para pagar de forma segura; al volver confirmaremos el pago automáticamente.
             </Notice>
+            {payError ? <Notice tone="error">{payError}</Notice> : null}
             <label>Método de pago
               <select value={method} onChange={(event) => setMethod(event.target.value)}>
                 {PAY_METHODS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
@@ -167,7 +197,7 @@ export default function BillingTab() {
               <input value={notes} maxLength={500} onChange={(event) => setNotes(event.target.value)} placeholder="Ej: transferencia #1234" />
             </label>
             <div className="modal-actions">
-              <button className="quiet" type="button" onClick={() => setPayTarget(null)} disabled={payMutation.isPending}>
+              <button className="quiet" type="button" onClick={() => setPayTarget(null)} disabled={payMutation.isPending || boldMutation.isPending}>
                 Cancelar
               </button>
               <a
@@ -177,9 +207,10 @@ export default function BillingTab() {
                 ✉️ Contactar administrador
               </a>
               <button
-                className="primary"
+                className="quiet"
                 type="button"
-                disabled={payMutation.isPending}
+                disabled={payMutation.isPending || boldMutation.isPending}
+                title="Sin pasarela: deja la solicitud pendiente para que el administrador la confirme"
                 onClick={() => {
                   payMutation.mutate(
                     { invoiceId: payTarget.id, method, notes: notes.trim() },
@@ -189,12 +220,27 @@ export default function BillingTab() {
                         setPayTarget(null);
                         await refresh();
                       },
-                      onError: (error: Error) => setNotice(error.message)
+                      onError: (error: Error) => setPayError(error.message)
                     }
                   );
                 }}
               >
-                {payMutation.isPending ? 'Enviando…' : 'Enviar solicitud de pago'}
+                {payMutation.isPending ? 'Enviando…' : 'Registro manual'}
+              </button>
+              <button
+                className="primary"
+                type="button"
+                disabled={payMutation.isPending || boldMutation.isPending}
+                onClick={() => {
+                  boldMutation.mutate(payTarget.id, {
+                    onSuccess: (result) => {
+                      window.location.href = result.checkout_url;
+                    },
+                    onError: (error: Error) => setPayError(error.message)
+                  });
+                }}
+              >
+                {boldMutation.isPending ? 'Redirigiendo…' : '💳 Pagar con Bold'}
               </button>
             </div>
           </div>

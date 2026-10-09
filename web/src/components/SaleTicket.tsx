@@ -103,6 +103,8 @@ export default function SaleTicket({
   const isCash = sale.paid_by === 'cash';
   const received = sale.amount_received;
   const change = sale.change_amount;
+  const dueAmount = Math.max(0, Number(sale.grand_total ?? 0) - Number(sale.paid ?? 0));
+  const showDue = dueAmount > 0;
   const points = Number(sale.total_reward_points ?? 0);
   const showCustomer = Boolean(sale.customer_name) && sale.customer_name !== 'Cliente ocasional';
 
@@ -185,6 +187,12 @@ export default function SaleTicket({
       <div className="ticket-payment">
         <div><span>Pago</span><span>{sale.paid_by ? paymentMethodLabel(sale.paid_by) : 'Cuenta pendiente'}</span></div>
         {isCash && received ? <div><span>Recibido</span><span>{formatMoney(received, currency)}</span></div> : null}
+        {showDue ? (
+          <div className="ticket-due-row">
+            <span>Debido</span>
+            <span>{formatMoney(dueAmount, currency)}</span>
+          </div>
+        ) : null}
         {isCash && received ? <div><span>Cambio</span><span>{formatMoney(change ?? '0', currency)}</span></div> : null}
         <div><span>Estado</span><span>{saleStatusLabel(sale.status)}</span></div>
       </div>

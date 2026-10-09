@@ -483,6 +483,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .ticket-payment { display: grid; gap: 2px; font-size: 10px; }
 .ticket-payment div { display: flex; justify-content: space-between; gap: 8px; }
 .ticket-payment div span:first-child { color: #444; }
+.ticket-payment .ticket-due-row span { font-weight: 800; color: #b91c1c; }
 .ticket-points { margin-top: 5px; text-align: center; font-size: 10px; font-weight: 700; }
 .ticket-footer { display: grid; justify-items: center; gap: 3px; text-align: center; }
 .ticket-qr-container { width: 100%; display: grid; justify-items: center; margin: 10px 0 2px; }

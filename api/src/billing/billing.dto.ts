@@ -16,3 +16,10 @@ export class RequestPaymentDto {
   @MaxLength(500)
   notes?: string;
 }
+
+export class BoldCheckoutDto {
+  @IsString()
+  @MinLength(3)
+  @MaxLength(160)
+  invoice_id!: string;
+}

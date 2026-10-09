@@ -288,6 +288,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function readErrorMessage(payload: unknown): string {
   if (!isRecord(payload)) return 'No fue posible completar la solicitud';
   if (typeof payload.message === 'string') return payload.message;
+  if (Array.isArray(payload.message)) {
+    const parts = payload.message.filter((item): item is string => typeof item === 'string');
+    if (parts.length > 0) return parts.join(' · ');
+  }
   if (isRecord(payload.error) && typeof payload.error.message === 'string') return payload.error.message;
   return 'No fue posible completar la solicitud';
 }
@@ -609,6 +613,15 @@ export const requestBillingPayment = (invoiceId: string, payload: BillingPayment
     '/billing/pay',
     { method: 'POST', body: JSON.stringify({ invoice_id: invoiceId, ...payload }) }
   );
+
+export const startBoldPayment = (invoiceId: string) =>
+  apiRequest<{ id: string | null; invoice_number: string; amount: string; checkout_url: string }>(
+    '/billing/pay-bold',
+    { method: 'POST', body: JSON.stringify({ invoice_id: invoiceId }) }
+  );
+
+export const verifyBoldPayments = () =>
+  apiRequest<{ confirmed: number; failed: number; pending: number }>('/billing/verify-bold', { method: 'POST' });
 
 export const switchTenant = (tenantId: string) =>
   apiRequest<SwitchTenantResult>('/auth/switch-tenant', {

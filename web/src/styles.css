@@ -211,7 +211,7 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .quantity-control button { width: 27px; height: 27px; border: 1px solid #dce5dd; border-radius: 8px; background: #fff; color: #147d4a; font-size: 18px; }
 .quantity-control span { min-width: 16px; text-align: center; font-size: 13px; font-weight: 700; }
 .payment-row label { margin-bottom: 4px; }
-.total-row { display: flex; align-items: baseline; justify-content: space-between; margin: 14px 0 6px; }
+.total-row { display: grid; gap: 10px; margin: 16px 0 8px; }
 .total-row span { color: #68736b; font-size: 13px; }
 .total-row strong { font-size: 24px; font-weight: 800; }
 .checkout { margin-top: 16px; }
@@ -1113,7 +1113,20 @@ label.checkbox-label { flex-direction: row; align-items: center; gap: 8px; }
   .invoice-print { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 8mm; border: 0; box-shadow: none; background: #fff; }
 }
 
-/* Product scanner */
+/* POS shell (footer) */
+.pos-shell { display: flex; flex-direction: column; gap: 14px; min-height: calc(100vh - 150px); }
+.pos-shell .workspace { flex: 1; }
+.pos-footer {
+  display: grid;
+  gap: 2px;
+  border-top: 1px solid #e2e9e3;
+  padding: 18px 10px 6px;
+  text-align: center;
+  color: #68736b;
+  font-size: 12px;
+}
+.pos-footer-signature { font-size: 11px; color: #8b968e; font-style: italic; }
+
 .search-row { display: flex; align-items: center; gap: 8px; margin-bottom: 18px; }
 .search-row .search { flex: 1; min-width: 0; margin: 0; height: 44px; min-height: 44px; }
 .search-row .icon-button {

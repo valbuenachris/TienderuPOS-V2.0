@@ -7,6 +7,7 @@ import type { SaleConfirmationData, SaleConfirmationPayload } from '../component
 import SaleTicket from '../components/SaleTicket';
 import ProductScanner from '../components/ProductScanner';
 import type { ScannerResult } from '../components/ProductScanner';
+import PosFooter from '../components/PosFooter';
 import { useSession } from '../app/session';
 import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
 import { fetchProducts } from '../api';
@@ -214,7 +215,8 @@ export default function PosPage() {
   const products = productsQuery.data ?? [];
 
   return (
-    <div className="workspace">
+    <div className="pos-shell">
+      <div className="workspace">
       <section className="catalog-panel">
         <div className="section-heading">
           <div><p className="eyebrow">PUNTO DE VENTA</p><h1>Nueva venta</h1></div>
@@ -382,6 +384,8 @@ export default function PosPage() {
         onClose={() => setScannerMode(null)}
         onScan={resolveScannedProduct}
       />
+      </div>
+      <PosFooter />
     </div>
   );
 }

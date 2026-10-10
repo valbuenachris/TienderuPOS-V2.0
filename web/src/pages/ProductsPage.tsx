@@ -6,7 +6,7 @@ import ProductImagesEditor from '../components/ProductImagesEditor';
 import ProductScanner from '../components/ProductScanner';
 import type { ScannerResult } from '../components/ProductScanner';
 import { useSession } from '../app/session';
-import { useApiMutation, useManagedProductsQuery } from '../pos-queries';
+import { useApiMutation, useCategoriesQuery, useManagedProductsQuery } from '../pos-queries';
 import { createManagedProduct, fetchManagedProducts, setManagedProductStock, updateManagedProduct } from '../api';
 import type { ManagedProduct, ManagedProductPayload } from '../api';
 import { parseScanValue } from '../scan';
@@ -28,6 +28,7 @@ export default function ProductsPage() {
   const [tax, setTax] = useState('');
   const [rewardPoints, setRewardPoints] = useState('0');
   const [details, setDetails] = useState('');
+  const [categoryId, setCategoryId] = useState('');
   const [initialQuantity, setInitialQuantity] = useState('0');
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
@@ -37,6 +38,8 @@ export default function ProductsPage() {
 
   const effectiveStoreId = storeId ?? stores[0]?.id ?? null;
   const productsQuery = useManagedProductsQuery(token, tenantId, effectiveStoreId, search, page, 20);
+  const categoriesQuery = useCategoriesQuery(token, tenantId);
+  const categories = categoriesQuery.data ?? [];
 
   const saveMutation = useApiMutation((input: { id: number | null; payload: ManagedProductPayload }) => {
     if (input.id === null) return createManagedProduct(input.payload);
@@ -47,7 +50,8 @@ export default function ProductsPage() {
       cost: input.payload.cost,
       tax: input.payload.tax,
       reward_points: input.payload.reward_points,
-      details: input.payload.details
+      details: input.payload.details,
+      category_id: input.payload.category_id
     });
   });
 
@@ -65,6 +69,7 @@ export default function ProductsPage() {
     setTax('');
     setRewardPoints('0');
     setDetails('');
+    setCategoryId('');
     setInitialQuantity('0');
   }
 
@@ -114,6 +119,7 @@ export default function ProductsPage() {
     setTax(product.tax ?? '');
     setRewardPoints(String(product.reward_points ?? 0));
     setDetails(product.details ?? '');
+    setCategoryId(product.category_id ?? '');
     setNotice('');
     setModalOpen(true);
   }
@@ -133,6 +139,8 @@ export default function ProductsPage() {
       reward_points: Number(rewardPoints) || 0,
       details: details.trim().slice(0, 1000)
     };
+    if (categoryId) payload.category_id = categoryId;
+    else if (editingId !== null) payload.category_id = null;
     if (editingId === null) {
       payload.store_id = effectiveStoreId;
       payload.quantity = Number(initialQuantity) || 0;
@@ -290,6 +298,14 @@ export default function ProductsPage() {
             </div>
           </label>
           <label>Nombre<input id="product-name" value={name} onChange={(event) => setName(event.target.value)} required maxLength={55} /></label>
+          <label>Categoría
+            <select value={categoryId} onChange={(event) => setCategoryId(event.target.value)}>
+              <option value="">Sin categoría</option>
+              {categories.map((category) => (
+                <option key={category.id} value={category.id}>{category.name}</option>
+              ))}
+            </select>
+          </label>
           <label>Precio<input value={price} onChange={(event) => setPrice(event.target.value)} required inputMode="decimal" placeholder="0.00" /></label>
           <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
           <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>

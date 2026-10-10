@@ -173,6 +173,8 @@ export interface ManagedProduct {
   store_quantity: number | null;
   store_price: string | null;
   line_total_value?: string | null;
+  category_id?: string | null;
+  category_name?: string | null;
 }
 
 export interface ManagedProductPayload {
@@ -185,7 +187,32 @@ export interface ManagedProductPayload {
   details?: string;
   store_id?: number;
   quantity?: number;
+  category_id?: string | null;
 }
+
+export interface CategoryRecord {
+  id: string;
+  name: string;
+  description: string | null;
+  product_count: number;
+  created_at: string | null;
+}
+
+export interface CategoryPayload {
+  name: string;
+  description?: string | null;
+}
+
+export const fetchCategories = () => apiRequest<CategoryRecord[]>('/categories');
+
+export const createCategory = (payload: CategoryPayload) =>
+  apiRequest<CategoryRecord>('/categories', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateCategory = (id: string, payload: CategoryPayload) =>
+  apiRequest<CategoryRecord>(`/categories/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const deleteCategory = (id: string) =>
+  apiRequest<void>(`/categories/${id}`, { method: 'DELETE' });
 
 export interface ManagedCustomer {
   id: number;

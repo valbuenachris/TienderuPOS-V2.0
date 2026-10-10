@@ -17,6 +17,7 @@ const TENANT_ITEMS: NavItem[] = [
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
   { to: '/ventas', label: 'Ventas', icon: '🧾' },
   { to: '/productos', label: 'Productos', icon: '📦', admin: true },
+  { to: '/categorias', label: 'Categorías', icon: '📂', admin: true },
   { to: '/inventario', label: 'Inventario', icon: '🏷️', admin: true },
   { to: '/clientes', label: 'Clientes', icon: '👥' },
   { to: '/proveedores', label: 'Proveedores', icon: '🚚', admin: true },

@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { CategoriesModule } from './categories/categories.module';
 import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { DatabaseModule } from './database/database.module';
@@ -32,6 +33,7 @@ import { UsersModule } from './users/users.module';
     SalesModule,
     SettingsModule,
     ProductsModule,
+    CategoriesModule,
     CustomersModule,
     ExpensesModule,
     ReportsModule,

@@ -4,6 +4,7 @@ import AppLayout from './app/AppLayout';
 import { SessionProvider, useSession } from './app/session';
 import DashboardPage from './pages/DashboardPage';
 import CashRegisterPage from './pages/CashRegisterPage';
+import CategoriesPage from './pages/CategoriesPage';
 import CustomersPage from './pages/CustomersPage';
 import DailySalesReport from './pages/DailySalesReport';
 import ExpensesPage from './pages/ExpensesPage';
@@ -67,6 +68,7 @@ export default function App() {
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/ventas" element={<SalesHistoryPage />} />
               <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
+              <Route path="/categorias" element={<AdminOnly><CategoriesPage /></AdminOnly>} />
               <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
               <Route path="/clientes" element={<CustomersPage />} />
               <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />

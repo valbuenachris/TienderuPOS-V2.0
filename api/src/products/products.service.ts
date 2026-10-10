@@ -19,6 +19,8 @@ type ProductAdminRow = Pick<
   store_quantity: number | null;
   store_price: string | null;
   line_total_value: string | null;
+  category_id: string | null;
+  category_name: string | null;
 };
 
 export type ProductAdminPage = Paginated<ProductAdminRow> & {
@@ -102,10 +104,13 @@ export class ProductsService {
                 p.price::text AS price, p.cost::text AS cost, p.tax::text AS tax,
                 q.quantity AS store_quantity, COALESCE(q.price, p.price)::text AS store_price,
                 ROUND((COALESCE(q.price, p.price))::numeric * COALESCE(q.quantity, 0), 2)::text AS line_total_value,
+                p.category_id::text AS category_id, cat.name AS category_name,
                 COUNT(*) OVER() AS total_count
          FROM public.tec_products p
          LEFT JOIN public.tec_product_store_qty q
            ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
+         LEFT JOIN public.tec_categories cat
+           ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
          WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)
          ORDER BY p.name
          LIMIT $4 OFFSET $5`,
@@ -132,6 +137,7 @@ export class ProductsService {
   }
 
   async create(tenantId: string, input: CreateProductDto) {
+    await this.assertCategory(tenantId, input.category_id);
     return this.database.transaction(async (client) => {
       if (input.store_id !== undefined) {
         const store = await client.query<StoreIdRow>(
@@ -142,8 +148,8 @@ export class ProductsService {
       }
 
       const product = await client.query<ProductIdRow>(
-        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details)
-         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8)
+        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details, category_id)
+         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8, $9)
          RETURNING id`,
         [
           tenantId,
@@ -153,7 +159,8 @@ export class ProductsService {
           input.cost ?? '0',
           input.tax ?? '0',
           input.reward_points ?? 0,
-          cleanDetails(input.details)
+          cleanDetails(input.details),
+          input.category_id ?? null
         ]
       );
       const productId = product.rows[0]?.id;
@@ -172,6 +179,7 @@ export class ProductsService {
   }
 
   async update(tenantId: string, productId: number, input: UpdateProductDto) {
+    await this.assertCategory(tenantId, input.category_id);
     const result = await this.database.query<ProductAdminRow>(
       `UPDATE public.tec_products
        SET code = COALESCE($3, code),
@@ -180,10 +188,12 @@ export class ProductsService {
            cost = COALESCE($6::numeric, cost),
            tax = COALESCE($7::numeric, tax),
            reward_points = COALESCE($8, reward_points),
-           details = CASE WHEN $9::boolean THEN $10 ELSE details END
+           details = CASE WHEN $9::boolean THEN $10 ELSE details END,
+           category_id = CASE WHEN $11::boolean THEN $12 ELSE category_id END
        WHERE tenant_id = $1 AND id = $2
        RETURNING id, code, name, type, details, reward_points, image, image_2, image_3,
-                 price::text AS price, cost::text AS cost, tax::text AS tax`,
+                 price::text AS price, cost::text AS cost, tax::text AS tax,
+                 category_id::text AS category_id`,
       [
         tenantId,
         productId,
@@ -194,7 +204,9 @@ export class ProductsService {
         input.tax ?? null,
         input.reward_points ?? null,
         input.details !== undefined,
-        cleanDetails(input.details)
+        cleanDetails(input.details),
+        input.category_id !== undefined,
+        input.category_id ?? null
       ]
     );
     const updated = result.rows[0];
@@ -206,8 +218,18 @@ export class ProductsService {
       image_3: this.toPublicUrl(updated.image_3),
       store_quantity: null,
       store_price: null,
-      line_total_value: null
+      line_total_value: null,
+      category_name: null
     };
+  }
+
+  private async assertCategory(tenantId: string, categoryId: string | null | undefined): Promise<void> {
+    if (categoryId === undefined || categoryId === null) return;
+    const result = await this.database.query<{ id: string }>(
+      'SELECT id FROM public.tec_categories WHERE tenant_id = $1 AND id::text = $2 LIMIT 1',
+      [tenantId, categoryId]
+    );
+    if (result.rowCount !== 1) throw new NotFoundException('Category not found in this tenant');
   }
 
   async setStock(tenantId: string, productId: number, input: SetStockDto) {

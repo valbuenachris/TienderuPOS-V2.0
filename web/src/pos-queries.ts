@@ -8,6 +8,7 @@ import {
   fetchCustomers,
   fetchDailyReport,
   fetchBillingInvoices,
+  fetchCategories,
   fetchCurrentInvoice,
   fetchExpenses,
   fetchGlobalDashboard,
@@ -492,6 +493,15 @@ export function useCurrentInvoiceQuery(token: string | null, tenantId: string | 
   return useQuery({
     queryKey: ['billing-current', tenantId],
     queryFn: fetchCurrentInvoice,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useCategoriesQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['categories', tenantId],
+    queryFn: fetchCategories,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

@@ -19,10 +19,12 @@ export default function InventoryPage() {
       <PageHeader
         eyebrow="EXISTENCIAS"
         title="Inventario"
-        actions={(
+        actions={stores.length > 1 ? (
           <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }} aria-label="Tienda">
             {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
           </select>
+        ) : (
+          <div className="store-pill">{stores[0]?.name || 'Tienda'}</div>
         )}
       />
       <Panel className="stack">

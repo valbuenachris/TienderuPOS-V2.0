@@ -30,6 +30,7 @@ export default function ProductsPage() {
   const [details, setDetails] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [initialQuantity, setInitialQuantity] = useState('0');
+  const [originalQuantity, setOriginalQuantity] = useState(0);
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
   const [modalOpen, setModalOpen] = useState(false);
@@ -71,6 +72,7 @@ export default function ProductsPage() {
     setDetails('');
     setCategoryId('');
     setInitialQuantity('0');
+    setOriginalQuantity(0);
   }
 
   function openCreate() {
@@ -120,6 +122,8 @@ export default function ProductsPage() {
     setRewardPoints(String(product.reward_points ?? 0));
     setDetails(product.details ?? '');
     setCategoryId(product.category_id ?? '');
+    setInitialQuantity(String(product.store_quantity ?? 0));
+    setOriginalQuantity(product.store_quantity ?? 0);
     setNotice('');
     setModalOpen(true);
   }
@@ -147,6 +151,12 @@ export default function ProductsPage() {
     }
     saveMutation.mutate({ id: editingId, payload }, {
       onSuccess: async () => {
+        if (editingId !== null) {
+          const quantity = Number(initialQuantity) || 0;
+          if (quantity !== originalQuantity && effectiveStoreId) {
+            await stockMutation.mutateAsync({ id: editingId, store_id: effectiveStoreId, quantity });
+          }
+        }
         setNotice(editingId === null ? 'Producto creado.' : 'Producto actualizado.');
         resetForm();
         await queryClient.invalidateQueries({ queryKey: ['managed-products'] });
@@ -188,11 +198,15 @@ export default function ProductsPage() {
       ) : null}
       <Panel className="stack full-width">
         <div className="toolbar">
-          <label>Tienda
-            <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }}>
-              {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
-            </select>
-          </label>
+          {stores.length > 1 ? (
+            <label>Tienda
+              <select value={effectiveStoreId ?? ''} onChange={(event) => { setStoreId(Number(event.target.value) || null); setPage(1); }}>
+                {stores.map((store) => <option key={store.id} value={store.id}>{store.name}</option>)}
+              </select>
+            </label>
+          ) : (
+            <div className="store-pill">{stores[0]?.name || 'Tienda'}</div>
+          )}
           <label className="search-label">Buscar
             <div className="search-row">
               <input
@@ -320,9 +334,9 @@ export default function ProductsPage() {
             />
             <small className="muted">{details.length}/1000 caracteres · se muestra en el catálogo de productos.</small>
           </label>
-          {editingId === null ? (
-            <label>Stock inicial<input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" /></label>
-          ) : null}
+          <label>Cantidad
+            <input value={initialQuantity} onChange={(event) => setInitialQuantity(event.target.value)} inputMode="numeric" />
+          </label>
           <button className="primary" type="submit" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear producto' : 'Guardar cambios'}
           </button>

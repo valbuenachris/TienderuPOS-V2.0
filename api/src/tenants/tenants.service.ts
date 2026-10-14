@@ -260,7 +260,7 @@ export class TenantsService {
 
     const inventory = await this.database.query<CountRow>(
       `SELECT COUNT(*)::integer AS count
-       FROM public.tec_product_store_qty
+       FROM public.tec_products
        WHERE tenant_id = $1 AND COALESCE(quantity, 0) > 0`,
       [id]
     );

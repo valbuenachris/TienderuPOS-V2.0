@@ -29,3 +29,7 @@ Thumbs.db
 # Backups
 *.dump
 *.sql.bak
+.env
+node_modules/
+dist/
+.next/

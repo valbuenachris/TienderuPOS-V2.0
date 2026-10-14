@@ -9,10 +9,8 @@ import { TableRow } from '../database/database.types';
 
 type ProductListRow = Pick<
   TableRow<'tec_products'>,
-  'id' | 'code' | 'name' | 'price' | 'tax' | 'type' | 'image'
+  'id' | 'code' | 'name' | 'price' | 'tax' | 'type' | 'image' | 'quantity'
 >;
-
-type StoreStockRow = Pick<TableRow<'tec_product_store_qty'>, 'product_id' | 'quantity' | 'price'>;
 type CustomerListRow = Pick<TableRow<'tec_customers'>, 'id' | 'name' | 'email' | 'phone'>;
 
 function escapeLike(value: string): string {
@@ -92,7 +90,7 @@ export class CatalogService {
     if (!store.data) throw new NotFoundException('Store not found in this tenant');
 
     const cleanSearch = search.trim().slice(0, 100);
-    const fields = 'id, code, name, price, tax, type, image';
+    const fields = 'id, code, name, price, tax, type, image, quantity';
     let productRows: ProductListRow[] = [];
 
     if (!cleanSearch) {
@@ -114,27 +112,10 @@ export class CatalogService {
       productRows = [...unique.values()].sort((a, b) => (a.name || '').localeCompare(b.name || '')).slice(0, 100);
     }
 
-    const stockByProduct = new Map<number, StoreStockRow>();
-    const duplicateStockProducts = new Set<number>();
-    if (productRows.length > 0) {
-      const stock = await this.supabase.client.from('tec_product_store_qty')
-        .select('product_id, quantity, price')
-        .eq('tenant_id', tenantId)
-        .eq('store_id', storeId)
-        .in('product_id', productRows.map((product) => product.id));
-      if (stock.error) throwCatalogError();
-      for (const row of stock.data ?? []) {
-        if (stockByProduct.has(row.product_id)) duplicateStockProducts.add(row.product_id);
-        else stockByProduct.set(row.product_id, row);
-      }
-    }
-
     return productRows.map((product) => {
-      const stock = stockByProduct.get(product.id);
-      const rawPrice = stock?.price ?? product.price;
-      const price = rawPrice === null
+      const price = product.price === null
         ? null
-        : new Decimal(rawPrice).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
+        : new Decimal(product.price).toDecimalPlaces(2, Decimal.ROUND_HALF_UP).toFixed(2);
       const rawImage = normalizeImageName(product.image);
       const hasAbsoluteImage = rawImage !== null && isAbsoluteImageUrl(rawImage);
       return {
@@ -143,7 +124,7 @@ export class CatalogService {
         tax: product.tax === null ? null : String(product.tax),
         image_url: this.resolveImageUrl(this.imageBase, product.image),
         image_full_url: hasAbsoluteImage ? null : this.resolveImageUrl(this.imageFullBase, product.image),
-        available_quantity: duplicateStockProducts.has(product.id) ? '0' : String(stock?.quantity ?? 0)
+        available_quantity: String(product.quantity ?? 0)
       };
     });
   }

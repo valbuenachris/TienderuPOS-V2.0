@@ -32,7 +32,7 @@ type PurchaseIdRow = Pick<TableRow<'tec_purchases'>, 'id'>;
 type ProductPurchaseRow = Pick<TableRow<'tec_products'>, 'id'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
 type SupplierIdRow = Pick<TableRow<'tec_suppliers'>, 'id'>;
-type StockIdRow = Pick<TableRow<'tec_product_store_qty'>, 'id'>;
+
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
 
@@ -157,27 +157,14 @@ export class PurchasesService {
         total = total.plus(subtotal);
         prepared.push({ productId: item.product_id, quantity: quantity.toNumber(), cost, subtotal, salePrice });
 
-        const updatedStock = await client.query<StockIdRow>(
-          `UPDATE public.tec_product_store_qty
-           SET quantity = quantity + $4
-           WHERE tenant_id = $1 AND product_id = $2 AND store_id = $3
-           RETURNING id`,
-          [tenantId, item.product_id, storeId, quantity.toNumber()]
-        );
-        if (updatedStock.rowCount !== 1) {
-          await client.query(
-            `INSERT INTO public.tec_product_store_qty (tenant_id, product_id, store_id, quantity)
-             VALUES ($1, $2, $3, $4)`,
-            [tenantId, item.product_id, storeId, quantity.toNumber()]
-          );
-        }
-
+        // Stock global en tec_products.quantity.
         await client.query(
           `UPDATE public.tec_products
            SET cost = $3,
-               price = COALESCE($4::numeric, price)
+               price = COALESCE($4::numeric, price),
+               quantity = quantity + $5
            WHERE tenant_id = $1 AND id = $2`,
-          [tenantId, item.product_id, cost.toFixed(2), salePrice === null ? null : salePrice.toFixed(2)]
+          [tenantId, item.product_id, cost.toFixed(2), salePrice === null ? null : salePrice.toFixed(2), quantity.toNumber()]
         );
       }
 
@@ -264,11 +251,10 @@ export class PurchasesService {
       for (const item of oldItems.rows) {
         if (item.product_id === null) continue;
         await client.query(
-          `UPDATE public.tec_product_store_qty
-           SET quantity = quantity - $4
-           WHERE tenant_id = $1 AND product_id = $2 AND store_id = $3
-           RETURNING id`,
-          [tenantId, item.product_id, storeId, Number(item.quantity ?? 0)]
+          `UPDATE public.tec_products
+           SET quantity = quantity - $3
+           WHERE tenant_id = $1 AND id = $2`,
+          [tenantId, item.product_id, Number(item.quantity ?? 0)]
         );
       }
 
@@ -306,27 +292,14 @@ export class PurchasesService {
         total = total.plus(subtotal);
         prepared.push({ productId: item.product_id, quantity: quantity.toNumber(), cost, subtotal, salePrice });
 
-        const updatedStock = await client.query<StockIdRow>(
-          `UPDATE public.tec_product_store_qty
-           SET quantity = quantity + $4
-           WHERE tenant_id = $1 AND product_id = $2 AND store_id = $3
-           RETURNING id`,
-          [tenantId, item.product_id, storeId, quantity.toNumber()]
-        );
-        if (updatedStock.rowCount !== 1) {
-          await client.query(
-            `INSERT INTO public.tec_product_store_qty (tenant_id, product_id, store_id, quantity)
-             VALUES ($1, $2, $3, $4)`,
-            [tenantId, item.product_id, storeId, quantity.toNumber()]
-          );
-        }
-
+        // Stock global en tec_products.quantity.
         await client.query(
           `UPDATE public.tec_products
            SET cost = $3,
-               price = COALESCE($4::numeric, price)
+               price = COALESCE($4::numeric, price),
+               quantity = quantity + $5
            WHERE tenant_id = $1 AND id = $2`,
-          [tenantId, item.product_id, cost.toFixed(2), salePrice === null ? null : salePrice.toFixed(2)]
+          [tenantId, item.product_id, cost.toFixed(2), salePrice === null ? null : salePrice.toFixed(2), quantity.toNumber()]
         );
       }
 

@@ -29,7 +29,7 @@ export type ProductAdminPage = Paginated<ProductAdminRow> & {
 type ProductIdRow = Pick<TableRow<'tec_products'>, 'id'>;
 type ProductImageRow = Pick<TableRow<'tec_products'>, 'id' | 'image' | 'image_2' | 'image_3'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
-type StockIdRow = Pick<TableRow<'tec_product_store_qty'>, 'id'>;
+
 
 const IMAGE_COLUMNS: Record<ProductImageSlot, 'image' | 'image_2' | 'image_3'> = {
   1: 'image',
@@ -102,27 +102,23 @@ export class ProductsService {
         `SELECT p.id, p.code, p.name, p.type, p.reward_points,
                 p.image, p.image_2, p.image_3, p.details,
                 p.price::text AS price, p.cost::text AS cost, p.tax::text AS tax,
-                q.quantity AS store_quantity, COALESCE(q.price, p.price)::text AS store_price,
-                ROUND((COALESCE(q.price, p.price))::numeric * COALESCE(q.quantity, 0), 2)::text AS line_total_value,
+                COALESCE(p.quantity, 0) AS store_quantity, p.price::text AS store_price,
+                ROUND((p.price)::numeric * COALESCE(p.quantity, 0), 2)::text AS line_total_value,
                 p.category_id::text AS category_id, cat.name AS category_name,
                 COUNT(*) OVER() AS total_count
          FROM public.tec_products p
-         LEFT JOIN public.tec_product_store_qty q
-           ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
          LEFT JOIN public.tec_categories cat
            ON cat.id = p.category_id AND cat.tenant_id = p.tenant_id
-         WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)
+         WHERE p.tenant_id = $1 AND (p.name ILIKE $2 OR p.code ILIKE $2)
          ORDER BY p.name
-         LIMIT $4 OFFSET $5`,
-        [tenantId, storeId, pattern, pagination.limit, pagination.offset]
+         LIMIT $3 OFFSET $4`,
+        [tenantId, pattern, pagination.limit, pagination.offset]
       ),
       this.database.query<{ grand_total: string }>(
-        `SELECT ROUND(COALESCE(SUM((COALESCE(q.price, p.price))::numeric * COALESCE(q.quantity, 0)), 0), 2)::text AS grand_total
+        `SELECT ROUND(COALESCE(SUM((p.price)::numeric * COALESCE(p.quantity, 0)), 0), 2)::text AS grand_total
          FROM public.tec_products p
-         LEFT JOIN public.tec_product_store_qty q
-           ON q.tenant_id = p.tenant_id AND q.store_id = $2 AND q.product_id = p.id
-         WHERE p.tenant_id = $1 AND (p.name ILIKE $3 OR p.code ILIKE $3)`,
-        [tenantId, storeId, pattern]
+         WHERE p.tenant_id = $1 AND (p.name ILIKE $2 OR p.code ILIKE $2)`,
+        [tenantId, pattern]
       )
     ]);
     const total = result.rows[0]?.total_count ?? 0;
@@ -148,8 +144,8 @@ export class ProductsService {
       }
 
       const product = await client.query<ProductIdRow>(
-        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details, category_id)
-         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8, $9)
+        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details, category_id, quantity)
+         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8, $9, $10)
          RETURNING id`,
         [
           tenantId,
@@ -160,19 +156,12 @@ export class ProductsService {
           input.tax ?? '0',
           input.reward_points ?? 0,
           cleanDetails(input.details),
-          input.category_id ?? null
+          input.category_id ?? null,
+          input.quantity ?? 0
         ]
       );
       const productId = product.rows[0]?.id;
       if (productId === undefined) throw new BadRequestException('Product could not be created');
-
-      if (input.store_id !== undefined && input.quantity !== undefined) {
-        await client.query(
-          `INSERT INTO public.tec_product_store_qty (tenant_id, product_id, store_id, quantity)
-           VALUES ($1, $2, $3, $4)`,
-          [tenantId, productId, input.store_id, input.quantity]
-        );
-      }
 
       return { id: productId };
     });
@@ -246,20 +235,12 @@ export class ProductsService {
       );
       if (store.rowCount !== 1) throw new NotFoundException('Store not found in this tenant');
 
-      const updated = await client.query<StockIdRow>(
-        `UPDATE public.tec_product_store_qty
-         SET quantity = $4
-         WHERE tenant_id = $1 AND product_id = $2 AND store_id = $3
-         RETURNING id`,
-        [tenantId, productId, input.store_id, input.quantity]
+      await client.query(
+        `UPDATE public.tec_products
+         SET quantity = $3
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, productId, input.quantity]
       );
-      if (updated.rowCount !== 1) {
-        await client.query(
-          `INSERT INTO public.tec_product_store_qty (tenant_id, product_id, store_id, quantity)
-           VALUES ($1, $2, $3, $4)`,
-          [tenantId, productId, input.store_id, input.quantity]
-        );
-      }
 
       return { product_id: productId, store_id: input.store_id, quantity: input.quantity };
     });

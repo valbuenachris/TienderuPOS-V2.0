@@ -13,11 +13,10 @@ type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | '
   price: string | null;
   tax: string | null;
 };
-type StockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'> & { store_price: string | null };
 type SaleIdRow = Pick<TableRow<'tec_sales'>, 'id' | 'created_at'>;
 type StoreIdRow = Pick<TableRow<'tec_stores'>, 'id'>;
 type CustomerIdNameRow = Pick<TableRow<'tec_customers'>, 'id' | 'name' | 'phone'>;
-type UpdatedStockRow = Pick<TableRow<'tec_product_store_qty'>, 'quantity'>;
+type UpdatedStockRow = { quantity: number | null };
 type SalesListRow = Omit<Pick<
   TableRow<'tec_sales'>,
   'id' | 'tenant_id' | 'customer_id' | 'customer_name' | 'total' | 'grand_total' | 'paid' |
@@ -152,9 +151,9 @@ export class SalesService {
           throw new BadRequestException('Fractional quantities are not supported by store inventory');
         }
 
-        const products = await client.query<ProductRow>(
+        const products = await client.query<ProductRow & { quantity: number | null }>(
           `SELECT id, code, name, price::text AS price, tax::text AS tax,
-                  reward_points, type
+                  reward_points, type, quantity
            FROM public.tec_products
            WHERE tenant_id = $1 AND id = $2
            LIMIT 1
@@ -167,25 +166,12 @@ export class SalesService {
           throw new BadRequestException('Combo sales are not enabled in this first POS build');
         }
 
-        const stockResult = await client.query<StockRow>(
-          `SELECT quantity, price::text AS store_price
-           FROM public.tec_product_store_qty
-           WHERE tenant_id = $1 AND store_id = $2 AND product_id = $3
-           LIMIT 2
-           FOR UPDATE`,
-          [tenantId, storeId, product.id]
-        );
-        if (stockResult.rowCount !== 1) {
-          throw new NotFoundException('Product has no unique stock row for the selected store');
-        }
-
-        const stock = stockResult.rows[0];
-        const available = new Decimal(stock.quantity ?? 0);
+        const available = new Decimal(product.quantity ?? 0);
         if (available.lt(quantity)) {
-          throw new BadRequestException(`Insufficient store stock for product ${product.id}`);
+          throw new BadRequestException(`Insufficient stock for product ${product.id}`);
         }
 
-        const selectedPrice = stock.store_price ?? product.price;
+        const selectedPrice = product.price;
         if (selectedPrice === null) throw new BadRequestException(`Product ${product.id} has no price`);
         const unitPrice = new Decimal(selectedPrice);
         if (!unitPrice.isFinite() || unitPrice.isNegative()) {
@@ -214,14 +200,14 @@ export class SalesService {
         }
 
         const updatedStock = await client.query<UpdatedStockRow>(
-          `UPDATE public.tec_product_store_qty
+          `UPDATE public.tec_products
            SET quantity = quantity - $1
-           WHERE tenant_id = $2 AND store_id = $3 AND product_id = $4 AND quantity >= $1
+           WHERE tenant_id = $2 AND id = $3 AND quantity >= $1
            RETURNING quantity`,
-          [quantity.toNumber(), tenantId, storeId, product.id]
+          [quantity.toNumber(), tenantId, product.id]
         );
         if (updatedStock.rowCount !== 1) {
-          throw new BadRequestException(`Insufficient store stock for product ${product.id}`);
+          throw new BadRequestException(`Insufficient stock for product ${product.id}`);
         }
       }
 
@@ -722,41 +708,39 @@ export class SalesService {
           throw new BadRequestException(`Combo product ${productId} cannot be edited from this POS`);
         }
 
-        const stockResult = await client.query<StockRow>(
-          `SELECT quantity, price::text AS store_price
-           FROM public.tec_product_store_qty
-           WHERE tenant_id = $1 AND store_id = $2 AND product_id = $3
-           LIMIT 2
-           FOR UPDATE`,
-          [tenantId, sale.store_id, productId]
+        const stockResult = await client.query<{ quantity: number | null }>(
+          `SELECT quantity FROM public.tec_products
+           WHERE tenant_id = $1 AND id = $2
+           LIMIT 1`,
+          [tenantId, productId]
         );
         if (stockResult.rowCount !== 1) {
-          throw new NotFoundException(`Product ${productId} has no unique stock row for the sale store`);
+          throw new NotFoundException(`Product ${productId} not found in this tenant`);
         }
 
         const restored = await client.query(
-          `UPDATE public.tec_product_store_qty
+          `UPDATE public.tec_products
            SET quantity = quantity + $1
-           WHERE tenant_id = $2 AND store_id = $3 AND product_id = $4
+           WHERE tenant_id = $2 AND id = $3
            RETURNING quantity`,
-          [old.quantity.toNumber(), tenantId, sale.store_id, productId]
+          [old.quantity.toNumber(), tenantId, productId]
         );
         if (restored.rowCount !== 1) {
-          throw new NotFoundException(`Stock row for product ${productId} could not be restored`);
+          throw new NotFoundException(`Stock for product ${productId} could not be restored`);
         }
 
         const quantity = requested.get(productId);
         if (!quantity) continue;
 
         const deducted = await client.query(
-          `UPDATE public.tec_product_store_qty
+          `UPDATE public.tec_products
            SET quantity = quantity - $1
-           WHERE tenant_id = $2 AND store_id = $3 AND product_id = $4 AND quantity >= $1
+           WHERE tenant_id = $2 AND id = $3 AND quantity >= $1
            RETURNING quantity`,
-          [quantity.toNumber(), tenantId, sale.store_id, productId]
+          [quantity.toNumber(), tenantId, productId]
         );
         if (deducted.rowCount !== 1) {
-          throw new BadRequestException(`Insufficient store stock for product ${productId}`);
+          throw new BadRequestException(`Insufficient stock for product ${productId}`);
         }
 
         const unitPrice = old.unitPrice;
@@ -920,14 +904,14 @@ export class SalesService {
         }
 
         const restored = await client.query(
-          `UPDATE public.tec_product_store_qty
+          `UPDATE public.tec_products
            SET quantity = quantity + $1
-           WHERE tenant_id = $2 AND store_id = $3 AND product_id = $4
+           WHERE tenant_id = $2 AND id = $3
            RETURNING quantity`,
-          [restoreByProduct.get(productId)?.toNumber() ?? 0, tenantId, sale.store_id, productId]
+          [restoreByProduct.get(productId)?.toNumber() ?? 0, tenantId, productId]
         );
         if (restored.rowCount !== 1) {
-          throw new NotFoundException(`Stock row for product ${productId} could not be restored`);
+          throw new NotFoundException(`Stock for product ${productId} could not be restored`);
         }
       }
 

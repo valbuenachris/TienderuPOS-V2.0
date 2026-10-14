@@ -53,8 +53,9 @@ export class DatabaseService implements OnModuleInit, OnModuleDestroy {
          WHERE NOT t.tgisinternal
            AND n.nspname = 'public'
            AND t.tgenabled <> 'D'
+           AND t.tgname NOT IN ('trg_calculate_reward_points')
            AND c.relname IN (
-             'tec_sales', 'tec_sale_items', 'tec_product_store_qty', 'tec_products',
+             'tec_sales', 'tec_sale_items', 'tec_products',
              'tec_purchases', 'tec_purchase_items'
            )`
       );

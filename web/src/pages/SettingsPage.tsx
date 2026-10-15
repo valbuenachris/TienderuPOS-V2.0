@@ -284,7 +284,7 @@ export default function SettingsPage() {
                     <button className="quiet" type="button" onClick={removeLogo} disabled={saving}>Eliminar</button>
                   ) : null}
                 </div>
-                <small className="muted">PNG, JPG, WEBP o SVG · máx. 2 MB. El logo se guarda al pulsar “Guardar cambios”.</small>
+                <small className="muted">Formatos: JPG, PNG, WEBP o SVG · máx. 2 MB · recomendado desde 100×100 px. El logo se guarda al pulsar “Guardar cambios” y se usa en el POS, el ticket y la tienda virtual.</small>
               </div>
             ) : (
               <Notice>Requiere la columna <code>logo_url</code>; ejecuta las sentencias ALTER TABLE del README.</Notice>

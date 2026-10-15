@@ -1,12 +1,13 @@
 import type { SalePaymentMethod } from './api';
 
-export const PAYMENT_METHOD_LABELS: Record<SalePaymentMethod, string> = {
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
   cash: 'Efectivo',
   CC: 'Tarjeta',
   Transferencia: 'Transferencia',
   Sistecredito: 'Sistecrédito',
   ADI: 'Addi',
-  credito: 'Crédito tienda'
+  credito: 'Crédito tienda',
+  points: 'Canje de Puntos'
 };
 
 export function paymentMethodLabel(value: string | null | undefined): string {

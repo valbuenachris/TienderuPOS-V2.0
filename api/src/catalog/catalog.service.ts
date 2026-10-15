@@ -10,7 +10,7 @@ import { TableRow } from '../database/database.types';
 
 type ProductListRow = Pick<
   TableRow<'tec_products'>,
-  'id' | 'code' | 'name' | 'price' | 'tax' | 'type' | 'image' | 'image_2' | 'image_3' | 'quantity' | 'reward_points' | 'details'
+  'id' | 'code' | 'name' | 'price' | 'tax' | 'type' | 'image' | 'image_2' | 'image_3' | 'details' | 'reward_points' | 'quantity' | 'points_cost'
 >;
 type CustomerListRow = Pick<TableRow<'tec_customers'>, 'id' | 'name' | 'email' | 'phone'>;
 
@@ -96,7 +96,7 @@ export class CatalogService {
     if (!store.data) throw new NotFoundException('Store not found in this tenant');
 
     const cleanSearch = search.trim().slice(0, 100);
-    const fields = 'id, code, name, price, tax, type, image, image_2, image_3, quantity, reward_points, details';
+    const fields = 'id, code, name, price, tax, type, image, image_2, image_3, quantity, reward_points, details, points_cost';
     let productRows: ProductListRow[] = [];
 
     if (!cleanSearch) {
@@ -134,12 +134,12 @@ export class CatalogService {
   }
 
   async listRewardProducts(tenantId: string, limit = 100) {
-    const fields = 'id, code, name, price, tax, type, image, image_2, image_3, quantity, reward_points, details';
+    const fields = 'id, code, name, price, tax, type, image, image_2, image_3, quantity, reward_points, details, points_cost';
     const result = await this.supabase.client
       .from('tec_products')
       .select(fields)
       .eq('tenant_id', tenantId)
-      .gt('reward_points', 0)
+      .gt('points_cost', 0)
       .order('name')
       .limit(limit);
     if (result.error) throwCatalogError();

@@ -6,7 +6,7 @@ import { parsePagination } from '../common/pagination';
 import { PaymentsService } from '../payments/payments.service';
 import { SalesService } from '../sales/sales.service';
 import { BannersService } from './banners.service';
-import { CustomerCheckoutDto, CustomerCheckoutWithPaymentDto, UpdateCustomerProfileDto } from './customer.dto';
+import { CustomerCheckoutDto, CustomerCheckoutWithPaymentDto, RedeemProductDto, UpdateCustomerProfileDto } from './customer.dto';
 import { CustomerService } from './customer.service';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -101,5 +101,10 @@ export class CustomerController {
     @Body() body: CustomerCheckoutWithPaymentDto
   ) {
     return this.payments.checkoutWithPayment(request.tenantId!, request.posCustomer!, body);
+  }
+
+  @Post('redeem')
+  redeem(@Req() request: PosRequest, @Body() body: RedeemProductDto) {
+    return this.customer.redeem(request.tenantId!, request.posCustomer!, body);
   }
 }

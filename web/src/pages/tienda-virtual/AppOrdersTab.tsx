@@ -55,7 +55,11 @@ export default function AppOrdersTab() {
               <tr key={order.id}>
                 <td>#{order.id}</td>
                 <td>{order.customer_name || 'Cliente ocasional'}</td>
-                <td className="money-cell">{formatMoney(order.grand_total, currency)}</td>
+                <td className="money-cell">
+                  {order.payment_method === 'points'
+                    ? <span className="badge paid">Canje de Puntos</span>
+                    : formatMoney(order.grand_total, currency)}
+                </td>
                 <td>{order.payment_method ? paymentMethodLabel(order.payment_method) : '—'}</td>
                 <td><span className={`badge ${order.status === 'paid' ? 'paid' : order.status === 'partial' ? 'partial' : 'due'}`}>{saleStatusLabel(order.status)}</span></td>
                 <td>

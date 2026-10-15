@@ -96,7 +96,15 @@ La sección **📱 Tienda Virtual** (`/tienda-virtual`, solo admin) administra l
 - **Reseñas**: `product_reviews` (nombre de producto y cliente, estrellas, comentario, fecha) con borrado definitivo. `GET/DELETE /api/admin/reviews`.
 - **Banners**: carrusel de la app desde la tabla global `banners` (solo `image_url`); listar, agregar por URL y eliminar. `GET/POST/DELETE /api/admin/banners`.
 
-Todo es admin-only (`AdminGuard` acepta admin y super_admin) y los pedidos/clientes/actividad van scoped al tenant; los banners son globales por diseño de la tabla. `points_cost` (P13) queda solo como referencia de UI, sin redención todavía.
+Todo es admin-only (`AdminGuard` acepta admin y super_admin) y los pedidos/clientes/actividad van scoped al tenant; los banners son globales por diseño de la tabla.
+
+### Logo por tenant (v0.3.74)
+
+El logo vive en `tec_tenant_settings.logo_url` (sin DDL nuevo) y se gestiona en **Configuración → Marca / Logo** (`POST/DELETE /api/settings/logo`, solo admin; JPG/PNG/WEBP/SVG, máx 2 MB, recomendado ≥ 100×100 px; se guarda con "Guardar cambios" y borra el archivo anterior). El **sidebar del POS** lo muestra (alto máx 40 px, fallback "P") y el ticket ya lo usaba. La **app móvil** lo recibe en `GET /customer/profile` como `tenant.logo_url` tras el login, lo cachea en SharedPreferences (disponible sin conexión) y lo muestra en la pantalla de login y en el AppBar del home, con el icono por defecto si no hay logo.
+
+### Canje de Puntos (P13, v0.3.72)
+
+`tec_products.points_cost` (entero ≥ 0, migración `docs/migrations/v0.3.72-add-points-cost-to-products.sql`) marca los productos canjeables; el endpoint de premios de la app filtra por `points_cost > 0`. `POST /api/customer/redeem` (cliente autenticado) hace el canje en **una transacción**: bloquea producto y cliente (`FOR UPDATE`), valida `points_cost > 0`, existencias y saldo, descuenta puntos, resta 1 de stock, crea una **venta de $0** (`payment_method='points'`, `status='due'`, `created_by=NULL`) con su línea en `tec_sale_items` y registra `customer_points_redeemed`. Hay un guard anti-duplicado de 60 s por cliente+producto. En el POS la venta aparece en **Tienda Virtual → Pedidos App** como "Canje de Puntos" (estado de entrega lo actualiza el admin). En el POS web, el modal de producto incluye **"Costo en Puntos (Canje)"**; en la app móvil, el botón "Canjear por X puntos" aparece en Premios y en el detalle del producto (deshabilitado con "Te faltan X puntos" si el saldo no alcanza).
 
 ## Configuración editable (solo admin)
 

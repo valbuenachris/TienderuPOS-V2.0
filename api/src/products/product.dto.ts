@@ -59,6 +59,13 @@ export class CreateProductDto {
   @IsString()
   @Matches(CATEGORY_ID_PATTERN)
   category_id?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  points_cost?: number;
 }
 
 export class UpdateProductDto {
@@ -103,6 +110,13 @@ export class UpdateProductDto {
   @IsString()
   @Matches(CATEGORY_ID_PATTERN)
   category_id?: string | null;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(0)
+  @Max(2147483647)
+  points_cost?: number;
 }
 
 export class SetStockDto {

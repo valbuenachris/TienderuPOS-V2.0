@@ -101,7 +101,15 @@ export default function AppLayout() {
       <aside className="sidebar">
         <div className="sidebar-head">
           <div className="sidebar-brand">
-            <span className="brand-mark small">P</span>
+            {settings?.logo_url ? (
+              <img
+                className="brand-mark-logo"
+                src={settings.logo_url}
+                alt={settings.site_name || 'Logo'}
+              />
+            ) : (
+              <span className="brand-mark small">P</span>
+            )}
             <strong>{brandName}</strong>
           </div>
           <button

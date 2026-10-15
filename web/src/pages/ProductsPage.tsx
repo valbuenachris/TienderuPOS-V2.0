@@ -31,6 +31,7 @@ export default function ProductsPage() {
   const [categoryId, setCategoryId] = useState('');
   const [initialQuantity, setInitialQuantity] = useState('0');
   const [originalQuantity, setOriginalQuantity] = useState(0);
+  const [pointsCost, setPointsCost] = useState('0');
   const [stockProduct, setStockProduct] = useState<ManagedProduct | null>(null);
   const [stockQuantity, setStockQuantity] = useState('0');
   const [modalOpen, setModalOpen] = useState(false);
@@ -52,7 +53,8 @@ export default function ProductsPage() {
       tax: input.payload.tax,
       reward_points: input.payload.reward_points,
       details: input.payload.details,
-      category_id: input.payload.category_id
+      category_id: input.payload.category_id,
+      points_cost: input.payload.points_cost
     });
   });
 
@@ -73,6 +75,7 @@ export default function ProductsPage() {
     setCategoryId('');
     setInitialQuantity('0');
     setOriginalQuantity(0);
+    setPointsCost('0');
   }
 
   function openCreate() {
@@ -124,6 +127,7 @@ export default function ProductsPage() {
     setCategoryId(product.category_id ?? '');
     setInitialQuantity(String(product.store_quantity ?? 0));
     setOriginalQuantity(product.store_quantity ?? 0);
+    setPointsCost(String(product.points_cost ?? 0));
     setNotice('');
     setModalOpen(true);
   }
@@ -141,7 +145,8 @@ export default function ProductsPage() {
       cost: cost.trim() || undefined,
       tax: tax.trim() || undefined,
       reward_points: Number(rewardPoints) || 0,
-      details: details.trim().slice(0, 1000)
+      details: details.trim().slice(0, 1000),
+      points_cost: Number(pointsCost) || 0
     };
     if (categoryId) payload.category_id = categoryId;
     else if (editingId !== null) payload.category_id = null;
@@ -241,16 +246,17 @@ export default function ProductsPage() {
         <div className="table-wrap">
           <table className="data-table products-table">
             <colgroup>
-              <col style={{ width: '12%' }} />
-              <col style={{ width: '34%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '14%' }} />
-              <col style={{ width: '8%' }} />
+              <col style={{ width: '11%' }} />
+              <col style={{ width: '31%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '7%' }} />
               <col style={{ width: '8%' }} />
               <col style={{ width: '10%' }} />
             </colgroup>
             <thead>
-              <tr><th>Código</th><th>Nombre</th><th>Precio</th><th>Costo</th><th>Imp.</th><th>Stock</th><th /></tr>
+              <tr><th>Código</th><th>Nombre</th><th>Precio</th><th>Costo</th><th>Imp.</th><th>Stock</th><th>Pts</th><th /></tr>
             </thead>
             <tbody>
               {products.map((product) => (
@@ -261,6 +267,9 @@ export default function ProductsPage() {
                   <td>{formatMoney(product.cost, currency)}</td>
                   <td>{product.tax ?? '0'}%</td>
                   <td>{product.store_quantity ?? 0}</td>
+                  <td title={product.points_cost && product.points_cost > 0 ? 'Costo en puntos para canje' : 'No canjeable'}>
+                    {product.points_cost && product.points_cost > 0 ? product.points_cost : '—'}
+                  </td>
                   <td className="row-actions">
                     <button className="quiet" onClick={() => startEdit(product)}>Editar</button>
                     <button className="quiet" onClick={() => { setStockProduct(product); setStockQuantity(String(product.store_quantity ?? 0)); }}>Stock</button>
@@ -268,7 +277,7 @@ export default function ProductsPage() {
                 </tr>
               ))}
               {products.length === 0 && !productsQuery.isPending ? (
-                <tr><td colSpan={7} className="empty">No hay productos para esta tienda.</td></tr>
+                <tr><td colSpan={8} className="empty">No hay productos para esta tienda.</td></tr>
               ) : null}
             </tbody>
           </table>
@@ -324,6 +333,14 @@ export default function ProductsPage() {
           <label>Costo<input value={cost} onChange={(event) => setCost(event.target.value)} inputMode="decimal" placeholder="0.00" /></label>
           <label>Impuesto %<input value={tax} onChange={(event) => setTax(event.target.value)} inputMode="decimal" placeholder="0" /></label>
           <label>Puntos<input value={rewardPoints} onChange={(event) => setRewardPoints(event.target.value)} inputMode="numeric" /></label>
+          <label>Costo en Puntos (Canje)
+            <input
+              value={pointsCost}
+              onChange={(event) => setPointsCost(event.target.value)}
+              inputMode="numeric"
+              placeholder="0 = no canjeable"
+            />
+          </label>
           <label>Descripción
             <textarea
               value={details}

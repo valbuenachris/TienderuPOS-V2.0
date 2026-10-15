@@ -175,6 +175,7 @@ export interface ManagedProduct {
   line_total_value?: string | null;
   category_id?: string | null;
   category_name?: string | null;
+  points_cost?: number | null;
 }
 
 export interface ManagedProductPayload {
@@ -188,6 +189,7 @@ export interface ManagedProductPayload {
   store_id?: number;
   quantity?: number;
   category_id?: string | null;
+  points_cost?: number;
 }
 
 export interface CategoryRecord {

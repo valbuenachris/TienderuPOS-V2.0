@@ -21,6 +21,7 @@ type ProductAdminRow = Pick<
   line_total_value: string | null;
   category_id: string | null;
   category_name: string | null;
+  points_cost: number | null;
 };
 
 export type ProductAdminPage = Paginated<ProductAdminRow> & {
@@ -105,6 +106,7 @@ export class ProductsService {
                 COALESCE(p.quantity, 0) AS store_quantity, p.price::text AS store_price,
                 ROUND((p.price)::numeric * COALESCE(p.quantity, 0), 2)::text AS line_total_value,
                 p.category_id::text AS category_id, cat.name AS category_name,
+                COALESCE(p.points_cost, 0) AS points_cost,
                 COUNT(*) OVER() AS total_count
          FROM public.tec_products p
          LEFT JOIN public.tec_categories cat
@@ -144,8 +146,8 @@ export class ProductsService {
       }
 
       const product = await client.query<ProductIdRow>(
-        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details, category_id, quantity)
-         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8, $9, $10)
+        `INSERT INTO public.tec_products (tenant_id, code, name, price, cost, tax, type, reward_points, details, category_id, quantity, points_cost)
+         VALUES ($1, $2, $3, $4, $5, $6, 'standard', $7, $8, $9, $10, $11)
          RETURNING id`,
         [
           tenantId,
@@ -157,7 +159,8 @@ export class ProductsService {
           input.reward_points ?? 0,
           cleanDetails(input.details),
           input.category_id ?? null,
-          input.quantity ?? 0
+          input.quantity ?? 0,
+          input.points_cost ?? 0
         ]
       );
       const productId = product.rows[0]?.id;
@@ -178,11 +181,12 @@ export class ProductsService {
            tax = COALESCE($7::numeric, tax),
            reward_points = COALESCE($8, reward_points),
            details = CASE WHEN $9::boolean THEN $10 ELSE details END,
-           category_id = CASE WHEN $11::boolean THEN $12 ELSE category_id END
+           category_id = CASE WHEN $11::boolean THEN $12 ELSE category_id END,
+           points_cost = COALESCE($13::integer, points_cost)
        WHERE tenant_id = $1 AND id = $2
        RETURNING id, code, name, type, details, reward_points, image, image_2, image_3,
                  price::text AS price, cost::text AS cost, tax::text AS tax,
-                 category_id::text AS category_id`,
+                 category_id::text AS category_id, COALESCE(points_cost, 0) AS points_cost`,
       [
         tenantId,
         productId,
@@ -195,7 +199,8 @@ export class ProductsService {
         input.details !== undefined,
         cleanDetails(input.details),
         input.category_id !== undefined,
-        input.category_id ?? null
+        input.category_id ?? null,
+        input.points_cost ?? null
       ]
     );
     const updated = result.rows[0];

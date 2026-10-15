@@ -43,3 +43,11 @@ export class UpdateCustomerProfileDto {
   @MaxLength(30)
   phone?: string;
 }
+
+export class RedeemProductDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(2147483647)
+  product_id!: number;
+}

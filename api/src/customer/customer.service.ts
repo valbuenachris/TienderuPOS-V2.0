@@ -1,11 +1,13 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
 import { PosCustomer } from '../auth/auth.types';
 import { CatalogService } from '../catalog/catalog.service';
 import { CategoriesService } from '../categories/categories.service';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
-import { UpdateCustomerProfileDto } from './customer.dto';
+import { SettingsService } from '../settings/settings.service';
+import { TenantManagementService } from '../tenant-management/tenant-management.service';
+import { RedeemProductDto, UpdateCustomerProfileDto } from './customer.dto';
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
 const PROBE_CACHE_MS = 60_000;
@@ -80,12 +82,16 @@ type CustomerProfileRow = {
 
 @Injectable()
 export class CustomerService {
+  private readonly logger = new Logger(CustomerService.name);
+  private readonly recentRedemptions = new Map<string, number>();
   private categoriesProbe: { exists: boolean; at: number } | null = null;
 
   constructor(
     private readonly database: DatabaseService,
     private readonly catalog: CatalogService,
-    private readonly categoriesService: CategoriesService
+    private readonly categoriesService: CategoriesService,
+    private readonly settings: SettingsService,
+    private readonly tenantManagement: TenantManagementService
   ) {}
 
   async stores(tenantId: string): Promise<StoreRow[]> {
@@ -165,6 +171,7 @@ export class CustomerService {
        LIMIT 5`,
       [tenantId, customer.id]
     );
+    const tenant = await this.tenantBranding(tenantId);
     return {
       customer: {
         id: customer.id,
@@ -173,8 +180,171 @@ export class CustomerService {
         phone: customer.phone,
         points_balance: customer.points_balance
       },
+      tenant,
       recent_points: activity.rows
     };
+  }
+
+  private async tenantBranding(tenantId: string): Promise<{ id: string; name: string | null; logo_url: string | null }> {
+    const tenantResult = await this.database.query<{ id: string; name: string | null }>(
+      'SELECT id::text AS id, name FROM public.tec_tenants WHERE id = $1 LIMIT 1',
+      [tenantId]
+    );
+    const tenantRow = tenantResult.rows[0];
+    if (!tenantRow) {
+      this.logger.warn(`Customer profile branding: tenant ${tenantId} not found in tec_tenants`);
+    }
+
+    let logoUrl: string | null = null;
+    let source = 'none';
+
+    // 1) Fuente principal: tec_tenant_settings (branding por tenant).
+    try {
+      const direct = await this.database.query<{ logo_url: string | null }>(
+        `SELECT logo_url
+         FROM public.tec_tenant_settings
+         WHERE tenant_id = $1
+         LIMIT 1`,
+        [tenantId]
+      );
+      const candidate = direct.rows[0]?.logo_url;
+      if (typeof candidate === 'string' && candidate.trim() !== '') {
+        logoUrl = candidate.trim();
+        source = 'tec_tenant_settings';
+      }
+    } catch (error: unknown) {
+      const code = typeof error === 'object' && error !== null && 'code' in error
+        ? String((error as { code?: unknown }).code)
+        : (error instanceof Error ? error.name : 'UNKNOWN');
+      this.logger.warn(`Customer profile branding: tec_tenant_settings lookup failed (${code})`);
+    }
+
+    // 2) Fallback: misma fuente que la web POS (soporta el modo legacy tec_settings).
+    if (logoUrl === null) {
+      try {
+        const settings: unknown = await this.settings.getPosForTenant(tenantId);
+        if (settings !== null && typeof settings === 'object' && 'logo_url' in settings) {
+          const candidate = (settings as { logo_url?: unknown }).logo_url;
+          if (typeof candidate === 'string' && candidate.trim() !== '') {
+            logoUrl = candidate.trim();
+            source = 'settings_service';
+          }
+        }
+      } catch (error: unknown) {
+        const code = typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code)
+          : (error instanceof Error ? error.name : 'UNKNOWN');
+        this.logger.warn(`Customer profile branding: settings fallback failed (${code})`);
+      }
+    }
+
+    this.logger.log(
+      `Customer profile branding: tenant=${tenantId} name=${tenantRow?.name ?? 'null'} logo=${logoUrl === null ? 'none' : 'yes'} source=${source}`
+    );
+    return { id: tenantRow?.id ?? tenantId, name: tenantRow?.name ?? null, logo_url: logoUrl };
+  }
+
+  async redeem(tenantId: string, customer: PosCustomer, input: RedeemProductDto) {
+    const duplicateKey = `${tenantId}:${customer.id}:${input.product_id}`;
+    const lastAt = this.recentRedemptions.get(duplicateKey);
+    if (lastAt !== undefined && Date.now() - lastAt < 60000) {
+      throw new BadRequestException('Ya canjeaste este producto hace un momento; espera un minuto antes de reintentar');
+    }
+
+    const result = await this.database.transaction(async (client) => {
+      const productResult = await client.query<{
+        id: number;
+        name: string | null;
+        points_cost: number | null;
+        quantity: number | null;
+      }>(
+        `SELECT id, name, COALESCE(points_cost, 0)::integer AS points_cost, quantity
+         FROM public.tec_products
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [tenantId, input.product_id]
+      );
+      const product = productResult.rows[0];
+      if (!product) throw new NotFoundException('Product not found in this tenant');
+      const pointsCost = product.points_cost ?? 0;
+      if (pointsCost <= 0) throw new BadRequestException('Este producto no está disponible para canje');
+      if ((product.quantity ?? 0) <= 0) throw new BadRequestException('Sin existencias');
+
+      const customerResult = await client.query<{ id: number; points_balance: number }>(
+        `SELECT id, COALESCE(points_balance, 0)::integer AS points_balance
+         FROM public.tec_customers
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [tenantId, customer.id]
+      );
+      const customerRow = customerResult.rows[0];
+      if (!customerRow) throw new NotFoundException('Customer not found');
+      if (customerRow.points_balance < pointsCost) {
+        throw new BadRequestException('Saldo de puntos insuficiente');
+      }
+
+      const updatedCustomer = await client.query<{ points_balance: number }>(
+        `UPDATE public.tec_customers
+         SET points_balance = points_balance - $3
+         WHERE tenant_id = $1 AND id = $2
+         RETURNING COALESCE(points_balance, 0)::integer AS points_balance`,
+        [tenantId, customer.id, pointsCost]
+      );
+
+      await client.query(
+        `UPDATE public.tec_products
+         SET quantity = quantity - 1
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, input.product_id]
+      );
+
+      const sale = await client.query<{ id: number }>(
+        `INSERT INTO public.tec_sales
+           (tenant_id, customer_id, customer_name, total, grand_total, paid,
+            total_items, total_quantity, status, status_delivery, created_by, store_id,
+            payment_method, total_reward_points,
+            product_discount, order_discount, total_discount, product_tax, order_tax, total_tax, rounding)
+         VALUES ($1, $2, $3, 0, 0, 0, 1, 1, 'due', NULL, NULL, NULL, 'points', 0, 0, 0, 0, 0, 0, 0, 0)
+         RETURNING id`,
+        [tenantId, customer.id, customer.name ?? null]
+      );
+      const orderId = sale.rows[0]?.id;
+      if (orderId === undefined) throw new BadRequestException('Redemption order could not be created');
+
+      await client.query(
+        `INSERT INTO public.tec_sale_items
+           (tenant_id, sale_id, product_id, quantity, unit_price, subtotal, reward_points)
+         VALUES ($1, $2, $3, 1, 0, 0, 0)`,
+        [tenantId, orderId, input.product_id]
+      );
+
+      return {
+        order_id: orderId,
+        new_balance: updatedCustomer.rows[0]?.points_balance ?? customerRow.points_balance - pointsCost,
+        product_name: product.name,
+        points_cost: pointsCost
+      };
+    });
+
+    this.recentRedemptions.set(duplicateKey, Date.now());
+    this.logger.log(
+      `Points redeemed tenant=${tenantId} customer=${customer.id} product=${input.product_id} cost=${result.points_cost} order=${result.order_id} new_balance=${result.new_balance}`
+    );
+    await this.tenantManagement.logActivity(
+      tenantId,
+      'customer_points_redeemed',
+      {
+        customer_id: customer.id,
+        product_id: input.product_id,
+        product_name: result.product_name,
+        order_id: result.order_id,
+        new_balance: result.new_balance
+      },
+      null
+    );
+    return { success: true, new_balance: result.new_balance, order_id: result.order_id };
   }
 
   async orders(

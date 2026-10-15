@@ -4,6 +4,7 @@ import { JwtModule } from '@nestjs/jwt';
 import { AuthController } from './auth.controller';
 import { AuthService } from './auth.service';
 import { AdminGuard } from './admin.guard';
+import { CustomerContextGuard } from './customer-context.guard';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { TenantContextGuard } from './tenant-context.guard';
 
@@ -24,7 +25,7 @@ import { TenantContextGuard } from './tenant-context.guard';
     })
   ],
   controllers: [AuthController],
-  providers: [AuthService, JwtAuthGuard, TenantContextGuard, AdminGuard],
-  exports: [JwtModule, JwtAuthGuard, TenantContextGuard, AdminGuard]
+  providers: [AuthService, JwtAuthGuard, TenantContextGuard, CustomerContextGuard, AdminGuard],
+  exports: [JwtModule, JwtAuthGuard, TenantContextGuard, CustomerContextGuard, AdminGuard]
 })
 export class AuthModule {}

@@ -19,6 +19,7 @@ export type Database = {
       tec_customers: Table<{
         id: number; tenant_id: string | null; name: string | null; email: string | null;
         phone: string | null; cf1: string | null; cf2: string | null; store_id: number | null;
+        password: string | null; points_balance: number | null;
       }>;
       tec_stores: Table<{ id: number; tenant_id: string; name: string; code: string | null }>;
       tec_products: Table<{
@@ -33,7 +34,7 @@ export type Database = {
         total: number | null; grand_total: number | null; paid: number | null; total_items: number | null;
         total_quantity: number | null; status: string | null; created_at: string | null;
         created_by: number | null; store_id: number | null; total_reward_points: number | null;
-        status_delivery: string | null; user_id: string | null;
+        status_delivery: string | null; user_id: string | null; payment_method: string | null;
         product_discount: number | null; order_discount_id: string | null; order_discount: number | null;
         total_discount: number | null; product_tax: number | null; order_tax_id: string | null;
         order_tax: number | null; total_tax: number | null; rounding: number | null;
@@ -82,6 +83,16 @@ export type Database = {
       }>;
       tec_tenants: Table<{
         id: string; name: string; host: string | null; status: string; created_at: string | null;
+      }>;
+      product_reviews: Table<{
+        id: number; product_id: number; customer_id: number | null; rating: number;
+        comment: string | null; created_at: string | null; updated_at: string | null;
+      }>;
+      customer_addresses: Table<{
+        id: number; customer_id: number | null; label: string; street_address: string;
+        neighborhood: string | null; city: string | null; phone: string | null;
+        additional_notes: string | null; is_default: boolean | null;
+        created_at: string | null; updated_at: string | null;
       }>;
     };
     Views: { [_ in never]: never };

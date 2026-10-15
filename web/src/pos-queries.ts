@@ -6,6 +6,10 @@ import {
   createSale,
   fetchCurrentRegister,
   fetchCustomers,
+  fetchAppCustomers,
+  fetchAppOrders,
+  fetchAdminBanners,
+  fetchAdminReviews,
   fetchDailyReport,
   fetchBillingInvoices,
   fetchCategories,
@@ -502,6 +506,61 @@ export function useCategoriesQuery(token: string | null, tenantId: string | null
   return useQuery({
     queryKey: ['categories', tenantId],
     queryFn: fetchCategories,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useAppOrdersQuery(
+  token: string | null,
+  tenantId: string | null,
+  page = 1,
+  limit = 20,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['admin-app-orders', tenantId, page, limit],
+    queryFn: () => fetchAppOrders(page, limit),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useAppCustomersQuery(
+  token: string | null,
+  tenantId: string | null,
+  search = '',
+  page = 1,
+  limit = 20,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['admin-app-customers', tenantId, search, page, limit],
+    queryFn: () => fetchAppCustomers(search, page, limit),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useAdminReviewsQuery(
+  token: string | null,
+  tenantId: string | null,
+  page = 1,
+  limit = 20,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['admin-reviews', tenantId, page, limit],
+    queryFn: () => fetchAdminReviews(page, limit),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useAdminBannersQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['admin-banners', tenantId],
+    queryFn: fetchAdminBanners,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

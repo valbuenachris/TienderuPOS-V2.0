@@ -20,6 +20,7 @@ import SalesHistoryPage from './pages/SalesHistoryPage';
 import SettingsPage from './pages/SettingsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import TenantsPage from './pages/TenantsPage';
+import TiendaVirtualPage from './pages/tienda-virtual/TiendaVirtualPage';
 import UsersPage from './pages/UsersPage';
 import TenantsOverviewPage from './pages/tenant-management/TenantsOverviewPage';
 import SubscriptionPlansPage from './pages/tenant-management/SubscriptionPlansPage';
@@ -71,6 +72,7 @@ export default function App() {
               <Route path="/categorias" element={<AdminOnly><CategoriesPage /></AdminOnly>} />
               <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
               <Route path="/clientes" element={<CustomersPage />} />
+              <Route path="/tienda-virtual" element={<AdminOnly><TiendaVirtualPage /></AdminOnly>} />
               <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
               <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
               <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />

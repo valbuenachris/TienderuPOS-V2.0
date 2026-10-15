@@ -591,6 +591,82 @@ export const fetchTenantActivity = (id: string, page = 1, limit = 20) =>
 export const confirmTenantPayment = (paymentId: string) =>
   apiRequest<TenantPayment>(`/tenant-management/payments/${paymentId}/confirm`, { method: 'PATCH' });
 
+export interface AppOrderRow {
+  id: number;
+  customer_id: number | null;
+  customer_name: string | null;
+  total: string | null;
+  grand_total: string | null;
+  paid: string | null;
+  status: string | null;
+  status_delivery: string | null;
+  payment_method: string | null;
+  total_items: number | null;
+  total_reward_points: number | null;
+  created_at: string | null;
+  store_id: number | null;
+}
+
+export interface AppCustomerRow {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  points_balance: number;
+}
+
+export interface ProductReviewRow {
+  id: number;
+  product_id: number;
+  product_name: string | null;
+  customer_id: number | null;
+  customer_name: string | null;
+  rating: number;
+  comment: string | null;
+  created_at: string | null;
+}
+
+export interface BannerRecord {
+  id: string;
+  image_url: string;
+  created_at: string | null;
+}
+
+export const fetchAppOrders = (page = 1, limit = 20) =>
+  apiRequest<Paginated<AppOrderRow>>(withQuery('/admin/app-orders', { page, limit }));
+
+export const updateAppOrderDelivery = (id: number, statusDelivery: string) =>
+  apiRequest<AppOrderRow>(`/admin/app-orders/${id}/delivery`, {
+    method: 'PATCH',
+    body: JSON.stringify({ status_delivery: statusDelivery })
+  });
+
+export const fetchAppCustomers = (search = '', page = 1, limit = 20) =>
+  apiRequest<Paginated<AppCustomerRow>>(withQuery('/admin/app-customers', { q: search, page, limit }));
+
+export const adjustAppCustomerPoints = (id: number, payload: { amount: number; reason: string }) =>
+  apiRequest<AppCustomerRow>(`/admin/customers/${id}/points`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const resetAppCustomerPassword = (id: number) =>
+  apiRequest<{ id: number; reset: boolean }>(`/admin/customers/${id}/reset-password`, { method: 'POST' });
+
+export const fetchAdminReviews = (page = 1, limit = 20) =>
+  apiRequest<Paginated<ProductReviewRow>>(withQuery('/admin/reviews', { page, limit }));
+
+export const deleteAdminReview = (id: number) =>
+  apiRequest<void>(`/admin/reviews/${id}`, { method: 'DELETE' });
+
+export const fetchAdminBanners = () => apiRequest<BannerRecord[]>('/admin/banners');
+
+export const createAdminBanner = (payload: { image_url: string }) =>
+  apiRequest<BannerRecord>('/admin/banners', { method: 'POST', body: JSON.stringify(payload) });
+
+export const deleteAdminBanner = (id: string) =>
+  apiRequest<void>(`/admin/banners/${id}`, { method: 'DELETE' });
+
 export type BillingInvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
 
 export interface BillingInvoice {

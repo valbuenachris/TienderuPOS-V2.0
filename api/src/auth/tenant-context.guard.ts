@@ -52,6 +52,9 @@ export class TenantContextGuard implements CanActivate {
     const request = context.switchToHttp().getRequest<PosRequest>();
     const claims = request.posClaims;
     if (!claims?.tenant_id) throw new UnauthorizedException('Tenant-scoped token required');
+    if (claims.type === 'customer') {
+      throw new ForbiddenException('Customer tokens cannot access POS endpoints');
+    }
     const tenantId = claims.tenant_id.toLowerCase();
     if (!UUID_RE.test(tenantId)) {
       throw new UnauthorizedException('Invalid tenant claim');

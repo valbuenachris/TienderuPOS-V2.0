@@ -20,6 +20,7 @@ const TENANT_ITEMS: NavItem[] = [
   { to: '/categorias', label: 'Categorías', icon: '📂', admin: true },
   { to: '/inventario', label: 'Inventario', icon: '🏷️', admin: true },
   { to: '/clientes', label: 'Clientes', icon: '👥' },
+  { to: '/tienda-virtual', label: 'Tienda Virtual', icon: '📱', admin: true },
   { to: '/proveedores', label: 'Proveedores', icon: '🚚', admin: true },
   { to: '/compras', label: 'Compras', icon: '🛍️', admin: true },
   { to: '/reportes', label: 'Reportes', icon: '📈', admin: true },

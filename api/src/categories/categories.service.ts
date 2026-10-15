@@ -6,6 +6,7 @@ export type CategoryRow = {
   id: string;
   name: string;
   description: string | null;
+  image_url: string | null;
   product_count: number;
   created_at: string | null;
 };
@@ -20,11 +21,15 @@ function isUniqueViolation(error: unknown): boolean {
 
 @Injectable()
 export class CategoriesService {
+  private imageProbe: { exists: boolean; at: number } | null = null;
+
   constructor(private readonly database: DatabaseService) {}
 
   async list(tenantId: string): Promise<CategoryRow[]> {
+    const imageExpr = await this.imageColumnExpr('c');
     const result = await this.database.query<CategoryRow>(
       `SELECT c.id::text AS id, c.name, c.description, c.created_at,
+              ${imageExpr} AS image_url,
               (SELECT COUNT(*) FROM public.tec_products p
                 WHERE p.tenant_id = c.tenant_id AND p.category_id = c.id)::integer AS product_count
        FROM public.tec_categories c
@@ -35,6 +40,26 @@ export class CategoriesService {
     return result.rows;
   }
 
+  private async imageColumnExists(): Promise<boolean> {
+    const now = Date.now();
+    if (this.imageProbe && now - this.imageProbe.at < 60_000) return this.imageProbe.exists;
+    const result = await this.database.query<{ exists: boolean }>(
+      `SELECT EXISTS (
+         SELECT 1 FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'tec_categories'
+           AND column_name = 'image_url'
+       ) AS exists`
+    );
+    const exists = result.rows[0]?.exists === true;
+    this.imageProbe = { exists, at: now };
+    return exists;
+  }
+
+  private async imageColumnExpr(alias: string): Promise<string> {
+    return (await this.imageColumnExists()) ? `${alias}.image_url` : 'NULL::text';
+  }
+
   async create(tenantId: string, input: CreateCategoryDto): Promise<CategoryRow> {
     try {
       const result = await this.database.query<CategoryRow>(
@@ -43,7 +68,7 @@ export class CategoriesService {
          RETURNING id::text AS id, name, description, created_at`,
         [tenantId, input.name.trim(), input.description?.trim() || null]
       );
-      return { ...result.rows[0], product_count: 0 };
+      return { ...result.rows[0], product_count: 0, image_url: null };
     } catch (error: unknown) {
       if (isUniqueViolation(error)) throw new BadRequestException('Ya existe una categoría con ese nombre');
       throw error;
@@ -77,8 +102,10 @@ export class CategoriesService {
       throw error;
     }
 
+    const imageExpr = await this.imageColumnExpr('c');
     const result = await this.database.query<CategoryRow>(
       `SELECT c.id::text AS id, c.name, c.description, c.created_at,
+              ${imageExpr} AS image_url,
               (SELECT COUNT(*) FROM public.tec_products p
                 WHERE p.tenant_id = c.tenant_id AND p.category_id = c.id)::integer AS product_count
        FROM public.tec_categories c

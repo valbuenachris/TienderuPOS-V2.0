@@ -14,6 +14,10 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, '\\$&');
 }
 
+function normalizePhone(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
+}
+
 @Injectable()
 export class CustomersService {
   constructor(private readonly database: DatabaseService) {}
@@ -72,7 +76,7 @@ export class CustomersService {
       `INSERT INTO public.tec_customers (tenant_id, name, email, phone, cf1, cf2, store_id)
        VALUES ($1, $2, $3, $4, '', '', $5)
        RETURNING id, name, email, phone, store_id`,
-      [tenantId, input.name.trim(), input.email ?? '', input.phone ?? '', storeId ?? null]
+      [tenantId, input.name.trim(), input.email ?? '', normalizePhone(input.phone), storeId ?? null]
     );
     return result.rows[0];
   }
@@ -109,7 +113,7 @@ export class CustomersService {
         customerId,
         input.name?.trim() ?? null,
         input.email ?? null,
-        input.phone ?? null,
+        input.phone === undefined ? null : normalizePhone(input.phone),
         storeId ?? null
       ]
     );

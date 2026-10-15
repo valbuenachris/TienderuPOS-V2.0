@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { SalesService } from '../sales/sales.service';
 import { BillingService } from './billing.service';
 import { BoldService, BoldWebhookEvent } from './bold.service';
 
@@ -24,7 +25,8 @@ function readString(value: unknown): string | null {
 export class BoldWebhookController {
   constructor(
     private readonly bold: BoldService,
-    private readonly billing: BillingService
+    private readonly billing: BillingService,
+    private readonly sales: SalesService
   ) {}
 
   @Post('bold')
@@ -51,7 +53,24 @@ export class BoldWebhookController {
       subject: readString(parsed.subject) ?? undefined,
       data: isRecord(parsed.data) ? parsed.data : undefined
     };
+
+    const reference = event.data ? readString(event.data.reference) : null;
+    if (reference !== null && reference.startsWith('ORDER-')) {
+      const handled = await this.handleOrderEvent(event, reference);
+      return { received: true, handled };
+    }
+
     const result = await this.billing.handleBoldWebhook(event);
     return { received: true, handled: result.handled };
+  }
+
+  private async handleOrderEvent(event: BoldWebhookEvent, reference: string): Promise<boolean> {
+    if (event.type !== 'SALE_APPROVED') return false;
+    const saleId = Number(reference.split('-')[1]);
+    if (!Number.isSafeInteger(saleId) || saleId < 1) return false;
+    const amountData = event.data && isRecord(event.data.amount) ? event.data.amount : null;
+    const total = amountData ? readString(amountData.total) : null;
+    const result = await this.sales.registerGatewayPayment(saleId, 'CC', total ?? undefined);
+    return result.handled;
   }
 }

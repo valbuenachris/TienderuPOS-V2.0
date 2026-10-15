@@ -85,6 +85,7 @@ export class BoldService {
     description: string;
     reference: string;
     payerEmail?: string | null;
+    callbackUrl?: string | null;
   }): Promise<{ paymentLink: string; url: string }> {
     if (!this.enabled) throw new ServiceUnavailableException('Bold no está configurado (revisa BOLD_API_KEY)');
     const body: Record<string, unknown> = {
@@ -93,7 +94,7 @@ export class BoldService {
       reference: input.reference.slice(0, 60),
       description: input.description.slice(0, 100),
       expiration_date: (Date.now() + Math.max(5, this.expirationMinutes) * 60 * 1000) * 1e6,
-      callback_url: this.callbackUrl,
+      callback_url: input.callbackUrl ?? this.callbackUrl,
       payment_methods: this.paymentMethods
     };
     if (input.payerEmail) body.payer_email = input.payerEmail;

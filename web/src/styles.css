@@ -410,6 +410,10 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .inventory-total { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-top: 4px; padding: 12px 14px; border-radius: 12px; background: #f0fdf4; border: 1px solid #bbe6c9; }
 .inventory-total span { font-size: 12px; font-weight: 800; letter-spacing: .04em; color: #147d4a; text-transform: uppercase; }
 .inventory-total strong { font-size: 20px; font-weight: 800; color: #147d4a; }
+.banner-grid { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); }
+.banner-card { display: grid; gap: 6px; padding: 10px; border: 1px solid #e2e9e3; border-radius: 12px; background: #fbfdfb; }
+.banner-card img { width: 100%; height: 110px; object-fit: cover; border-radius: 8px; background: #f4f7f4; }
+.banner-card .icon-button { justify-self: end; }
 .row-actions { display: flex; align-items: center; gap: 8px; }
 .badge { display: inline-block; padding: 3px 9px; border-radius: 999px; background: #eef2ee; color: #536057; font-size: 11px; font-weight: 700; text-transform: capitalize; }
 .badge.paid { background: #e4f5e9; color: #147d4a; }

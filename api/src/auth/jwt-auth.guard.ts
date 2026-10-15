@@ -18,7 +18,8 @@ export class JwtAuthGuard implements CanActivate {
         issuer: 'pos-gres-v2',
         algorithms: ['HS256']
       });
-      if (!claims.sub || !claims.sid || !claims.tenant_id) throw new Error('Missing token claims');
+      if (!claims.sub || !claims.tenant_id) throw new Error('Missing token claims');
+      if (claims.type !== 'customer' && !claims.sid) throw new Error('Missing token claims');
       request.posClaims = claims;
       return true;
     } catch (_error: unknown) {

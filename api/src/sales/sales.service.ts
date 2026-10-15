@@ -1,13 +1,13 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
-import { DatabaseService } from '../database/database.service';
+import { DatabaseService, SqlExecutor } from '../database/database.service';
 import { TableRow } from '../database/database.types';
-import { PosUser } from '../auth/auth.types';
+import { PosCustomer, PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { isAdminRole } from '../common/roles';
 import { TenantTimezoneService } from '../common/tenant-timezone.service';
 import { todayInTimeZone } from '../common/timezone';
-import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
+import { CreateSaleDto, AddSalePaymentDto, SaleLineDto, SalePaymentMethod, UpdateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
   price: string | null;
@@ -37,6 +37,8 @@ type EditableSaleRow = {
   paid: string | null;
   store_id: number | null;
   order_discount_id: string | null;
+  status: string | null;
+  total_reward_points: number | null;
 };
 
 type SaleItemLockRow = {
@@ -72,11 +74,14 @@ type SaleDetailHeaderRow = SalesListRow & {
 
 type PaymentableSaleRow = {
   id: number;
+  tenant_id: string;
   grand_total: string | null;
   paid: string | null;
   status: string | null;
   created_by: number | null;
   store_id: number | null;
+  customer_id: number | null;
+  total_reward_points: number | null;
 };
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
@@ -94,6 +99,24 @@ export class SalesService {
     private readonly timezone: TenantTimezoneService
   ) {}
 
+  private async adjustCustomerPoints(
+    client: SqlExecutor,
+    tenantId: string,
+    customerId: number,
+    delta: number
+  ): Promise<void> {
+    if (delta === 0) return;
+    if (!Number.isSafeInteger(delta)) {
+      throw new BadRequestException('Reward points are out of range');
+    }
+    await client.query(
+      `UPDATE public.tec_customers
+       SET points_balance = GREATEST(COALESCE(points_balance, 0) + $1, 0)
+       WHERE tenant_id = $2 AND id = $3`,
+      [delta, tenantId, customerId]
+    );
+  }
+
   async create(tenantId: string, user: PosUser, input: CreateSaleDto) {
     const isAdmin = isAdminRole(user.group_name);
     if (!isAdmin && user.store_id && input.store_id && input.store_id !== user.store_id) {
@@ -104,22 +127,89 @@ export class SalesService {
     if (!isAdmin && input.store_id && input.store_id !== storeId) {
       throw new ForbiddenException('This POS user cannot sell from another store');
     }
+    return this.createSale(
+      tenantId,
+      { createdBy: user.id, storeId, customerId: input.customer_id ?? null, customerStoreScoped: true, paymentMethod: null },
+      input
+    );
+  }
 
+  async createForCustomer(
+    tenantId: string,
+    customer: PosCustomer,
+    input: { store_id?: number; items: SaleLineDto[]; payment_method?: string }
+  ) {
+    const storeId = await this.resolveCustomerStore(tenantId, customer, input.store_id);
+    return this.createSale(
+      tenantId,
+      {
+        createdBy: null,
+        storeId,
+        customerId: customer.id,
+        customerStoreScoped: false,
+        paymentMethod: input.payment_method ?? null
+      },
+      { items: input.items }
+    );
+  }
+
+  private async resolveCustomerStore(
+    tenantId: string,
+    customer: PosCustomer,
+    requestedStoreId?: number
+  ): Promise<number> {
+    if (requestedStoreId !== undefined) {
+      const requested = await this.database.query<StoreIdRow>(
+        'SELECT id FROM public.tec_stores WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+        [tenantId, requestedStoreId]
+      );
+      if (requested.rowCount !== 1) throw new NotFoundException('Store not found in this tenant');
+      return requestedStoreId;
+    }
+    if (customer.store_id !== null) {
+      const assigned = await this.database.query<StoreIdRow>(
+        'SELECT id FROM public.tec_stores WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+        [tenantId, customer.store_id]
+      );
+      if (assigned.rowCount === 1) return customer.store_id;
+    }
+    const fallback = await this.database.query<StoreIdRow>(
+      'SELECT id FROM public.tec_stores WHERE tenant_id = $1 ORDER BY id ASC LIMIT 1',
+      [tenantId]
+    );
+    const storeId = fallback.rows[0]?.id;
+    if (storeId === undefined) throw new BadRequestException('This tenant has no stores configured');
+    return storeId;
+  }
+
+  private async createSale(
+    tenantId: string,
+    actor: {
+      createdBy: number | null;
+      storeId: number;
+      customerId: number | null;
+      customerStoreScoped: boolean;
+      paymentMethod: string | null;
+    },
+    input: CreateSaleDto
+  ) {
     return this.database.transaction(async (client) => {
       const store = await client.query<StoreIdRow>(
         'SELECT id FROM public.tec_stores WHERE tenant_id = $1 AND id = $2 LIMIT 1',
-        [tenantId, storeId]
+        [tenantId, actor.storeId]
       );
       if (store.rowCount !== 1) throw new NotFoundException('Store not found in this tenant');
 
       let customer: { id: number; name: string | null; phone: string | null } | null = null;
-      if (input.customer_id) {
+      if (actor.customerId !== null) {
+        const storeScope = actor.customerStoreScoped ? ' AND (store_id IS NULL OR store_id = $3)' : '';
         const result = await client.query<CustomerIdNameRow>(
           `SELECT id, name, phone FROM public.tec_customers
-           WHERE tenant_id = $1 AND id = $2
-             AND (store_id IS NULL OR store_id = $3)
+           WHERE tenant_id = $1 AND id = $2${storeScope}
            LIMIT 1 FOR KEY SHARE`,
-          [tenantId, input.customer_id, storeId]
+          actor.customerStoreScoped
+            ? [tenantId, actor.customerId, actor.storeId]
+            : [tenantId, actor.customerId]
         );
         customer = result.rows[0] ?? null;
         if (!customer) throw new NotFoundException('Customer not found in this tenant');
@@ -283,17 +373,18 @@ export class SalesService {
         `INSERT INTO public.tec_sales
           (tenant_id, customer_id, customer_name, total, grand_total, paid,
            total_items, total_quantity, status, created_by, store_id,
-           total_reward_points, created_at, user_id,
+           total_reward_points, created_at, user_id, payment_method,
            product_discount, order_discount_id, order_discount, total_discount,
            product_tax, order_tax_id, order_tax, total_tax, rounding)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, NULL,
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, CURRENT_TIMESTAMP, NULL, $16,
                  '0.00', $13, $14, $14, $15, NULL, '0.00', $15, '0.00')
          RETURNING id, created_at`,
         [
           tenantId, customer?.id ?? null, customer?.name ?? 'Cliente ocasional',
           total.toFixed(2), grandTotal.toFixed(2), paid.toFixed(2), prepared.length,
-          totalQuantity.toFixed(2), status, user.id, storeId, totalRewardPoints,
-          discountId, orderDiscount.toFixed(2), taxTotal.toFixed(2)
+          totalQuantity.toFixed(2), status, actor.createdBy, actor.storeId, totalRewardPoints,
+          discountId, orderDiscount.toFixed(2), taxTotal.toFixed(2),
+          actor.paymentMethod
         ]
       );
       const saleId = header.rows[0]?.id;
@@ -317,13 +408,18 @@ export class SalesService {
         );
       }
 
+      if (customer && totalRewardPoints > 0 && (status === 'paid' || status === 'partial')) {
+        await this.adjustCustomerPoints(client, tenantId, customer.id, totalRewardPoints);
+      }
+
       return {
         id: saleId,
         tenant_id: tenantId,
         customer_id: customer?.id ?? null,
         customer_name: customer?.name ?? 'Cliente ocasional',
         customer_phone: customer?.phone ?? null,
-        store_id: storeId,
+        store_id: actor.storeId,
+        payment_method: actor.paymentMethod,
         total: total.toFixed(2),
         tax_total: taxTotal.toFixed(2),
         grand_total: grandTotal.toFixed(2),
@@ -538,7 +634,8 @@ export class SalesService {
 
     return this.database.transaction(async (client) => {
       const saleResult = await client.query<PaymentableSaleRow>(
-        `SELECT id, grand_total::text AS grand_total, paid::text AS paid, status, created_by, store_id
+        `SELECT id, tenant_id::text AS tenant_id, grand_total::text AS grand_total, paid::text AS paid,
+                status, created_by, store_id, customer_id, total_reward_points
          FROM public.tec_sales
          WHERE tenant_id = $1 AND id = $2
          LIMIT 1
@@ -551,51 +648,111 @@ export class SalesService {
         throw new ForbiddenException('POS users can only add payments to sales of their own store');
       }
 
-      const grandTotal = new Decimal(sale.grand_total ?? '0');
-      const paid = new Decimal(sale.paid ?? '0');
-      const remaining = grandTotal.minus(paid);
-      if (remaining.lte(0)) throw new BadRequestException('This sale is already fully paid');
-
       const rawAmount = new Decimal(input.amount);
       if (!rawAmount.isFinite() || rawAmount.lte(0)) {
         throw new BadRequestException('Payment amount must be greater than zero');
       }
-      const amount = rawAmount.toDecimalPlaces(2, MONEY_ROUNDING);
-      if (amount.gt(remaining)) {
-        throw new BadRequestException('Payment cannot exceed the pending balance');
-      }
-
-      const newPaid = paid.plus(amount).toDecimalPlaces(2, MONEY_ROUNDING);
-      const status = newPaid.gte(grandTotal) ? 'paid' : (newPaid.eq(0) ? 'due' : 'partial');
-
-      await client.query(
-        `UPDATE public.tec_sales
-         SET paid = $3, status = $4
-         WHERE tenant_id = $1 AND id = $2`,
-        [tenantId, saleId, newPaid.toFixed(2), status]
-      );
-
-      const payment = await client.query<SalePaymentDetailRow>(
-        `INSERT INTO public.tec_payments (tenant_id, sale_id, amount, paid_by, created_at)
-         VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
-         RETURNING id, amount::text AS amount, paid_by, created_at`,
-        [tenantId, saleId, amount.toFixed(2), input.paid_by]
+      const result = await this.applyPaymentToSale(
+        client,
+        sale,
+        rawAmount.toDecimalPlaces(2, MONEY_ROUNDING),
+        input.paid_by
       );
 
       this.logger.log(
-        `Payment registered: sale=${saleId} amount=${amount.toFixed(2)} method=${input.paid_by} user=${user.id} tenant=${tenantId}`
+        `Payment registered: sale=${saleId} amount=${result.amount} method=${input.paid_by} user=${user.id} tenant=${tenantId}`
       );
-
-      return {
-        id: payment.rows[0]?.id,
-        sale_id: saleId,
-        amount: amount.toFixed(2),
-        paid_by: input.paid_by,
-        created_at: payment.rows[0]?.created_at ?? null,
-        paid: newPaid.toFixed(2),
-        status
-      };
+      return result;
     });
+  }
+
+  async registerGatewayPayment(saleId: number, paidBy: SalePaymentMethod, amount?: string) {
+    return this.database.transaction(async (client) => {
+      const saleResult = await client.query<PaymentableSaleRow>(
+        `SELECT id, tenant_id::text AS tenant_id, grand_total::text AS grand_total, paid::text AS paid,
+                status, created_by, store_id, customer_id, total_reward_points
+         FROM public.tec_sales
+         WHERE id = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [saleId]
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) return { handled: false, status: null };
+
+      const grandTotal = new Decimal(sale.grand_total ?? '0');
+      const paid = new Decimal(sale.paid ?? '0');
+      const remaining = grandTotal.minus(paid);
+      if (remaining.lte(0)) return { handled: true, status: sale.status };
+
+      let paymentAmount = remaining;
+      if (amount !== undefined && amount !== '') {
+        const requested = new Decimal(amount);
+        if (!requested.isFinite() || requested.lte(0)) {
+          throw new BadRequestException('Gateway payment amount is invalid');
+        }
+        paymentAmount = requested;
+      }
+
+      const result = await this.applyPaymentToSale(
+        client,
+        sale,
+        paymentAmount.toDecimalPlaces(2, MONEY_ROUNDING),
+        paidBy
+      );
+      this.logger.log(
+        `Gateway payment registered: sale=${saleId} amount=${result.amount} method=${paidBy} tenant=${sale.tenant_id}`
+      );
+      return { handled: true, status: result.status };
+    });
+  }
+
+  private async applyPaymentToSale(
+    client: SqlExecutor,
+    sale: PaymentableSaleRow,
+    amount: Decimal,
+    paidBy: SalePaymentMethod
+  ) {
+    const grandTotal = new Decimal(sale.grand_total ?? '0');
+    const paid = new Decimal(sale.paid ?? '0');
+    const remaining = grandTotal.minus(paid);
+    if (remaining.lte(0)) throw new BadRequestException('This sale is already fully paid');
+    if (amount.lte(0)) throw new BadRequestException('Payment amount must be greater than zero');
+    if (amount.gt(remaining)) {
+      throw new BadRequestException('Payment cannot exceed the pending balance');
+    }
+
+    const newPaid = paid.plus(amount).toDecimalPlaces(2, MONEY_ROUNDING);
+    const status = newPaid.gte(grandTotal) ? 'paid' : (newPaid.eq(0) ? 'due' : 'partial');
+
+    await client.query(
+      `UPDATE public.tec_sales
+       SET paid = $3, status = $4
+       WHERE tenant_id = $1 AND id = $2`,
+      [sale.tenant_id, sale.id, newPaid.toFixed(2), status]
+    );
+
+    const saleRewardPoints = Number(sale.total_reward_points ?? 0);
+    if (sale.status === 'due' && status !== 'due' && sale.customer_id !== null && saleRewardPoints > 0) {
+      await this.adjustCustomerPoints(client, sale.tenant_id, sale.customer_id, saleRewardPoints);
+    }
+
+    const payment = await client.query<SalePaymentDetailRow>(
+      `INSERT INTO public.tec_payments (tenant_id, sale_id, amount, paid_by, created_at)
+       VALUES ($1, $2, $3, $4, CURRENT_TIMESTAMP)
+       RETURNING id, amount::text AS amount, paid_by, created_at`,
+      [sale.tenant_id, sale.id, amount.toFixed(2), paidBy]
+    );
+
+    return {
+      id: payment.rows[0]?.id,
+      sale_id: sale.id,
+      amount: amount.toFixed(2),
+      paid_by: paidBy,
+      created_at: payment.rows[0]?.created_at ?? null,
+      paid: newPaid.toFixed(2),
+      status
+    };
   }
 
   async update(tenantId: string, user: PosUser, saleId: number, input: UpdateSaleDto) {
@@ -605,7 +762,8 @@ export class SalesService {
 
     await this.database.transaction(async (client) => {
       const saleResult = await client.query<EditableSaleRow>(
-        `SELECT id, customer_id, customer_name, paid::text AS paid, store_id, order_discount_id
+        `SELECT id, customer_id, customer_name, paid::text AS paid, store_id, order_discount_id,
+                status, total_reward_points
          FROM public.tec_sales
          WHERE tenant_id = $1 AND id = $2
          LIMIT 1
@@ -845,6 +1003,23 @@ export class SalesService {
           ]
         );
       }
+
+      const oldCredited = (sale.status === 'paid' || sale.status === 'partial')
+        ? Number(sale.total_reward_points ?? 0)
+        : 0;
+      const newCredited = (status === 'paid' || status === 'partial') ? totalRewardPoints : 0;
+      const oldCustomerId = sale.customer_id;
+      const newCustomerId = customer?.id ?? null;
+      if (oldCustomerId !== newCustomerId) {
+        if (oldCustomerId !== null && oldCredited > 0) {
+          await this.adjustCustomerPoints(client, tenantId, oldCustomerId, -oldCredited);
+        }
+        if (newCustomerId !== null && newCredited > 0) {
+          await this.adjustCustomerPoints(client, tenantId, newCustomerId, newCredited);
+        }
+      } else if (newCustomerId !== null) {
+        await this.adjustCustomerPoints(client, tenantId, newCustomerId, newCredited - oldCredited);
+      }
     });
 
     return this.detail(tenantId, user, saleId);
@@ -856,8 +1031,14 @@ export class SalesService {
     }
 
     await this.database.transaction(async (client) => {
-      const saleResult = await client.query<{ id: number; store_id: number | null }>(
-        `SELECT id, store_id
+      const saleResult = await client.query<{
+        id: number;
+        store_id: number | null;
+        customer_id: number | null;
+        status: string | null;
+        total_reward_points: number | null;
+      }>(
+        `SELECT id, store_id, customer_id, status, total_reward_points
          FROM public.tec_sales
          WHERE tenant_id = $1 AND id = $2
          LIMIT 1
@@ -927,6 +1108,13 @@ export class SalesService {
         'DELETE FROM public.tec_sales WHERE tenant_id = $1 AND id = $2',
         [tenantId, saleId]
       );
+
+      const creditedPoints = Number(sale.total_reward_points ?? 0);
+      if (sale.customer_id !== null
+        && creditedPoints > 0
+        && (sale.status === 'paid' || sale.status === 'partial')) {
+        await this.adjustCustomerPoints(client, tenantId, sale.customer_id, -creditedPoints);
+      }
     });
 
     return { id: saleId, deleted: true };

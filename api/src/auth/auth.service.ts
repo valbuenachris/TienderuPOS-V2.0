@@ -34,6 +34,17 @@ type NewSession = Pick<TableRow<'tec_sessions'>, 'id'> & {
   data: Buffer;
 };
 
+type CustomerLoginRow = {
+  id: number;
+  tenant_id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  password: string | null;
+  points_balance: number;
+  tenant_status: string | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -75,17 +86,7 @@ export class AuthService {
     // when the identity does not match any user.
     const matched = await this.findUserByIdentity(identity);
     const tenantId = matched?.tenant_id?.toLowerCase() ?? this.resolveTenantFallback(host);
-    const lockoutStart = Math.floor(Date.now() / 1000) - this.lockoutSeconds;
-    const attempts = await this.supabase.client
-      .from('tec_login_attempts')
-      .select('id', { count: 'exact', head: true })
-      .eq('tenant_id', tenantId)
-      .eq('login', identity)
-      .gte('time', lockoutStart);
-    if (attempts.error) throw new Error('Could not check login-attempt policy');
-    if ((attempts.count ?? 0) >= this.maxLoginAttempts) {
-      throw new HttpException('Too many failed logins; try again later', HttpStatus.TOO_MANY_REQUESTS);
-    }
+    await this.assertLoginAllowed(tenantId, identity);
 
     if (!matched) {
       await this.recordFailure(tenantId, ipAddress, identity);
@@ -142,9 +143,7 @@ export class AuthService {
       }
     }
 
-    const clearAttempts = await this.supabase.client.from('tec_login_attempts')
-      .delete().eq('tenant_id', tenantId).eq('login', identity);
-    if (clearAttempts.error) throw new Error('Could not clear successful login attempts');
+    await this.clearLoginAttempts(tenantId, identity);
 
     // 20 bytes -> 40 hex chars, compatible with tec_sessions.id VARCHAR(40).
     const sessionId = randomBytes(20).toString('hex');
@@ -241,6 +240,132 @@ export class AuthService {
       tenant_id: target,
       tenant: { id: tenant.id, name: tenant.name }
     };
+  }
+
+  async customerLogin(identityInput: string, password: string, ipAddress: string) {
+    const identity = identityInput.trim();
+    const isEmail = identity.includes('@');
+    const normalized = isEmail ? identity.toLowerCase() : identity.replace(/\D/g, '');
+    if (!normalized) throw new UnauthorizedException('Invalid credentials');
+
+    const matched = await this.findCustomerByIdentity(normalized, isEmail);
+    const tenantId = matched?.tenant_id ?? this.resolveTenantFallback('');
+    await this.assertLoginAllowed(tenantId, normalized);
+
+    if (!matched || !matched.password) {
+      await this.recordFailure(tenantId, ipAddress, normalized);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+    if (matched.tenant_status !== 'active') {
+      await this.recordFailure(tenantId, ipAddress, normalized);
+      throw new ForbiddenException('El tenant está inactivo o suspendido');
+    }
+
+    const verification = await verifyPassword(password, matched.password, this.bcryptRounds);
+    if (!verification.valid) {
+      await this.recordFailure(tenantId, ipAddress, normalized);
+      throw new UnauthorizedException('Invalid credentials');
+    }
+
+    await this.clearLoginAttempts(tenantId, normalized);
+    const accessToken = await this.jwt.signAsync(
+      {
+        sub: String(matched.id),
+        type: 'customer',
+        role: 'customer',
+        tenant_id: matched.tenant_id
+      },
+      { expiresIn: this.tokenTtl, issuer: 'pos-gres-v2', algorithm: 'HS256' }
+    );
+
+    return {
+      access_token: accessToken,
+      token_type: 'Bearer',
+      expires_in: this.tokenTtl,
+      customer: {
+        id: matched.id,
+        tenant_id: matched.tenant_id,
+        name: matched.name,
+        email: matched.email,
+        phone: matched.phone,
+        points_balance: matched.points_balance
+      }
+    };
+  }
+
+  async customerSetPassword(identityInput: string, newPassword: string, ipAddress: string) {
+    const identity = identityInput.trim();
+    const isEmail = identity.includes('@');
+    const normalized = isEmail ? identity.toLowerCase() : identity.replace(/\D/g, '');
+    if (!normalized) throw new BadRequestException('A valid email or phone number is required');
+    if (Buffer.byteLength(newPassword, 'utf8') > 72) {
+      throw new BadRequestException('La contraseña no puede superar 72 bytes');
+    }
+
+    const matched = await this.findCustomerByIdentity(normalized, isEmail);
+    const tenantId = matched?.tenant_id ?? this.resolveTenantFallback('');
+    await this.assertLoginAllowed(tenantId, normalized);
+
+    if (!matched) {
+      await this.recordFailure(tenantId, ipAddress, normalized);
+      throw new NotFoundException('Customer not found');
+    }
+    if (matched.tenant_status !== 'active') {
+      await this.recordFailure(tenantId, ipAddress, normalized);
+      throw new ForbiddenException('El tenant está inactivo o suspendido');
+    }
+
+    const hash = await hashPassword(newPassword, this.bcryptRounds);
+    const updated = await this.database.query<{ id: number }>(
+      `UPDATE public.tec_customers
+       SET password = $1
+       WHERE id = $2 AND tenant_id = $3 AND password IS NULL
+       RETURNING id`,
+      [hash, matched.id, matched.tenant_id]
+    );
+    if (updated.rowCount !== 1) {
+      throw new BadRequestException('Account already has a password, please use login or reset flow');
+    }
+    await this.clearLoginAttempts(tenantId, normalized);
+    return { ok: true };
+  }
+
+  private async findCustomerByIdentity(normalized: string, isEmail: boolean): Promise<CustomerLoginRow | null> {
+    const matchClause = isEmail
+      ? `c.email IS NOT NULL AND c.email <> '' AND LOWER(c.email) = LOWER($1)`
+      : `c.phone IS NOT NULL AND c.phone <> '' AND regexp_replace(c.phone, '[^0-9]', '', 'g') = $1`;
+    const result = await this.database.query<CustomerLoginRow>(
+      `SELECT c.id, c.tenant_id::text AS tenant_id, c.name, c.email, c.phone, c.password,
+              COALESCE(c.points_balance, 0)::integer AS points_balance, t.status AS tenant_status
+       FROM public.tec_customers c
+       LEFT JOIN public.tec_tenants t ON t.id = c.tenant_id
+       WHERE c.tenant_id IS NOT NULL
+         AND ${matchClause}
+       ORDER BY c.id ASC
+       LIMIT 3`,
+      [normalized]
+    );
+    return result.rows.length === 1 ? result.rows[0] : null;
+  }
+
+  private async assertLoginAllowed(tenantId: string, identity: string): Promise<void> {
+    const lockoutStart = Math.floor(Date.now() / 1000) - this.lockoutSeconds;
+    const attempts = await this.supabase.client
+      .from('tec_login_attempts')
+      .select('id', { count: 'exact', head: true })
+      .eq('tenant_id', tenantId)
+      .eq('login', identity)
+      .gte('time', lockoutStart);
+    if (attempts.error) throw new Error('Could not check login-attempt policy');
+    if ((attempts.count ?? 0) >= this.maxLoginAttempts) {
+      throw new HttpException('Too many failed logins; try again later', HttpStatus.TOO_MANY_REQUESTS);
+    }
+  }
+
+  private async clearLoginAttempts(tenantId: string, identity: string): Promise<void> {
+    const clearAttempts = await this.supabase.client.from('tec_login_attempts')
+      .delete().eq('tenant_id', tenantId).eq('login', identity);
+    if (clearAttempts.error) throw new Error('Could not clear successful login attempts');
   }
 
   private async recordFailure(tenantId: string, ipAddress: string, identity: string): Promise<void> {

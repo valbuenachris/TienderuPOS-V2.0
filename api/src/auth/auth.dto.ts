@@ -16,3 +16,27 @@ export class SwitchTenantDto {
   @IsUUID()
   tenant_id!: string;
 }
+
+export class CustomerLoginDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  identity!: string;
+
+  @IsString()
+  @MinLength(1)
+  @MaxLength(1024)
+  password!: string;
+}
+
+export class CustomerSetPasswordDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(100)
+  identity!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  new_password!: string;
+}

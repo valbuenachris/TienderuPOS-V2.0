@@ -73,6 +73,11 @@ export class CatalogService {
     return value;
   }
 
+  // Reusable resolver for other customer-facing modules (combos, etc.).
+  resolveProductImageUrl(value: string | null): string | null {
+    return this.resolveImageUrl(this.imageBase, value);
+  }
+
   async listStores(tenantId: string, user: PosUser) {
     let query = this.supabase.client.from('tec_stores')
       .select('id, name, code')

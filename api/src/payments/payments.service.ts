@@ -30,9 +30,14 @@ export class PaymentsService {
 
   async checkoutWithPayment(tenantId: string, customer: PosCustomer, input: CustomerCheckoutWithPaymentDto) {
     const method = input.payment_method;
+    const combos = input.combos ?? [];
+    if (combos.length > 0 && method !== 'cash' && method !== 'bold') {
+      throw new BadRequestException('Los combos solo están disponibles para pago en efectivo/contraentrega o tarjetas/PSE.');
+    }
     const sale = await this.sales.createForCustomer(tenantId, customer, {
       store_id: input.store_id,
-      items: input.items,
+      items: input.items ?? [],
+      combos,
       payment_method: method
     });
 

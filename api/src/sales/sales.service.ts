@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import Decimal from 'decimal.js';
+import { CombosService } from '../combos/combos.service';
+import { ComboLineInput } from '../combos/combo.dto';
 import { DatabaseService, SqlExecutor } from '../database/database.service';
 import { TableRow } from '../database/database.types';
 import { PosCustomer, PosUser } from '../auth/auth.types';
@@ -96,7 +98,8 @@ export class SalesService {
 
   constructor(
     private readonly database: DatabaseService,
-    private readonly timezone: TenantTimezoneService
+    private readonly timezone: TenantTimezoneService,
+    private readonly combos: CombosService
   ) {}
 
   private async adjustCustomerPoints(
@@ -137,7 +140,7 @@ export class SalesService {
   async createForCustomer(
     tenantId: string,
     customer: PosCustomer,
-    input: { store_id?: number; items: SaleLineDto[]; payment_method?: string }
+    input: { store_id?: number; items?: SaleLineDto[]; combos?: ComboLineInput[]; payment_method?: string }
   ) {
     const storeId = await this.resolveCustomerStore(tenantId, customer, input.store_id);
     return this.createSale(
@@ -149,7 +152,8 @@ export class SalesService {
         customerStoreScoped: false,
         paymentMethod: input.payment_method ?? null
       },
-      { items: input.items }
+      { items: input.items ?? [] },
+      input.combos ?? []
     );
   }
 
@@ -191,7 +195,8 @@ export class SalesService {
       customerStoreScoped: boolean;
       paymentMethod: string | null;
     },
-    input: CreateSaleDto
+    input: CreateSaleDto,
+    comboLines: ComboLineInput[] = []
   ) {
     return this.database.transaction(async (client) => {
       const store = await client.query<StoreIdRow>(
@@ -215,8 +220,23 @@ export class SalesService {
         if (!customer) throw new NotFoundException('Customer not found in this tenant');
       }
 
+      // Los combos se expanden a líneas de producto reales: el stock se descuenta
+      // normalmente y la venta queda auditable como productos sueltos.
+      const resolvedCombos = await this.combos.resolveCheckoutCombos(client, tenantId, comboLines);
+      const regularItems = input.items ?? [];
+      if (regularItems.length === 0 && resolvedCombos === null) {
+        throw new BadRequestException('La venta no tiene productos');
+      }
+
+      const lines: Array<{ product_id: number; quantity: string; fromCombo: boolean }> = [
+        ...regularItems.map((line) => ({ product_id: line.product_id, quantity: line.quantity, fromCombo: false })),
+        ...(resolvedCombos?.components ?? []).map((line) => ({ product_id: line.product_id, quantity: line.quantity, fromCombo: true }))
+      ];
+      if (lines.length > 200) {
+        throw new BadRequestException('La venta supera el máximo de 200 líneas');
+      }
       // Sort locks by product ID to reduce deadlocks for carts with multiple items.
-      const lines = [...input.items].sort((a, b) => a.product_id - b.product_id);
+      lines.sort((a, b) => a.product_id - b.product_id);
       const prepared: Array<{
         productId: number;
         code: string | null;
@@ -230,6 +250,7 @@ export class SalesService {
       let taxTotal = new Decimal(0);
       let totalQuantity = new Decimal(0);
       let totalRewardPoints = 0;
+      let comboComponentsValue = new Decimal(0);
 
       for (const line of lines) {
         const quantity = new Decimal(line.quantity);
@@ -252,7 +273,7 @@ export class SalesService {
         );
         const product = products.rows[0];
         if (!product) throw new NotFoundException('Product not found in this tenant');
-        if (product.type === 'combo') {
+        if (product.type === 'combo' && !line.fromCombo) {
           throw new BadRequestException('Combo sales are not enabled in this first POS build');
         }
 
@@ -281,6 +302,9 @@ export class SalesService {
         if (!Number.isSafeInteger(lineRewards)) throw new BadRequestException('Reward points are out of range');
 
         prepared.push({ productId: product.id, code: product.code, name: product.name, quantity, unitPrice, subtotal: lineSubtotal, rewardPoints: lineRewards });
+        if (line.fromCombo) {
+          comboComponentsValue = comboComponentsValue.plus(lineSubtotal).plus(lineTax);
+        }
         total = total.plus(lineSubtotal);
         taxTotal = taxTotal.plus(lineTax);
         totalQuantity = totalQuantity.plus(quantity);
@@ -327,6 +351,17 @@ export class SalesService {
             orderDiscount = discountValue.toDecimalPlaces(2, MONEY_ROUNDING);
             discountId = orderDiscount.toFixed(2);
           }
+        }
+      }
+      // Los combos se cobran a precio especial: la diferencia contra el precio
+      // actual de los componentes (con impuestos) se aplica como descuento fijo.
+      if (resolvedCombos !== null) {
+        const comboComponents = comboComponentsValue.toDecimalPlaces(2, MONEY_ROUNDING);
+        const comboValue = resolvedCombos.comboTotal.toDecimalPlaces(2, MONEY_ROUNDING);
+        const comboDiscount = Decimal.max(comboComponents.minus(comboValue), 0).toDecimalPlaces(2, MONEY_ROUNDING);
+        if (comboDiscount.gt(0)) {
+          orderDiscount = orderDiscount.plus(comboDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
+          discountId = orderDiscount.toFixed(2);
         }
       }
       const grandTotal = preDiscount.minus(orderDiscount).toDecimalPlaces(2, MONEY_ROUNDING);

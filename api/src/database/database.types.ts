@@ -94,6 +94,14 @@ export type Database = {
         additional_notes: string | null; is_default: boolean | null;
         created_at: string | null; updated_at: string | null;
       }>;
+      tec_combos: Table<{
+        id: number; tenant_id: string | null; name: string; description: string | null;
+        combo_price: number | null; original_price: number | null; is_active: boolean | null;
+        created_at: string | null;
+      }>;
+      tec_customer_combo_items: Table<{
+        id: number; combo_id: number | null; product_id: number | null; quantity: number | null;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

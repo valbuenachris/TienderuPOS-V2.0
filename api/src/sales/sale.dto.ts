@@ -13,7 +13,7 @@ import {
   ValidateNested
 } from 'class-validator';
 
-const DECIMAL_PATTERN = /^\d{1,13}(?:\.\d{1,2})?$/;
+export const DECIMAL_PATTERN = /^\d{1,13}(?:\.\d{1,2})?$/;
 
 export type SalePaymentMethod = 'cash' | 'CC' | 'Transferencia' | 'Sistecredito' | 'ADI' | 'credito';
 

@@ -6,6 +6,7 @@ import { AuthModule } from './auth/auth.module';
 import { BillingModule } from './billing/billing.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CategoriesModule } from './categories/categories.module';
+import { CombosModule } from './combos/combos.module';
 import { CustomerModule } from './customer/customer.module';
 import { CustomersModule } from './customers/customers.module';
 import { DashboardModule } from './dashboard/dashboard.module';
@@ -36,6 +37,7 @@ import { UsersModule } from './users/users.module';
     AuthModule,
     AppManagementModule,
     CatalogModule,
+    CombosModule,
     SalesModule,
     SettingsModule,
     ProductsModule,

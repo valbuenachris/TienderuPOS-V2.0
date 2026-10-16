@@ -15,7 +15,7 @@ import {
 
 export const DECIMAL_PATTERN = /^\d{1,13}(?:\.\d{1,2})?$/;
 
-export type SalePaymentMethod = 'cash' | 'CC' | 'Transferencia' | 'Sistecredito' | 'ADI' | 'credito';
+export type SalePaymentMethod = 'cash' | 'CC' | 'Transferencia' | 'Sistecredito' | 'ADI' | 'credito' | 'bold';
 
 const PAID_BY_VALUES: SalePaymentMethod[] = [
   'cash',
@@ -23,7 +23,8 @@ const PAID_BY_VALUES: SalePaymentMethod[] = [
   'Transferencia',
   'Sistecredito',
   'ADI',
-  'credito'
+  'credito',
+  'bold'
 ];
 
 export class SaleLineDto {

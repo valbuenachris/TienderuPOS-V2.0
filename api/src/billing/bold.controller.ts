@@ -9,7 +9,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import type { Request } from 'express';
-import { SalesService } from '../sales/sales.service';
+import { PaymentsService } from '../payments/payments.service';
 import { BillingService } from './billing.service';
 import { BoldService, BoldWebhookEvent } from './bold.service';
 
@@ -26,7 +26,7 @@ export class BoldWebhookController {
   constructor(
     private readonly bold: BoldService,
     private readonly billing: BillingService,
-    private readonly sales: SalesService
+    private readonly payments: PaymentsService
   ) {}
 
   @Post('bold')
@@ -35,11 +35,7 @@ export class BoldWebhookController {
     @Req() request: RawBodyRequest<Request>,
     @Headers('x-bold-signature') signature?: string
   ) {
-    if (!this.bold.isEnabled()) throw new ServiceUnavailableException('Bold no está configurado');
     const raw = request.rawBody ?? Buffer.from('');
-    if (!this.bold.verifySignature(raw, signature)) {
-      throw new BadRequestException('Invalid Bold signature');
-    }
     let parsed: unknown = null;
     try {
       parsed = raw.length > 0 ? JSON.parse(raw.toString('utf8')) : null;
@@ -54,23 +50,22 @@ export class BoldWebhookController {
       data: isRecord(parsed.data) ? parsed.data : undefined
     };
 
-    const reference = event.data ? readString(event.data.reference) : null;
-    if (reference !== null && reference.startsWith('ORDER-')) {
-      const handled = await this.handleOrderEvent(event, reference);
-      return { received: true, handled };
+    // 1) Billing del SaaS (plataforma): firma con el .env global (comportamiento intacto).
+    if (this.bold.isEnabled() && this.bold.verifySignature(raw, signature)) {
+      const result = await this.billing.handleBoldWebhook(event);
+      return { received: true, handled: result.handled, scope: 'platform' as const };
     }
 
-    const result = await this.billing.handleBoldWebhook(event);
-    return { received: true, handled: result.handled };
-  }
-
-  private async handleOrderEvent(event: BoldWebhookEvent, reference: string): Promise<boolean> {
-    if (event.type !== 'SALE_APPROVED') return false;
-    const saleId = Number(reference.split('-')[1]);
-    if (!Number.isSafeInteger(saleId) || saleId < 1) return false;
-    const amountData = event.data && isRecord(event.data.amount) ? event.data.amount : null;
-    const total = amountData ? readString(amountData.total) : null;
-    const result = await this.sales.registerGatewayPayment(saleId, 'CC', total ?? undefined);
-    return result.handled;
+    // 2) Fallback: pedidos de la tienda virtual (`ORDER-<saleId>`) validados con la
+    //    llave DEL TENANT en tec_tenant_payment_settings (sin tocar el billing del SaaS).
+    try {
+      const result = await this.payments.handleTenantBoldWebhook(raw, signature, event);
+      return { received: true, handled: result.handled, scope: 'tenant' as const };
+    } catch (_error: unknown) {
+      if (!this.bold.isEnabled()) {
+        throw new ServiceUnavailableException('Bold no está configurado');
+      }
+      throw new BadRequestException('Invalid Bold signature');
+    }
   }
 }

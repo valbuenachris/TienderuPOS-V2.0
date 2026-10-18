@@ -86,7 +86,6 @@ export class WhatsappWebhookController {
     }
 
     if (event !== 'messages.upsert') return { received: true, ignored: true };
-    if (!settings.agentEnabled) return { received: true, ignored: true };
 
     const data = isRecord(body.data) ? body.data : null;
     const key = data && isRecord(data.key) ? data.key : null;
@@ -94,7 +93,6 @@ export class WhatsappWebhookController {
     const fromMe = key?.fromMe === true;
     if (
       remoteJid === null ||
-      fromMe ||
       remoteJid.includes('@g.us') ||
       remoteJid.includes('@broadcast') ||
       remoteJid.includes('status@')
@@ -107,6 +105,21 @@ export class WhatsappWebhookController {
 
     const messageId = key && typeof key.id === 'string' ? key.id : null;
     const pushName = data && typeof data.pushName === 'string' ? data.pushName : null;
+
+    // Mensajes enviados por el PERSONAL desde el teléfono (fromMe): se registran para
+    // pausar al bot mientras un humano atiende (y habilitar el auto-retorno después).
+    if (fromMe) {
+      void this.agent
+        .recordStaffMessage({ tenantId: settings.tenantId, phone, messageId, text: extractText(data) })
+        .catch((error: unknown) => {
+          this.logger.error(
+            `No se pudo registrar el mensaje del personal (tenant ${settings.tenantId}, phone ${phone}): ${error instanceof Error ? error.message : 'unknown'}`
+          );
+        });
+      return { received: true, ignored: true };
+    }
+
+    if (!settings.agentEnabled) return { received: true, ignored: true };
 
     // Responder 200 ya y procesar en segundo plano (Evolution reintenta si tardamos).
     void this.agent

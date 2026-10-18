@@ -108,6 +108,48 @@ export type Database = {
       tec_customer_combo_items: Table<{
         id: number; combo_id: number | null; product_id: number | null; quantity: number | null;
       }>;
+      tec_marketplace_settings: Table<{
+        tenant_id: string; enabled: boolean; markup_percent: number | null;
+        store_display_name: string | null; created_at: string | null; updated_at: string | null;
+      }>;
+      tec_marketplace_customers: Table<{
+        id: number; name: string; email: string; phone: string | null; password: string;
+        created_at: string | null; updated_at: string | null;
+      }>;
+      tec_marketplace_addresses: Table<{
+        id: number; customer_id: number; recipient_name: string; label: string;
+        street_address: string; neighborhood: string | null; city: string | null;
+        phone: string | null; additional_notes: string | null; is_default: boolean | null;
+        created_at: string | null; updated_at: string | null;
+      }>;
+      tec_marketplace_orders: Table<{
+        id: number; order_number: string; customer_id: number; customer_name: string;
+        customer_email: string | null; customer_phone: string | null;
+        shipping_recipient: string; shipping_phone: string; shipping_address: string;
+        shipping_neighborhood: string | null; shipping_city: string; shipping_notes: string | null;
+        products_total: number | null; shipping_total: number | null; grand_total: number | null;
+        commission_total: number | null; tenant_total: number | null;
+        status: string; payment_method: string; payment_status: string;
+        bold_payment_id: string | null; checkout_url: string | null; paid_at: string | null;
+        created_at: string | null; updated_at: string | null;
+      }>;
+      tec_marketplace_suborders: Table<{
+        id: number; order_id: number; tenant_id: string; sale_id: number | null;
+        suborder_number: string; status: string; products_total: number | null;
+        shipping_total: number | null; tenant_total: number | null; commission: number | null;
+        tracking_note: string | null; shipped_at: string | null; delivered_at: string | null;
+        payout_status: string; paid_out_at: string | null;
+        created_at: string | null; updated_at: string | null;
+      }>;
+      tec_marketplace_order_items: Table<{
+        id: number; order_id: number; suborder_id: number; tenant_id: string;
+        product_id: number; product_code: string | null; product_name: string;
+        product_image: string | null; quantity: number;
+        base_unit_price: number | null; unit_price: number | null; commission_unit: number | null;
+        line_base: number | null; line_tax: number | null; line_subtotal: number | null;
+        line_total: number | null; commission_total: number | null;
+        created_at: string | null;
+      }>;
     };
     Views: { [_ in never]: never };
     Functions: { [_ in never]: never };

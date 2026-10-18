@@ -23,10 +23,20 @@ import {
   connectWhatsapp,
   fetchAiModels,
   fetchAiSettings,
+  fetchCrmAutomations,
+  fetchCrmLead,
+  fetchCrmLeads,
+  fetchCrmSummary,
+  fetchCrmTemplates,
   fetchWhatsappSettings,
   fetchProducts,
   fetchPurchaseDetail,
   fetchPurchases,
+  fetchMarketplaceAdminOrders,
+  fetchMarketplaceAdminSummary,
+  fetchMarketplaceOrders,
+  fetchMarketplaceSettings,
+  fetchMarketplaceSummary,
   fetchRegisterSummary,
   fetchRegisters,
   fetchReportSummary,
@@ -254,6 +264,59 @@ export function useWhatsappConnectQuery(token: string | null, tenantId: string |
     queryFn: connectWhatsapp,
     enabled: Boolean(token && tenantId && enabled),
     refetchInterval: enabled ? 20000 : false,
+    retry: false
+  });
+}
+
+export function useCrmLeadsQuery(
+  token: string | null,
+  tenantId: string | null,
+  filters: { stage?: string; source?: string; q?: string; overdue?: string; page?: number; limit?: number },
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['crm-leads', tenantId, filters.stage ?? '', filters.source ?? '', filters.q ?? '', filters.overdue ?? '', filters.page ?? 1, filters.limit ?? 30],
+    queryFn: () => fetchCrmLeads(filters),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useCrmLeadQuery(token: string | null, tenantId: string | null, leadId: number | null) {
+  return useQuery({
+    queryKey: ['crm-lead', tenantId, leadId],
+    queryFn: () => {
+      if (leadId === null) throw new Error('A lead id is required');
+      return fetchCrmLead(leadId);
+    },
+    enabled: Boolean(token && tenantId && leadId !== null),
+    retry: false
+  });
+}
+
+export function useCrmSummaryQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['crm-summary', tenantId],
+    queryFn: fetchCrmSummary,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useCrmTemplatesQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['crm-templates', tenantId],
+    queryFn: fetchCrmTemplates,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useCrmAutomationsQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['crm-automations', tenantId],
+    queryFn: fetchCrmAutomations,
+    enabled: Boolean(token && tenantId && enabled),
     retry: false
   });
 }
@@ -631,6 +694,68 @@ export function useAdminBannersQuery(token: string | null, tenantId: string | nu
   return useQuery({
     queryKey: ['admin-banners', tenantId],
     queryFn: fetchAdminBanners,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace Tienderu.com (v0.8.0)
+// ---------------------------------------------------------------------------
+
+export function useMarketplaceSettingsQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace-settings', tenantId],
+    queryFn: fetchMarketplaceSettings,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceOrdersQuery(
+  token: string | null,
+  tenantId: string | null,
+  status?: string,
+  page = 1,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['marketplace-orders', tenantId, status ?? '', page],
+    queryFn: () => fetchMarketplaceOrders(status, page),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceSummaryQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace-summary', tenantId],
+    queryFn: fetchMarketplaceSummary,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceAdminOrdersQuery(
+  token: string | null,
+  tenantId: string | null,
+  status?: string,
+  sellerId?: string,
+  page = 1,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['marketplace-admin-orders', tenantId, status ?? '', sellerId ?? '', page],
+    queryFn: () => fetchMarketplaceAdminOrders(status, sellerId, page),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceAdminSummaryQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace-admin-summary', tenantId],
+    queryFn: fetchMarketplaceAdminSummary,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

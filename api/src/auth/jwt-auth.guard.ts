@@ -18,7 +18,13 @@ export class JwtAuthGuard implements CanActivate {
         issuer: 'pos-gres-v2',
         algorithms: ['HS256']
       });
-      if (!claims.sub || !claims.tenant_id) throw new Error('Missing token claims');
+      if (!claims.sub) throw new Error('Missing token claims');
+      // La cuenta global de tienderu.com no es tenant-scoped y no usa sesión.
+      if (claims.type === 'marketplace_customer') {
+        request.posClaims = claims;
+        return true;
+      }
+      if (!claims.tenant_id) throw new Error('Missing token claims');
       if (claims.type !== 'customer' && !claims.sid) throw new Error('Missing token claims');
       request.posClaims = claims;
       return true;

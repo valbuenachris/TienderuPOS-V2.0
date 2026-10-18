@@ -12,3 +12,11 @@ services:
       dockerfile: Dockerfile
       args:
         VITE_API_BASE_URL: /api
+
+  store:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-store:${IMAGE_TAG:-v0.1.0}"
+    build:
+      context: ./store
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE_URL: /api

@@ -20,9 +20,12 @@ import SalesHistoryPage from './pages/SalesHistoryPage';
 import OpenAccountsPage from './pages/OpenAccountsPage';
 import AiAssistantPage from './pages/AiAssistantPage';
 import WhatsAppPage from './pages/WhatsAppPage';
+import CrmPage from './pages/CrmPage';
 import SettingsPage from './pages/SettingsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import TenantsPage from './pages/TenantsPage';
+import MarketplacePage from './pages/marketplace/MarketplacePage';
+import MarketplaceGlobalPage from './pages/marketplace-global/MarketplaceGlobalPage';
 import TiendaVirtualPage from './pages/tienda-virtual/TiendaVirtualPage';
 import UsersPage from './pages/UsersPage';
 import TenantsOverviewPage from './pages/tenant-management/TenantsOverviewPage';
@@ -74,11 +77,13 @@ export default function App() {
               <Route path="/cuentas-abiertas" element={<OpenAccountsPage />} />
               <Route path="/asistente" element={<AdminOnly><AiAssistantPage /></AdminOnly>} />
               <Route path="/whatsapp" element={<AdminOnly><WhatsAppPage /></AdminOnly>} />
+              <Route path="/crm" element={<AdminOnly><CrmPage /></AdminOnly>} />
               <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
               <Route path="/categorias" element={<AdminOnly><CategoriesPage /></AdminOnly>} />
               <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />
               <Route path="/clientes" element={<CustomersPage />} />
               <Route path="/tienda-virtual" element={<AdminOnly><TiendaVirtualPage /></AdminOnly>} />
+              <Route path="/marketplace" element={<AdminOnly><MarketplacePage /></AdminOnly>} />
               <Route path="/proveedores" element={<AdminOnly><SuppliersPage /></AdminOnly>} />
               <Route path="/compras" element={<AdminOnly><PurchasesPage /></AdminOnly>} />
               <Route path="/reportes" element={<AdminOnly><ReportsPage /></AdminOnly>} />
@@ -90,6 +95,7 @@ export default function App() {
               <Route path="/config" element={<AdminOnly><SettingsPage /></AdminOnly>} />
             </Route>
             <Route path="/dashboard/global" element={<SuperAdminOnly><GlobalDashboardPage /></SuperAdminOnly>} />
+            <Route path="/marketplace-global" element={<SuperAdminOnly><MarketplaceGlobalPage /></SuperAdminOnly>} />
             <Route path="/tenants" element={<SuperAdminOnly><TenantsPage /></SuperAdminOnly>} />
             <Route path="/tenant-management/tenants" element={<SuperAdminOnly><TenantsOverviewPage /></SuperAdminOnly>} />
             <Route path="/tenant-management/tenants/:id" element={<SuperAdminOnly><TenantDetailPage /></SuperAdminOnly>} />

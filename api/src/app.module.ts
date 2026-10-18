@@ -13,6 +13,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
 import { DatabaseModule } from './database/database.module';
 import { ExpensesModule } from './expenses/expenses.module';
 import { HealthController } from './health.controller';
+import { MarketplaceModule } from './marketplace/marketplace.module';
 import { PaymentsModule } from './payments/payments.module';
 import { ProductsModule } from './products/products.module';
 import { PurchasesModule } from './purchases/purchases.module';
@@ -20,6 +21,7 @@ import { RegistersModule } from './registers/registers.module';
 import { ReportsModule } from './reports/reports.module';
 import { AiModule } from './ai/ai.module';
 import { WhatsappModule } from './whatsapp/whatsapp.module';
+import { CrmModule } from './crm/crm.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
@@ -52,6 +54,7 @@ import { UsersModule } from './users/users.module';
     ReportsModule,
     AiModule,
     WhatsappModule,
+    CrmModule,
     UsersModule,
     SuppliersModule,
     PurchasesModule,
@@ -60,7 +63,8 @@ import { UsersModule } from './users/users.module';
     TenantsModule,
     TenantManagementModule,
     BillingModule,
-    DashboardModule
+    DashboardModule,
+    MarketplaceModule
   ],
   controllers: [HealthController]
 })

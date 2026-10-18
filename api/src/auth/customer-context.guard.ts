@@ -11,6 +11,9 @@ export class CustomerContextGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest<PosRequest>();
     const claims = request.posClaims;
+    if (claims?.type === 'marketplace_customer') {
+      throw new ForbiddenException('Marketplace tokens cannot access the tenant customer app');
+    }
     if (!claims?.tenant_id) throw new UnauthorizedException('Tenant-scoped token required');
     if (claims.type !== 'customer') throw new ForbiddenException('Customer token required');
 

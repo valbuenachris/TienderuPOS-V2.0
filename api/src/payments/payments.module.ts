@@ -12,6 +12,6 @@ import { TenantPaymentSettingsService } from './tenant-payment-settings.service'
   imports: [AuthModule, SalesModule],
   controllers: [PaymentsWebhookController, PaymentMethodsController],
   providers: [PaymentsService, TenantPaymentSettingsService, TenantBoldService, AddiService],
-  exports: [PaymentsService]
+  exports: [PaymentsService, TenantBoldService]
 })
 export class PaymentsModule {}

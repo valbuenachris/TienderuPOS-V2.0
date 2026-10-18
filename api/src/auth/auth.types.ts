@@ -8,8 +8,8 @@ export interface PosClaims {
   home_tenant_id?: string;
   /** True only for super administrators (group_name = 'super_admin'). */
   super?: boolean;
-  /** Token audience: absent or 'pos_user' for POS staff, 'customer' for the B2C app. */
-  type?: 'pos_user' | 'customer';
+  /** Token audience: absent or 'pos_user' for POS staff, 'customer' for the B2C app, 'marketplace_customer' for tienderu.com. */
+  type?: 'pos_user' | 'customer' | 'marketplace_customer';
   role?: string;
   iat?: number;
   exp?: number;
@@ -38,9 +38,17 @@ export interface PosCustomer {
   points_balance: number;
 }
 
+export interface PosMarketplaceCustomer {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
 export interface PosRequest extends Request {
   posClaims?: PosClaims;
   tenantId?: string;
   posUser?: PosUser;
   posCustomer?: PosCustomer;
+  posMarketplaceCustomer?: PosMarketplaceCustomer;
 }

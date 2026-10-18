@@ -9,6 +9,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import type { Request } from 'express';
+import { MarketplacePaymentsService } from '../marketplace/marketplace-payments.service';
 import { PaymentsService } from '../payments/payments.service';
 import { BillingService } from './billing.service';
 import { BoldService, BoldWebhookEvent } from './bold.service';
@@ -26,7 +27,8 @@ export class BoldWebhookController {
   constructor(
     private readonly bold: BoldService,
     private readonly billing: BillingService,
-    private readonly payments: PaymentsService
+    private readonly payments: PaymentsService,
+    private readonly marketplace: MarketplacePaymentsService
   ) {}
 
   @Post('bold')
@@ -56,7 +58,14 @@ export class BoldWebhookController {
       return { received: true, handled: result.handled, scope: 'platform' as const };
     }
 
-    // 2) Fallback: pedidos de la tienda virtual (`ORDER-<saleId>`) validados con la
+    // 2) Marketplace tienderu.com: pedidos `MKP-<orderId>` con la cuenta Bold de la
+    //    PLATAFORMA (MARKETPLACE_BOLD_*); firma validada dentro del servicio.
+    const marketplaceResult = await this.marketplace.handleBoldWebhook(raw, signature, event);
+    if (marketplaceResult !== null) {
+      return { received: true, handled: marketplaceResult.handled, scope: 'marketplace' as const };
+    }
+
+    // 3) Fallback: pedidos de la tienda virtual (`ORDER-<saleId>`) validados con la
     //    llave DEL TENANT en tec_tenant_payment_settings (sin tocar el billing del SaaS).
     try {
       const result = await this.payments.handleTenantBoldWebhook(raw, signature, event);

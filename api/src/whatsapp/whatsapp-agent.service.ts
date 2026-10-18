@@ -314,10 +314,28 @@ export class WhatsappAgentService {
       return;
     }
 
+    // Opt-out del CRM: el cliente pide no recibir más mensajes automáticos.
+    if (/^\s*(no\s+m[áa]s|stop|cancelar\s+suscripci[óo]n|baja|no\s+me\s+escriban)\s*[.!]*$/i.test(input.text)) {
+      try {
+        await this.database.query(
+          `UPDATE public.tec_crm_leads SET opt_out = true, updated_at = now() WHERE tenant_id = $1 AND phone = $2`,
+          [input.tenantId, input.phone]
+        );
+      } catch (error: unknown) {
+        this.logger.warn(`CRM opt-out no aplicado: ${error instanceof Error ? error.message : 'unknown'}`);
+      }
+      await this.sendReply(
+        input,
+        'Listo 🙌 No volveremos a enviarte mensajes automáticos. Si necesitas algo, escríbenos cuando quieras.'
+      );
+      return;
+    }
+
     const key = this.openRouter.apiKey();
     if (key === null) throw new Error('OPENROUTER_API_KEY no configurada');
 
     const customer = await this.resolveCustomer(input);
+    await this.syncCrmLead(input, customer);
     const history = await this.loadHistory(input.tenantId, input.phone);
     const system = await this.buildSystemPrompt(input);
     const messages: Array<Record<string, unknown>> = [
@@ -397,6 +415,24 @@ export class WhatsappAgentService {
     if (context.humanRequested) {
       await this.setConversationStatus(input.tenantId, input.phone, 'human');
       this.logger.log(`Bot WhatsApp: conversación pasa a humano (${input.tenantId}:${input.phone})`);
+    }
+  }
+
+  /** Crea/actualiza el lead del CRM al atender por WhatsApp (best-effort: la tabla puede no existir). */
+  private async syncCrmLead(input: IncomingInput, customer: PosCustomer): Promise<void> {
+    try {
+      await this.database.query(
+        `INSERT INTO public.tec_crm_leads (tenant_id, customer_id, phone, name, source, stage, last_activity_at)
+         VALUES ($1, $2, $3, $4, 'whatsapp', 'new', now())
+         ON CONFLICT (tenant_id, phone) DO UPDATE SET
+           customer_id = COALESCE(public.tec_crm_leads.customer_id, EXCLUDED.customer_id),
+           name = COALESCE(public.tec_crm_leads.name, EXCLUDED.name),
+           last_activity_at = now(),
+           updated_at = now()`,
+        [input.tenantId, customer.id, input.phone, input.pushName?.slice(0, 120) ?? null]
+      );
+    } catch (error: unknown) {
+      this.logger.debug(`CRM lead sync omitido: ${error instanceof Error ? error.message : 'unknown'}`);
     }
   }
 

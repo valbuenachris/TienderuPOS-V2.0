@@ -23,11 +23,13 @@ const TENANT_ITEMS: NavItem[] = [
   { to: '/cuentas-abiertas', label: 'Cuentas abiertas', icon: '📒' },
   { to: '/asistente', label: 'Asistente IA', icon: '🤖', admin: true },
   { to: '/whatsapp', label: 'WhatsApp', icon: '🟢', admin: true },
+  { to: '/crm', label: 'CRM', icon: '🎯', admin: true },
   { to: '/productos', label: 'Productos', icon: '📦', admin: true },
   { to: '/categorias', label: 'Categorías', icon: '📂', admin: true },
   { to: '/inventario', label: 'Inventario', icon: '🏷️', admin: true },
   { to: '/clientes', label: 'Clientes', icon: '👥' },
   { to: '/tienda-virtual', label: 'Tienda Virtual', icon: '📱', admin: true },
+  { to: '/marketplace', label: 'Marketplace', icon: '🏬', admin: true },
   { to: '/proveedores', label: 'Proveedores', icon: '🚚', admin: true },
   { to: '/compras', label: 'Compras', icon: '🛍️', admin: true },
   { to: '/reportes', label: 'Reportes', icon: '📈', admin: true },
@@ -39,6 +41,7 @@ const TENANT_ITEMS: NavItem[] = [
 
 const GLOBAL_ITEMS: NavItem[] = [
   { to: '/dashboard/global', label: 'Dashboard global', icon: '🌍' },
+  { to: '/marketplace-global', label: 'Marketplace', icon: '🏬' },
   { to: 'gestion', label: 'Gestión de tenants', icon: '', header: true },
   { to: '/tenant-management/tenants', label: 'Tenants', icon: '🏢', sub: true },
   { to: '/tenant-management/plans', label: 'Planes', icon: '💳', sub: true },

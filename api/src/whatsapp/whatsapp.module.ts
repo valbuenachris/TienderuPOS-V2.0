@@ -14,6 +14,7 @@ import { WhatsappWebhookController } from './whatsapp-webhook.controller';
 @Module({
   imports: [AiModule, AuthModule, TenantManagementModule, SalesModule, SettingsModule],
   controllers: [WhatsappController, WhatsappWebhookController],
-  providers: [WhatsappService, WhatsappAgentService, EvolutionClient, TenantWhatsappSettingsService]
+  providers: [WhatsappService, WhatsappAgentService, EvolutionClient, TenantWhatsappSettingsService],
+  exports: [EvolutionClient, TenantWhatsappSettingsService]
 })
 export class WhatsappModule {}

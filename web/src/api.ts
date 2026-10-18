@@ -880,6 +880,178 @@ export const connectWhatsapp = () =>
 export const disconnectWhatsapp = () =>
   apiRequest<WhatsappSettings>('/whatsapp/disconnect', { method: 'POST' });
 
+// ===== CRM =====
+
+export interface CrmLead {
+  id: number;
+  tenant_id: string;
+  customer_id: number | null;
+  name: string | null;
+  phone: string;
+  email: string | null;
+  source: string;
+  stage: string;
+  score: number;
+  owner_id: number | null;
+  opt_out: boolean;
+  last_activity_at: string | null;
+  next_followup_at: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CrmActivity {
+  id: number;
+  type: string;
+  content: string | null;
+  due_at: string | null;
+  completed_at: string | null;
+  created_by: number | null;
+  created_at: string | null;
+}
+
+export interface CrmLeadDetail {
+  lead: CrmLead;
+  customer: {
+    id: number;
+    name: string | null;
+    email: string | null;
+    phone: string | null;
+    points_balance: number;
+  } | null;
+  activities: CrmActivity[];
+  conversation: Array<{ id: number; direction: string; body: string | null; created_at: string | null }>;
+  recent_sales: Array<{
+    id: number;
+    grand_total: string | null;
+    paid: string | null;
+    status: string | null;
+    created_at: string | null;
+  }>;
+}
+
+export interface CrmTemplate {
+  id: number;
+  name: string;
+  body: string;
+  created_at: string | null;
+  updated_at: string | null;
+}
+
+export interface CrmAutomation {
+  id: number;
+  name: string;
+  trigger: string;
+  delay_hours: number;
+  template_id: number | null;
+  enabled: boolean;
+  last_run_at: string | null;
+  template_name: string | null;
+}
+
+export interface CrmSummary {
+  by_stage: Record<string, number>;
+  total: number;
+  new_this_month: number;
+  won_this_month: number;
+  conversion: number;
+  overdue_tasks: number;
+  automation_sends_7d: number;
+}
+
+export const fetchCrmLeads = (params: {
+  stage?: string;
+  source?: string;
+  q?: string;
+  overdue?: string;
+  page?: number;
+  limit?: number;
+}) =>
+  apiRequest<Paginated<CrmLead>>(
+    withQuery('/crm/leads', {
+      stage: params.stage,
+      source: params.source,
+      q: params.q,
+      overdue: params.overdue,
+      page: params.page ?? 1,
+      limit: params.limit ?? 30
+    })
+  );
+
+export const createCrmLead = (payload: {
+  name?: string;
+  phone: string;
+  email?: string;
+  source?: string;
+  next_followup_at?: string;
+}) => apiRequest<CrmLead>('/crm/leads', { method: 'POST', body: JSON.stringify(payload) });
+
+export const fetchCrmLead = (id: number) => apiRequest<CrmLeadDetail>(`/crm/leads/${id}`);
+
+export const updateCrmLead = (
+  id: number,
+  payload: {
+    name?: string;
+    email?: string;
+    stage?: string;
+    score?: number;
+    opt_out?: boolean;
+    next_followup_at?: string | null;
+  }
+) => apiRequest<CrmLead>(`/crm/leads/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
+
+export const addCrmActivity = (id: number, payload: { type: string; content: string; due_at?: string }) =>
+  apiRequest<{ id: number }>(`/crm/leads/${id}/activities`, { method: 'POST', body: JSON.stringify(payload) });
+
+export const completeCrmActivity = (leadId: number, activityId: number) =>
+  apiRequest<{ id: number; completed: boolean }>(`/crm/leads/${leadId}/activities/${activityId}/complete`, {
+    method: 'PUT'
+  });
+
+export const sendCrmMessage = (id: number, content: string) =>
+  apiRequest<{ sent: boolean; paused_bot: boolean }>(`/crm/leads/${id}/message`, {
+    method: 'POST',
+    body: JSON.stringify({ content })
+  });
+
+export const fetchCrmTemplates = () => apiRequest<CrmTemplate[]>('/crm/templates');
+
+export const createCrmTemplate = (payload: { name: string; body: string }) =>
+  apiRequest<{ id: number }>('/crm/templates', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateCrmTemplate = (id: number, payload: { name: string; body: string }) =>
+  apiRequest<{ id: number; updated: boolean }>(`/crm/templates/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+
+export const deleteCrmTemplate = (id: number) =>
+  apiRequest<{ deleted: boolean }>(`/crm/templates/${id}`, { method: 'DELETE' });
+
+export const fetchCrmAutomations = () => apiRequest<CrmAutomation[]>('/crm/automations');
+
+export const createCrmAutomation = (payload: {
+  name: string;
+  trigger: string;
+  delay_hours: number;
+  template_id?: number;
+  enabled?: boolean;
+}) => apiRequest<{ id: number }>('/crm/automations', { method: 'POST', body: JSON.stringify(payload) });
+
+export const updateCrmAutomation = (
+  id: number,
+  payload: { name: string; trigger: string; delay_hours: number; template_id?: number; enabled?: boolean }
+) =>
+  apiRequest<{ id: number; updated: boolean }>(`/crm/automations/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+
+export const deleteCrmAutomation = (id: number) =>
+  apiRequest<{ deleted: boolean }>(`/crm/automations/${id}`, { method: 'DELETE' });
+
+export const fetchCrmSummary = () => apiRequest<CrmSummary>('/crm/summary');
+
 export interface SaleDetailItem {
   id: number;
   product_id: number | null;
@@ -1184,3 +1356,169 @@ export const openRegister = (payload: { store_id?: number; cash_in_hand: string 
 
 export const closeRegister = (id: number, payload: { note?: string; total_cash_submitted?: string }) =>
   apiRequest<RegisterCloseResult>(`/registers/${id}/close`, { method: 'POST', body: JSON.stringify(payload) });
+
+// ---------------------------------------------------------------------------
+// Marketplace Tienderu.com (v0.8.0) — panel del tenant y super admin
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceSettings {
+  tenant_id: string;
+  enabled: boolean;
+  markup_percent: string;
+  store_display_name: string | null;
+}
+
+export interface MarketplaceOrderItemRow {
+  id: number;
+  suborder_id: number;
+  product_id: number;
+  product_code: string | null;
+  product_name: string;
+  product_image: string | null;
+  quantity: number;
+  unit_price: string;
+  line_total: string;
+}
+
+export interface MarketplaceSuborderRow {
+  id: number;
+  order_id: number;
+  tenant_id: string;
+  sale_id: number | null;
+  suborder_number: string;
+  status: 'pending' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled';
+  products_total: string;
+  tenant_total: string;
+  commission: string;
+  tracking_note: string | null;
+  shipped_at: string | null;
+  delivered_at: string | null;
+  payout_status: 'pending' | 'paid';
+  paid_out_at: string | null;
+  created_at: string | null;
+  order_number: string;
+  customer_name: string;
+  shipping_city: string;
+  items: MarketplaceOrderItemRow[];
+}
+
+export interface MarketplaceSummary {
+  orders_count: number;
+  pending_count: number;
+  delivered_count: number;
+  tenant_total: string;
+  commission: string;
+  payout_pending: string;
+}
+
+export interface MarketplaceAdminOrder {
+  id: number;
+  order_number: string;
+  customer_name: string;
+  customer_email: string | null;
+  customer_phone: string | null;
+  shipping_recipient: string;
+  shipping_phone: string;
+  shipping_address: string;
+  shipping_neighborhood: string | null;
+  shipping_city: string;
+  shipping_notes: string | null;
+  products_total: string;
+  shipping_total: string;
+  grand_total: string;
+  commission_total: string;
+  tenant_total: string;
+  status: string;
+  payment_method: string;
+  payment_status: string;
+  paid_at: string | null;
+  created_at: string | null;
+  suborders_count: number;
+  sellers: string;
+  suborders: Array<{
+    id: number;
+    suborder_number: string;
+    status: string;
+    tenant_name: string;
+    tenant_total: string;
+    commission: string;
+    payout_status: string;
+    items: MarketplaceOrderItemRow[];
+  }>;
+}
+
+export interface MarketplacePayoutTenant {
+  id: string;
+  name: string;
+  orders_count: number;
+  pending_payout: string;
+  paid_out: string;
+}
+
+export interface MarketplaceAdminSummary {
+  orders_count: number;
+  paid_orders: number;
+  gmv: string;
+  commission: string;
+  tenant_payable: string;
+  pending_payment: number;
+  pending_payout: string;
+  tenants: MarketplacePayoutTenant[];
+}
+
+export const fetchMarketplaceSettings = () =>
+  apiRequest<MarketplaceSettings>('/marketplace/settings');
+
+export const updateMarketplaceSettings = (payload: {
+  enabled?: boolean;
+  markup_percent?: number;
+  store_display_name?: string;
+}) =>
+  apiRequest<MarketplaceSettings>('/marketplace/settings', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+
+export const fetchMarketplaceOrders = (status?: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<MarketplaceSuborderRow>>(
+    withQuery('/marketplace/orders', { status, page, limit })
+  );
+
+export const fetchMarketplaceOrderDetail = (id: number) =>
+  apiRequest<MarketplaceSuborderRow & {
+    customer_email: string | null;
+    customer_phone: string | null;
+    shipping_recipient: string;
+    shipping_phone: string;
+    shipping_address: string;
+    shipping_neighborhood: string | null;
+    shipping_notes: string | null;
+    order_status: string;
+    paid_at: string | null;
+  }>(`/marketplace/orders/${id}`);
+
+export const updateMarketplaceOrderStatus = (
+  id: number,
+  payload: { status: 'preparing' | 'shipped' | 'delivered'; note?: string }
+) =>
+  apiRequest<MarketplaceSuborderRow>(`/marketplace/orders/${id}/status`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const fetchMarketplaceSummary = () =>
+  apiRequest<MarketplaceSummary>('/marketplace/summary');
+
+export const fetchMarketplaceAdminOrders = (status?: string, tenantId?: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<MarketplaceAdminOrder>>(
+    withQuery('/marketplace/admin/orders', { status, tenant_id: tenantId, page, limit })
+  );
+
+export const fetchMarketplaceAdminSummary = () =>
+  apiRequest<MarketplaceAdminSummary>('/marketplace/admin/summary');
+
+export const markMarketplacePayouts = (payload: { tenant_id: string; suborder_ids?: number[] }) =>
+  apiRequest<{ tenant_id: string; marked: number; total: string }>('/marketplace/admin/payouts/mark', {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });

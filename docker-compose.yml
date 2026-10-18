@@ -36,6 +36,22 @@ services:
     networks:
       - proxy
 
+  store:
+    image: "${DOCKERHUB_NAMESPACE:-cvalbuena}/pos-gres-v2-store:${IMAGE_TAG:-v0.1.0}"
+    container_name: pos-gres-v2-store
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    expose:
+      - "80"
+    volumes:
+      - "${LEGACY_UPLOADS_PATH:-/srv/pos-media/uploads}:/usr/share/nginx/html/uploads:ro"
+    ports:
+      - "${STORE_BIND_IP:-127.0.0.1}:${STORE_PORT:-8081}:80"
+    networks:
+      - proxy
+
 networks:
   proxy:
     name: ${NPM_NETWORK_NAME:-npm_net}

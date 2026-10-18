@@ -1,0 +1,206 @@
+import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { DatabaseService } from '../database/database.service';
+import { SalesService } from '../sales/sales.service';
+import { TenantBoldService } from '../payments/tenant-bold.service';
+
+type WebhookEvent = { type?: string; data?: Record<string, unknown> };
+
+type OrderPaymentRow = {
+  id: number;
+  order_number: string;
+  grand_total: string;
+  status: string;
+  payment_status: string;
+};
+
+type SuborderSaleRow = {
+  id: number;
+  sale_id: number | null;
+  tenant_total: string;
+  status: string;
+};
+
+const ORDER_REFERENCE_RE = /^MKP-(\d+)(?:-|$)/i;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.trim() !== '' ? value.trim() : null;
+}
+
+function readAmount(value: unknown): string | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value.toFixed(2);
+  if (typeof value === 'string' && value.trim() !== '' && /^\d+(\.\d+)?$/.test(value.trim())) {
+    return Number(value.trim()).toFixed(2);
+  }
+  return null;
+}
+
+/**
+ * Pagos de tienderu.com: cuenta Bold DE LA PLATAFORMA (MARKETPLACE_BOLD_*).
+ * El cliente paga una sola vez; la comisión queda en la plataforma y a cada
+ * tenant se le liquida `tenant_total` por sub-orden.
+ */
+@Injectable()
+export class MarketplacePaymentsService {
+  private readonly logger = new Logger(MarketplacePaymentsService.name);
+
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly sales: SalesService,
+    private readonly tenantBold: TenantBoldService,
+    private readonly config: ConfigService
+  ) {}
+
+  async createPlatformLink(input: {
+    orderId: number;
+    orderNumber: string;
+    amount: string;
+    payerEmail?: string | null;
+  }): Promise<{ url: string; paymentLink: string }> {
+    const apiKey = (this.config.get<string>('MARKETPLACE_BOLD_API_KEY') ?? '').trim();
+    if (apiKey === '') {
+      throw new ServiceUnavailableException('El pago con Bold no está configurado en tienderu.com');
+    }
+    const amount = Number(input.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      throw new BadRequestException('Order total is invalid for payment');
+    }
+    const reference = `MKP-${input.orderId}-${Date.now().toString(36)}`;
+    const callbackUrl = this.config.get<string>('MARKETPLACE_CALLBACK_URL') ?? null;
+    const link = await this.tenantBold.createLink({
+      apiKey,
+      amount,
+      description: `Pedido ${input.orderNumber}`,
+      reference,
+      payerEmail: input.payerEmail ?? null,
+      callbackUrl
+    });
+
+    await this.database.query(
+      `UPDATE public.tec_marketplace_orders
+       SET bold_payment_id = $2, checkout_url = $3, updated_at = NOW()
+       WHERE id = $1`,
+      [input.orderId, link.paymentLink, link.url]
+    );
+    return link;
+  }
+
+  /**
+   * Fase marketplace del webhook Bold (`MKP-<orderId>`). Devuelve `null` cuando
+   * la referencia no es del marketplace (otra fase lo intentará). Firma
+   * verificada con `MARKETPLACE_BOLD_WEBHOOK_SECRET ?? MARKETPLACE_BOLD_API_KEY`.
+   */
+  async handleBoldWebhook(
+    rawBody: Buffer | string,
+    signature: string | undefined,
+    event: WebhookEvent
+  ): Promise<{ handled: boolean } | null> {
+    const metadata = isRecord(event.data?.metadata) ? (event.data?.metadata as Record<string, unknown>) : null;
+    const reference = readString(metadata?.reference) ?? readString(event.data?.reference);
+    const match = reference?.match(ORDER_REFERENCE_RE) ?? null;
+    if (!match) return null;
+
+    const orderId = Number(match[1]);
+    if (!Number.isSafeInteger(orderId) || orderId <= 0) throw new BadRequestException('Invalid Bold signature');
+
+    const secret = (
+      this.config.get<string>('MARKETPLACE_BOLD_WEBHOOK_SECRET')
+      ?? this.config.get<string>('MARKETPLACE_BOLD_API_KEY')
+      ?? ''
+    ).trim();
+    if (secret === '') throw new BadRequestException('Invalid Bold signature');
+    if (!this.tenantBold.verifySignature(rawBody, signature, secret)) {
+      throw new BadRequestException('Invalid Bold signature');
+    }
+
+    const orderResult = await this.database.query<OrderPaymentRow>(
+      `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status
+       FROM public.tec_marketplace_orders
+       WHERE id = $1
+       LIMIT 1`,
+      [orderId]
+    );
+    const order = orderResult.rows[0];
+    if (!order) {
+      this.logger.warn(`Bold marketplace: pedido desconocido ${orderId}`);
+      return { handled: false };
+    }
+
+    if ((event.type ?? '') !== 'SALE_APPROVED') {
+      this.logger.log(`Bold marketplace webhook ${event.type ?? 'UNKNOWN'} order=${order.order_number} ignorado`);
+      return { handled: false };
+    }
+
+    // Verificación de monto: Bold cobra el total redondeado a entero (COP), así que
+    // se compara contra el total redondeado. Nunca liquidar con un monto distinto.
+    const amountData = isRecord(event.data?.amount) ? (event.data?.amount as Record<string, unknown>) : null;
+    const paidAmount = readAmount(amountData?.total);
+    const expected = Math.round(Number(order.grand_total));
+    if (paidAmount === null || Math.abs(Number(paidAmount) - expected) >= 0.01) {
+      this.logger.error(
+        `Bold marketplace: monto no coincide order=${order.order_number} esperado=${expected} recibido=${paidAmount ?? 'n/d'}`
+      );
+      return { handled: false };
+    }
+
+    const suborders = await this.settleOrder(orderId);
+    this.logger.log(
+      `Bold marketplace SALE_APPROVED order=${order.order_number} suborders=${suborders.length}`
+    );
+
+    // Liquida cada venta del POS del tenant (idempotente: salda el pendiente).
+    for (const suborder of suborders) {
+      if (suborder.sale_id === null) continue;
+      try {
+        await this.sales.registerGatewayPayment(suborder.sale_id, 'bold');
+      } catch (error: unknown) {
+        this.logger.error(
+          `No se pudo liquidar la venta ${suborder.sale_id} del pedido ${order.order_number}: ${error instanceof Error ? error.message : 'unknown'}`
+        );
+      }
+    }
+    return { handled: true };
+  }
+
+  private async settleOrder(orderId: number): Promise<SuborderSaleRow[]> {
+    return this.database.transaction(async (client) => {
+      const current = await client.query<OrderPaymentRow>(
+        `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status
+         FROM public.tec_marketplace_orders
+         WHERE id = $1
+         LIMIT 1
+         FOR UPDATE`,
+        [orderId]
+      );
+      const order = current.rows[0];
+      if (!order) return [];
+
+      // Idempotente: repite las actualizaciones sin efecto si ya estaba pagado, y
+      // SIEMPRE devuelve las sub-órdenes para reintentar la liquidación de ventas.
+      await client.query(
+        `UPDATE public.tec_marketplace_orders
+         SET status = CASE WHEN status = 'pending_payment' THEN 'paid' ELSE status END,
+             payment_status = 'paid', paid_at = COALESCE(paid_at, NOW()), updated_at = NOW()
+         WHERE id = $1`,
+        [orderId]
+      );
+      await client.query(
+        `UPDATE public.tec_marketplace_suborders
+         SET status = CASE WHEN status = 'pending' THEN 'paid' ELSE status END, updated_at = NOW()
+         WHERE order_id = $1`,
+        [orderId]
+      );
+      const suborders = await client.query<SuborderSaleRow>(
+        `SELECT id, sale_id, tenant_total::text AS tenant_total, status
+         FROM public.tec_marketplace_suborders
+         WHERE order_id = $1`,
+        [orderId]
+      );
+      return suborders.rows;
+    });
+  }
+}

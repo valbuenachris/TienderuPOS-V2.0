@@ -8,6 +8,7 @@ const LABELS: Record<string, string> = {
   ventas: 'Ventas',
   'cuentas-abiertas': 'Cuentas abiertas',
   asistente: 'Asistente IA',
+  whatsapp: 'WhatsApp',
   productos: 'Productos',
   categorias: 'Categorías',
   inventario: 'Inventario',

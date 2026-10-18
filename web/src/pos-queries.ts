@@ -20,8 +20,10 @@ import {
   fetchManagedProducts,
   fetchPosUser,
   appendSaleItems,
+  connectWhatsapp,
   fetchAiModels,
   fetchAiSettings,
+  fetchWhatsappSettings,
   fetchProducts,
   fetchPurchaseDetail,
   fetchPurchases,
@@ -228,6 +230,30 @@ export function useAiModelsQuery(token: string | null, tenantId: string | null, 
     queryKey: ['ai-models', tenantId],
     queryFn: fetchAiModels,
     enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useWhatsappSettingsQuery(
+  token: string | null,
+  tenantId: string | null,
+  refetchInterval: number | false = false
+) {
+  return useQuery({
+    queryKey: ['whatsapp-settings', tenantId],
+    queryFn: fetchWhatsappSettings,
+    enabled: Boolean(token && tenantId),
+    refetchInterval,
+    retry: false
+  });
+}
+
+export function useWhatsappConnectQuery(token: string | null, tenantId: string | null, enabled: boolean) {
+  return useQuery({
+    queryKey: ['whatsapp-connect', tenantId],
+    queryFn: connectWhatsapp,
+    enabled: Boolean(token && tenantId && enabled),
+    refetchInterval: enabled ? 20000 : false,
     retry: false
   });
 }

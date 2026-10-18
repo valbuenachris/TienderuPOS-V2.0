@@ -854,6 +854,25 @@ export const sendAiChat = (messages: Array<{ role: 'user' | 'assistant'; content
     body: JSON.stringify({ messages })
   });
 
+export interface WhatsappSettings {
+  configured: boolean;
+  table_ready: boolean;
+  instance_name: string | null;
+  status: 'none' | 'open' | 'connecting' | 'close';
+  connected_at: string | null;
+}
+
+export const fetchWhatsappSettings = () => apiRequest<WhatsappSettings>('/whatsapp/settings');
+
+export const createWhatsappInstance = () =>
+  apiRequest<WhatsappSettings & { qr: string | null }>('/whatsapp/instance', { method: 'POST' });
+
+export const connectWhatsapp = () =>
+  apiRequest<{ state: string | null; qr: string | null }>('/whatsapp/connect', { method: 'POST' });
+
+export const disconnectWhatsapp = () =>
+  apiRequest<WhatsappSettings>('/whatsapp/disconnect', { method: 'POST' });
+
 export interface SaleDetailItem {
   id: number;
   product_id: number | null;

@@ -1394,3 +1394,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .chat-capabilities ul { margin: 8px 0 0; padding-left: 18px; display: grid; gap: 4px; }
 [data-theme='dark'] .chat-capabilities { color: var(--d-muted); }
 [data-theme='dark'] .chat-capabilities summary { color: var(--d-brand); }
+
+/* v0.5.1: WhatsApp (Evolution API) */
+.whatsapp-status-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.whatsapp-qr { display: block; width: 280px; max-width: 100%; margin: 0 auto; padding: 10px; border: 1px solid #e2e9e3; border-radius: 14px; background: #fff; }

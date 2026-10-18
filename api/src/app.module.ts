@@ -19,6 +19,7 @@ import { PurchasesModule } from './purchases/purchases.module';
 import { RegistersModule } from './registers/registers.module';
 import { ReportsModule } from './reports/reports.module';
 import { AiModule } from './ai/ai.module';
+import { WhatsappModule } from './whatsapp/whatsapp.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
@@ -50,6 +51,7 @@ import { UsersModule } from './users/users.module';
     ExpensesModule,
     ReportsModule,
     AiModule,
+    WhatsappModule,
     UsersModule,
     SuppliersModule,
     PurchasesModule,

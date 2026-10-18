@@ -213,6 +213,10 @@ E2E_CASHIER_USERNAME='cajero.demo' E2E_CASHIER_PASSWORD='••••••' E2E
 
 `E2E_BASE_URL` (default `http://localhost:5173`, el dev de Vite que proxya `/api`) permite apuntar al POS desplegado en pruebas (p. ej. `http://127.0.0.1:8096`). Con `npm run test:e2e:headed` se ve el navegador; los fallos guardan screenshot y trace en `test-results/`/`playwright-report/`.
 
+## Punto de venta: cajero en turno (v0.3.87)
+
+El encabezado del POS muestra un chip con el **cajero actual** (nombre del usuario de la sesión) y un punto verde/rojo que indica **Caja abierta / Caja cerrada** (fuente: `GET /api/registers/current`, la misma caja de "Cierre de caja"). El modal "Confirmar venta" incluye "Atendido por: {cajero}" y el ticket ya lo imprimía. Sin cambios de backend.
+
 ## Plataforma de gestión de tenants (v0.3.11)
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:

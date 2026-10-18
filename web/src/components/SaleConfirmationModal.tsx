@@ -24,6 +24,7 @@ export interface SaleConfirmationPayload {
 interface SaleConfirmationModalProps {
   data: SaleConfirmationData;
   currency: string;
+  cashierName?: string;
   submitting: boolean;
   onClose: () => void;
   onConfirm: (payload: SaleConfirmationPayload) => void;
@@ -66,6 +67,7 @@ function centsToApi(cents: number): string {
 export default function SaleConfirmationModal({
   data,
   currency,
+  cashierName,
   submitting,
   onClose,
   onConfirm
@@ -163,6 +165,7 @@ export default function SaleConfirmationModal({
       <div className="sale-confirm-meta">
         <span>Venta nueva · el número se asigna al confirmar</span>
         <span>Fecha: {openedAt}</span>
+        {cashierName ? <span>Atendido por: {cashierName}</span> : null}
       </div>
 
       <div className="sale-confirm-customer">

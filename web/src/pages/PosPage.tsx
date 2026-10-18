@@ -9,7 +9,7 @@ import ProductScanner from '../components/ProductScanner';
 import type { ScannerResult } from '../components/ProductScanner';
 import PosFooter from '../components/PosFooter';
 import { useSession } from '../app/session';
-import { useCreateSaleMutation, useProductsQuery } from '../pos-queries';
+import { useCreateSaleMutation, useCurrentRegisterQuery, useProductsQuery } from '../pos-queries';
 import { fetchProducts } from '../api';
 import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
 import { parseScanValue } from '../scan';
@@ -57,10 +57,12 @@ export default function PosPage() {
   const storeId = selectedStoreId ?? (userStoreAvailable ? userStoreId : stores[0]?.id ?? null);
   const productsQuery = useProductsQuery(token, tenantId, storeId, search);
   const saleMutation = useCreateSaleMutation();
+  const currentRegisterQuery = useCurrentRegisterQuery(token, tenantId, storeId);
 
   const currency = settings?.currency_prefix || 'COP';
   const currentStoreName = stores.find((store) => store.id === storeId)?.name || settings?.site_name || 'Tienda';
   const cashierName = [user?.first_name, user?.last_name].filter(Boolean).join(' ') || user?.username || '';
+  const registerOpen = Boolean(currentRegisterQuery.data);
   const lastSaleStoreName = lastSale ? stores.find((store) => store.id === lastSale.store_id)?.name ?? currentStoreName : currentStoreName;
   const paymentMethods: Array<{ value: PaymentMode; label: string }> = [
     { value: 'cash', label: PAYMENT_METHOD_LABELS.cash },
@@ -219,7 +221,15 @@ export default function PosPage() {
       <div className="workspace">
       <section className="catalog-panel">
         <div className="section-heading">
-          <div><p className="eyebrow">PUNTO DE VENTA</p><h1>Nueva venta</h1></div>
+          <div>
+            <p className="eyebrow">PUNTO DE VENTA</p>
+            <h1>Nueva venta</h1>
+            <div className="cashier-chip" title="Cajero en turno">
+              <span className={`cashier-dot ${registerOpen ? 'open' : 'closed'}`} aria-hidden />
+              <span>Cajero: <strong>{cashierName || 'Sin sesión'}</strong></span>
+              <span className="cashier-register">{registerOpen ? 'Caja abierta' : 'Caja cerrada'}</span>
+            </div>
+          </div>
           {isAdmin ? (
             <select value={storeId} disabled={saleMutation.isPending} onChange={(event) => {
               setSelectedStoreId(Number(event.target.value));
@@ -326,6 +336,7 @@ export default function PosPage() {
         <SaleConfirmationModal
           data={confirmationData}
           currency={currency}
+          cashierName={cashierName}
           submitting={saleMutation.isPending}
           onClose={() => setConfirmOpen(false)}
           onConfirm={confirmSale}

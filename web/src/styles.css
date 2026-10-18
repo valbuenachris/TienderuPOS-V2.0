@@ -421,6 +421,12 @@ textarea:focus { border-color: #159252; box-shadow: 0 0 0 3px #15925218; }
 .badge.paid { background: #e4f5e9; color: #147d4a; }
 .badge.due { background: #fdeeea; color: #a53c2d; }
 .badge.partial { background: #fdf6e3; color: #8a6d1f; }
+/* v0.3.87: chip del cajero en turno en el POS */
+.cashier-chip { display: inline-flex; align-items: center; gap: 8px; margin-top: 10px; padding: 5px 12px; border: 1px solid #e0e8e1; border-radius: 999px; background: #fff; color: #173c24; font-size: 12px; font-weight: 600; width: fit-content; }
+.cashier-chip .cashier-dot { width: 8px; height: 8px; border-radius: 50%; background: #d1d5db; flex: none; }
+.cashier-chip .cashier-dot.open { background: #147d4a; box-shadow: 0 0 0 3px #147d4a22; }
+.cashier-chip .cashier-dot.closed { background: #dc2626; box-shadow: 0 0 0 3px #dc262622; }
+.cashier-chip .cashier-register { color: #768078; font-weight: 500; }
 .pagination { display: flex; align-items: center; gap: 14px; justify-content: flex-end; color: #68736b; font-size: 12px; }
 .link-button { display: inline-flex; align-items: center; text-decoration: none; }
 .notice.success { border-color: #d6eadb; background: #f0f8f2; color: #27633c; }

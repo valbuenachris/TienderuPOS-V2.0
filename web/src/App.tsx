@@ -17,6 +17,8 @@ import ProductsPage from './pages/ProductsPage';
 import PurchasesPage from './pages/PurchasesPage';
 import ReportsPage from './pages/ReportsPage';
 import SalesHistoryPage from './pages/SalesHistoryPage';
+import OpenAccountsPage from './pages/OpenAccountsPage';
+import AiAssistantPage from './pages/AiAssistantPage';
 import SettingsPage from './pages/SettingsPage';
 import SuppliersPage from './pages/SuppliersPage';
 import TenantsPage from './pages/TenantsPage';
@@ -68,6 +70,8 @@ export default function App() {
               <Route path="/pos" element={<PosPage />} />
               <Route path="/dashboard" element={<DashboardPage />} />
               <Route path="/ventas" element={<SalesHistoryPage />} />
+              <Route path="/cuentas-abiertas" element={<OpenAccountsPage />} />
+              <Route path="/asistente" element={<AdminOnly><AiAssistantPage /></AdminOnly>} />
               <Route path="/productos" element={<AdminOnly><ProductsPage /></AdminOnly>} />
               <Route path="/categorias" element={<AdminOnly><CategoriesPage /></AdminOnly>} />
               <Route path="/inventario" element={<AdminOnly><InventoryPage /></AdminOnly>} />

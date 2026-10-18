@@ -1,11 +1,15 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Modal, Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useReportCalendarQuery } from '../pos-queries';
 import { MONTH_NAMES, monthRange, yearRange } from '../calendar';
-import { formatDay, formatMoney, todayInBusinessTimezone } from '../format';
+import { formatDay, formatMoney, formatMoneyCompact, todayInBusinessTimezone } from '../format';
 import type { ReportCalendarPoint } from '../api';
+
+function cellMoney(value: string | number | null | undefined, currency: string): string {
+  const amount = Number(value ?? 0);
+  return amount === 0 ? '—' : formatMoneyCompact(amount, currency);
+}
 
 export default function MonthlySalesReport() {
   const { token, tenantId, settings } = useSession();
@@ -51,7 +55,6 @@ export default function MonthlySalesReport() {
 
   return (
     <>
-      <p className="breadcrumb"><Link to="/">Inicio</Link> › <Link to="/reportes">Reportes</Link> › Ventas mensuales</p>
       <PageHeader eyebrow="REPORTES" title="Ventas mensuales" />
       <Panel className="stack full-width">
         <div className="toolbar">
@@ -79,8 +82,12 @@ export default function MonthlySalesReport() {
             return (
               <button type="button" className="month-cell" key={key} onClick={() => setSelectedMonth(monthNumber)}>
                 <span className="month-name">{name}</span>
-                <span className="day-sales">{money(point?.sales_total ?? 0)}</span>
-                <span className="day-meta">{point?.sales_count ?? 0} ventas · Ganancia {money(point?.net_profit ?? 0)}</span>
+                <span className="cell-metrics">
+                  <span className="cell-metric sales"><span>Ventas</span><b>{cellMoney(point?.sales_total, currency)}</b></span>
+                  <span className="cell-metric purchases"><span>Compras</span><b>{cellMoney(point?.purchases_total, currency)}</b></span>
+                  <span className="cell-metric expenses"><span>Gastos</span><b>{cellMoney(point?.expenses_total, currency)}</b></span>
+                  <span className={`cell-metric profit ${Number(point?.net_profit ?? 0) >= 0 ? 'positive' : 'negative'}`}><span>Ganancia</span><b>{cellMoney(point?.net_profit, currency)}</b></span>
+                </span>
               </button>
             );
           })}

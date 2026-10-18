@@ -19,6 +19,9 @@ import {
   fetchManagedCustomers,
   fetchManagedProducts,
   fetchPosUser,
+  appendSaleItems,
+  fetchAiModels,
+  fetchAiSettings,
   fetchProducts,
   fetchPurchaseDetail,
   fetchPurchases,
@@ -183,6 +186,47 @@ export function useSalesQuery(
   return useQuery({
     queryKey: ['sales', tenantId, from ?? '', to ?? '', page, limit, customer],
     queryFn: () => fetchSales(from, to, page, limit, customer),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+/** Cuentas abiertas: ventas due/partial del tenant (staff: solo su tienda). */
+export function useOpenAccountsQuery(
+  token: string | null,
+  tenantId: string | null,
+  page = 1,
+  limit = 20,
+  customer = '',
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['open-accounts', tenantId, page, limit, customer],
+    queryFn: () => fetchSales(undefined, undefined, page, limit, customer, 'due,partial'),
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useAppendSaleItemsMutation() {
+  return useApiMutation((input: { id: number; items: Array<{ product_id: number; quantity: string }> }) =>
+    appendSaleItems(input.id, { items: input.items })
+  );
+}
+
+export function useAiSettingsQuery(token: string | null, tenantId: string | null) {
+  return useQuery({
+    queryKey: ['ai-settings', tenantId],
+    queryFn: fetchAiSettings,
+    enabled: Boolean(token && tenantId),
+    retry: false
+  });
+}
+
+export function useAiModelsQuery(token: string | null, tenantId: string | null, enabled = false) {
+  return useQuery({
+    queryKey: ['ai-models', tenantId],
+    queryFn: fetchAiModels,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

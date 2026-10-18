@@ -18,6 +18,7 @@ import { ProductsModule } from './products/products.module';
 import { PurchasesModule } from './purchases/purchases.module';
 import { RegistersModule } from './registers/registers.module';
 import { ReportsModule } from './reports/reports.module';
+import { AiModule } from './ai/ai.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { SalesModule } from './sales/sales.module';
 import { SettingsModule } from './settings/settings.module';
@@ -48,6 +49,7 @@ import { UsersModule } from './users/users.module';
     AddressesModule,
     ExpensesModule,
     ReportsModule,
+    AiModule,
     UsersModule,
     SuppliersModule,
     PurchasesModule,

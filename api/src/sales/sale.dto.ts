@@ -9,6 +9,7 @@ import {
   IsString,
   Matches,
   Max,
+  MaxLength,
   Min,
   ValidateNested
 } from 'class-validator';
@@ -54,6 +55,15 @@ export class CreateSaleDto {
   @Max(2147483647)
   customer_id?: number;
 
+  /**
+   * Etiqueta libre de la cuenta abierta ("Mesa 5", "Juan"). Solo se usa cuando no
+   * viene customer_id; se guarda en tec_sales.customer_name (sin DDL).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  customer_name?: string;
+
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(100)
@@ -90,6 +100,16 @@ export class CreateSaleDto {
   @IsString()
   @IsIn(PAID_BY_VALUES)
   paid_by?: SalePaymentMethod;
+}
+
+/** Agrega productos a una cuenta abierta (venta due/partial); solo suma cantidades. */
+export class AppendSaleItemsDto {
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(100)
+  @ValidateNested({ each: true })
+  @Type(() => SaleLineDto)
+  items!: SaleLineDto[];
 }
 
 export class AddSalePaymentDto {

@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice } from '../components/ui';
 import CustomerSearch from '../components/CustomerSearch';
@@ -9,7 +10,7 @@ import ProductScanner from '../components/ProductScanner';
 import type { ScannerResult } from '../components/ProductScanner';
 import PosFooter from '../components/PosFooter';
 import { useSession } from '../app/session';
-import { useCreateSaleMutation, useCurrentRegisterQuery, useProductsQuery } from '../pos-queries';
+import { useAppendSaleItemsMutation, useCreateSaleMutation, useCurrentRegisterQuery, useProductsQuery, useSaleDetailQuery } from '../pos-queries';
 import { fetchProducts } from '../api';
 import type { Customer, Product, SalePaymentMethod, SaleResult } from '../api';
 import { parseScanValue } from '../scan';
@@ -51,6 +52,8 @@ export default function PosPage() {
   const [notice, setNotice] = useState('');
   const [lastSale, setLastSale] = useState<SaleResult | null>(null);
   const [scannerMode, setScannerMode] = useState<'barcode' | 'qr' | null>(null);
+  const [openAccountModal, setOpenAccountModal] = useState(false);
+  const [accountLabel, setAccountLabel] = useState('');
 
   const userStoreId = user?.store_id ?? null;
   const userStoreAvailable = userStoreId !== null && stores.some((store) => store.id === userStoreId);
@@ -58,6 +61,12 @@ export default function PosPage() {
   const productsQuery = useProductsQuery(token, tenantId, storeId, search);
   const saleMutation = useCreateSaleMutation();
   const currentRegisterQuery = useCurrentRegisterQuery(token, tenantId, storeId);
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const accountParam = Number(searchParams.get('cuenta'));
+  const accountId = Number.isSafeInteger(accountParam) && accountParam > 0 ? accountParam : null;
+  const accountQuery = useSaleDetailQuery(token, tenantId, accountId);
+  const appendMutation = useAppendSaleItemsMutation();
 
   const currency = settings?.currency_prefix || 'COP';
   const currentStoreName = stores.find((store) => store.id === storeId)?.name || settings?.site_name || 'Tienda';
@@ -116,6 +125,45 @@ export default function PosPage() {
         setConfirmOpen(false);
         setNotice(error.message);
       }
+    });
+  }
+
+  function confirmOpenAccount() {
+    if (!storeId || cart.length === 0) return;
+    const label = accountLabel.trim();
+    saleMutation.mutate({
+      store_id: storeId,
+      ...(label ? { customer_name: label } : {}),
+      items: cart.map((line) => ({ product_id: line.product.id, quantity: String(line.quantity) }))
+    }, {
+      onSuccess: async (sale) => {
+        setOpenAccountModal(false);
+        setAccountLabel('');
+        setCart([]);
+        setCustomer(null);
+        setNotice(`Cuenta abierta #${sale.id}${label ? ` · ${label}` : ''}. Cóbrala desde "Cuentas abiertas".`);
+        await queryClient.invalidateQueries({ queryKey: ['products', tenantId, storeId] });
+        await queryClient.invalidateQueries({ queryKey: ['open-accounts'] });
+      },
+      onError: (error: Error) => {
+        setOpenAccountModal(false);
+        setNotice(error.message);
+      }
+    });
+  }
+
+  function saveAppend() {
+    if (accountId === null || cart.length === 0) return;
+    appendMutation.mutate({
+      id: accountId,
+      items: cart.map((line) => ({ product_id: line.product.id, quantity: String(line.quantity) }))
+    }, {
+      onSuccess: async () => {
+        await queryClient.invalidateQueries({ queryKey: ['open-accounts'] });
+        await queryClient.invalidateQueries({ queryKey: ['sale-detail', tenantId, accountId] });
+        navigate('/cuentas-abiertas');
+      },
+      onError: (error: Error) => setNotice(error.message)
     });
   }
 
@@ -218,6 +266,15 @@ export default function PosPage() {
 
   return (
     <div className="pos-shell">
+      {accountId !== null ? (
+        <div className="account-banner">
+          <span>
+            Agregando productos a la cuenta <strong>#{accountId}</strong>
+            {accountQuery.data?.customer_name ? ` · ${accountQuery.data.customer_name}` : ''}
+          </span>
+          <button className="quiet" type="button" onClick={() => navigate('/cuentas-abiertas')}>Salir</button>
+        </div>
+      ) : null}
       <div className="workspace">
       <section className="catalog-panel">
         <div className="section-heading">
@@ -265,7 +322,9 @@ export default function PosPage() {
         </div>
         {productsQuery.isError ? <Notice tone="error">No fue posible cargar el catálogo.</Notice> : null}
         <div className="product-grid">
-          {productsQuery.isPending ? <div className="empty">Cargando productos…</div> : null}
+          {productsQuery.isPending
+            ? Array.from({ length: 8 }, (_, index) => <div className="skeleton skeleton-card" key={index} aria-hidden />)
+            : null}
           {products.map((product) => (
             <button
               className="product-card"
@@ -317,9 +376,25 @@ export default function PosPage() {
           </label>
           <div className="total-row"><span>Total aproximado</span><strong>{formatMoney(estimatedTotal, currency)}</strong></div>
           <small className="muted">El servidor recalcula impuestos y existencias antes de confirmar.</small>
-          <button className="primary full checkout" onClick={requestSaleConfirmation} disabled={saleMutation.isPending || cart.length === 0}>
-            {saleMutation.isPending ? 'Procesando…' : 'Registrar venta'}
-          </button>
+          {accountId !== null ? (
+            <button className="primary full checkout" onClick={saveAppend} disabled={appendMutation.isPending || cart.length === 0}>
+              {appendMutation.isPending ? 'Guardando…' : `Agregar a cuenta #${accountId}`}
+            </button>
+          ) : (
+            <>
+              <button className="primary full checkout" onClick={requestSaleConfirmation} disabled={saleMutation.isPending || cart.length === 0}>
+                {saleMutation.isPending ? 'Procesando…' : 'Registrar venta'}
+              </button>
+              <button
+                className="quiet full open-account-btn"
+                type="button"
+                onClick={() => { setNotice(''); setOpenAccountModal(true); }}
+                disabled={saleMutation.isPending || cart.length === 0}
+              >
+                🗒️ Abrir cuenta
+              </button>
+            </>
+          )}
           {lastSale ? (
             <div className="receipt">
               <span>Última venta: <strong>#{lastSale.id}</strong> · {formatMoney(lastSale.grand_total, currency)}</span>
@@ -331,6 +406,28 @@ export default function PosPage() {
           ) : null}
         </div>
       </aside>
+
+      {openAccountModal ? (
+        <Modal open title="Abrir cuenta" eyebrow="CUENTAS ABIERTAS" onClose={() => setOpenAccountModal(false)}>
+          <div className="stack">
+            <p className="muted">La venta quedará pendiente de pago. Identifícala con una mesa, nombre o nota corta.</p>
+            <label>Mesa o nombre
+              <input
+                value={accountLabel}
+                onChange={(event) => setAccountLabel(event.target.value)}
+                maxLength={80}
+                placeholder="Mesa 5"
+              />
+            </label>
+            <div className="modal-actions">
+              <button className="quiet" type="button" onClick={() => setOpenAccountModal(false)}>Cancelar</button>
+              <button className="primary" type="button" onClick={confirmOpenAccount} disabled={saleMutation.isPending}>
+                {saleMutation.isPending ? 'Abriendo…' : 'Abrir cuenta'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      ) : null}
 
       {confirmOpen ? (
         <SaleConfirmationModal

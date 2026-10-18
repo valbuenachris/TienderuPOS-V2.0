@@ -5,6 +5,25 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#0f172a" />
     <title>POS</title>
+    <link
+      rel="icon"
+      type="image/png"
+      href="https://supabase.tienderu.com/storage/v1/object/public/productos/logos/33a557f2-3df7-4857-bbe4-dd94317a22b7_1791484927392.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      href="https://supabase.tienderu.com/storage/v1/object/public/productos/logos/33a557f2-3df7-4857-bbe4-dd94317a22b7_1791484927392.png"
+    />
+    <script>
+      // v0.3.90: aplica el tema antes del primer render (evita flash y respeta el sistema).
+      try {
+        var stored = localStorage.getItem('pos-gres-v2-theme');
+        var theme = stored === 'dark' || stored === 'light'
+          ? stored
+          : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        document.documentElement.dataset.theme = theme;
+      } catch (error) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

@@ -9,6 +9,17 @@ export function formatMoney(value: string | number | null | undefined, prefix = 
   return `${symbol}\u00A0${amount}`;
 }
 
+const compactAmountFormatter = new Intl.NumberFormat('es-CO', { notation: 'compact', maximumFractionDigits: 1 });
+
+/** Monto abreviado para celdas angostas ($ 30 mil, $ 1,2 M); negativos con "−" delante. */
+export function formatMoneyCompact(value: string | number | null | undefined, prefix = '$'): string {
+  const amount = Number(value ?? 0);
+  const normalized = (prefix || '').trim();
+  const symbol = normalized && !/^[A-Za-z]{3}$/.test(normalized) ? normalized : '$';
+  const sign = amount < 0 ? '−' : '';
+  return `${sign}${symbol}\u00A0${compactAmountFormatter.format(Math.abs(amount))}`;
+}
+
 export function formatDate(value: string | null | undefined): string {
   if (!value) return '—';
   const date = new Date(value);

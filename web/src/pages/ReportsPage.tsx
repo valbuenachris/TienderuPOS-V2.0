@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
+  Area,
+  AreaChart,
   Bar,
   BarChart,
   CartesianGrid,
@@ -34,6 +36,37 @@ function yearStart(): string {
 }
 
 type Preset = { label: string; from: string; to: string };
+
+interface TopChartRow {
+  name: string;
+  quantity: number;
+  subtotal: number;
+}
+
+const CHART_TOOLTIP_STYLE = {
+  background: 'var(--d-surface, #fff)',
+  border: '1px solid var(--d-border, #e2e9e3)',
+  borderRadius: 10,
+  fontSize: 12,
+  color: 'var(--d-text, #18251c)'
+} as const;
+
+/** Tooltip del ranking: unidades + ingresos (Recharts inyecta active/payload). */
+function TopProductTooltip({ active, payload, currency }: {
+  active?: boolean;
+  payload?: Array<{ payload?: TopChartRow }>;
+  currency: string;
+}) {
+  const item = active && payload && payload.length > 0 ? payload[0]?.payload : null;
+  if (!item) return null;
+  return (
+    <div className="chart-tooltip">
+      <strong>{item.name}</strong>
+      <div>{item.quantity.toFixed(2)} unidades</div>
+      <div>{formatMoney(item.subtotal, currency)}</div>
+    </div>
+  );
+}
 
 export default function ReportsPage() {
   const { token, tenantId, settings } = useSession();
@@ -69,6 +102,16 @@ export default function ReportsPage() {
     Ventas: Number(point.sales ?? 0),
     Compras: Number(point.purchases ?? 0),
     Gastos: Number(point.expenses ?? 0)
+  }));
+  const stackedData = days.map((day) => ({
+    day: day.day,
+    Cobrado: Number(day.paid ?? 0),
+    Pendiente: Number(day.due ?? 0)
+  }));
+  const topData: TopChartRow[] = (topQuery.data ?? []).slice(0, 10).map((product) => ({
+    name: product.name || product.code || `#${product.product_id}`,
+    quantity: Number(product.quantity ?? 0),
+    subtotal: Number(product.subtotal ?? 0)
   }));
 
   const money = (value: number | string) => formatMoney(value, currency);
@@ -140,7 +183,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e9e3" />
                   <XAxis dataKey="day" tickFormatter={(value) => String(value).slice(5)} tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} width={70} />
-                  <Tooltip formatter={(value) => money(Number(value))} labelFormatter={(label) => formatDay(String(label))} />
+                  <Tooltip formatter={(value) => money(Number(value))} labelFormatter={(label) => formatDay(String(label))} contentStyle={CHART_TOOLTIP_STYLE} />
                   <Line type="monotone" dataKey="ventas" name="Ventas" stroke="#059669" strokeWidth={2} dot={false} />
                 </LineChart>
               </ResponsiveContainer>
@@ -157,7 +200,7 @@ export default function ReportsPage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="#e2e9e3" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} width={70} />
-                  <Tooltip formatter={(value) => money(Number(value))} />
+                  <Tooltip formatter={(value) => money(Number(value))} contentStyle={CHART_TOOLTIP_STYLE} />
                   <Legend />
                   <Bar dataKey="Ventas" fill="#059669" radius={[4, 4, 0, 0]} />
                   <Bar dataKey="Compras" fill="#2563eb" radius={[4, 4, 0, 0]} />
@@ -169,6 +212,40 @@ export default function ReportsPage() {
         </div>
 
         <div className="section-heading"><div><p className="eyebrow">DETALLE DIARIO</p><h2>Ventas por día</h2></div></div>
+        <div className="chart-grid">
+          <section className="chart-box">
+            <h3 className="chart-title">Cobrado vs pendiente por día</h3>
+            {stackedData.length === 0 ? (
+              <div className="chart-empty">{summaryQuery.isPending ? 'Cargando…' : 'Sin ventas en el rango.'}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={260}>
+                <AreaChart data={stackedData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
+                  <defs>
+                    <linearGradient id="cobradoGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#147d4a" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="#147d4a" stopOpacity={0.08} />
+                    </linearGradient>
+                    <linearGradient id="pendienteGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#d97706" stopOpacity={0.45} />
+                      <stop offset="100%" stopColor="#d97706" stopOpacity={0.08} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} />
+                  <XAxis dataKey="day" tickFormatter={(value) => String(value).slice(5)} tick={{ fontSize: 11, fill: '#8b968e' }} />
+                  <YAxis tick={{ fontSize: 11, fill: '#8b968e' }} width={70} />
+                  <Tooltip
+                    formatter={(value) => money(Number(value))}
+                    labelFormatter={(label) => formatDay(String(label))}
+                    contentStyle={CHART_TOOLTIP_STYLE}
+                  />
+                  <Legend />
+                  <Area type="monotone" dataKey="Cobrado" stackId="1" stroke="#147d4a" strokeWidth={2} fill="url(#cobradoGradient)" />
+                  <Area type="monotone" dataKey="Pendiente" stackId="1" stroke="#d97706" strokeWidth={2} fill="url(#pendienteGradient)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            )}
+          </section>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -194,6 +271,31 @@ export default function ReportsPage() {
 
         <div className="section-heading"><div><p className="eyebrow">RANKING</p><h2>Productos más vendidos</h2></div></div>
         {topQuery.isError ? <Notice tone="error">No fue posible cargar el ranking.</Notice> : null}
+        <div className="chart-grid">
+          <section className="chart-box">
+            <h3 className="chart-title">Top 10 por unidades vendidas</h3>
+            {topData.length === 0 ? (
+              <div className="chart-empty">{topQuery.isPending ? 'Cargando…' : 'Sin datos de productos en el rango.'}</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={Math.max(240, topData.length * 38 + 24)}>
+                <BarChart data={topData} layout="vertical" margin={{ top: 4, right: 24, bottom: 4, left: 8 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#94a3b8" strokeOpacity={0.25} horizontal={false} />
+                  <XAxis type="number" tick={{ fontSize: 11, fill: '#8b968e' }} />
+                  <YAxis
+                    type="category"
+                    dataKey="name"
+                    width={150}
+                    reversed
+                    tick={{ fontSize: 11, fill: '#8b968e' }}
+                    tickFormatter={(value) => (String(value).length > 20 ? `${String(value).slice(0, 19)}…` : String(value))}
+                  />
+                  <Tooltip content={<TopProductTooltip currency={currency} />} cursor={{ fill: '#94a3b81a' }} />
+                  <Bar dataKey="quantity" name="Unidades" fill="#147d4a" radius={[0, 6, 6, 0]} barSize={16} />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
+          </section>
+        </div>
         <div className="table-wrap">
           <table className="data-table">
             <thead>

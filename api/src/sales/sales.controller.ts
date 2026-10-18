@@ -18,7 +18,7 @@ import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
-import { CreateSaleDto, AddSalePaymentDto, UpdateSaleDto } from './sale.dto';
+import { CreateSaleDto, AddSalePaymentDto, AppendSaleItemsDto, UpdateSaleDto } from './sale.dto';
 import { SalesService } from './sales.service';
 
 function parseDate(value?: unknown): string | undefined {
@@ -33,6 +33,20 @@ function parseDate(value?: unknown): string | undefined {
   return value;
 }
 
+const SALE_STATUS_VALUES = ['paid', 'partial', 'due'];
+
+function parseStatuses(value?: string): string[] | undefined {
+  if (value === undefined) return undefined;
+  const parts = [...new Set(value.split(',').map((item) => item.trim()).filter(Boolean))];
+  if (parts.length === 0) return undefined;
+  for (const part of parts) {
+    if (!SALE_STATUS_VALUES.includes(part)) {
+      throw new BadRequestException('status must be a comma-separated list of paid,partial,due');
+    }
+  }
+  return parts;
+}
+
 @Controller('sales')
 @UseGuards(JwtAuthGuard, TenantContextGuard, TenantOperationalGuard)
 export class SalesController {
@@ -44,6 +58,7 @@ export class SalesController {
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('customer') customer?: string,
+    @Query('status') status?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string
   ) {
@@ -54,7 +69,8 @@ export class SalesController {
       parseDate(from),
       parseDate(to),
       parsePagination(page, limit, 20, 100),
-      cleanCustomer
+      cleanCustomer,
+      parseStatuses(status)
     );
   }
 
@@ -75,6 +91,15 @@ export class SalesController {
     @Body() body: AddSalePaymentDto
   ) {
     return this.sales.addPayment(request.tenantId!, request.posUser!, id, body);
+  }
+
+  @Post(':id/items')
+  appendItems(
+    @Req() request: PosRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: AppendSaleItemsDto
+  ) {
+    return this.sales.appendItems(request.tenantId!, request.posUser!, id, body);
   }
 
   @Get(':id')

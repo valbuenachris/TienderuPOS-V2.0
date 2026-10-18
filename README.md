@@ -217,6 +217,28 @@ E2E_CASHIER_USERNAME='cajero.demo' E2E_CASHIER_PASSWORD='••••••' E2E
 
 El encabezado del POS muestra un chip con el **cajero actual** (nombre del usuario de la sesión) y un punto verde/rojo que indica **Caja abierta / Caja cerrada** (fuente: `GET /api/registers/current`, la misma caja de "Cierre de caja"). El modal "Confirmar venta" incluye "Atendido por: {cajero}" y el ticket ya lo imprimía. Sin cambios de backend.
 
+## Mejoras de interfaz (v0.3.88–v0.3.90)
+
+- **Micro-interacciones (v0.3.88)**: modales y avisos con animación suave, realce de tarjetas al pasar el mouse, anillo `:focus-visible` accesible y skeletons en el catálogo del POS mientras carga. Todo respeta `prefers-reduced-motion`.
+- **Migas de pan (v0.3.89)**: franja global "Inicio › Sección › Subsección" en todas las páginas (mapa estático de etiquetas; en la vista global del superadmin el inicio es "Dashboard global"). Los reportes diario/mensual ya no duplican su breadcrumb manual.
+- **Tema oscuro (v0.3.90)**: toggle 🌙/☀️ en el pie del sidebar, persistido por navegador y con valor inicial según el tema del sistema. El bloque `[data-theme='dark']` es aditivo (el tema claro queda intacto) y el **ticket/PDF siempre se imprimen en claro**.
+
+## Reportes con gráficos (v0.3.91)
+
+La página **Reportes** ahora acompaña sus tablas con dos visualizaciones nuevas en Recharts (tipos distintos a los existentes línea/barras agrupadas): **"Cobrado vs pendiente por día"** — área apilada con degradado dentro de la sección *Ventas por día* — y **"Top 10 por unidades vendidas"** — barras horizontales rankeadas (en orden #1 arriba) con tooltip de unidades e ingresos dentro de *Productos más vendidos*. Ejes y grillas usan colores neutros legibles en tema claro y oscuro, los tooltips respetan el tema (`--d-surface`) y se mantienen los estados de carga/vacío. Sin cambios de backend.
+
+## Calendario con métricas por celda (v0.3.92)
+
+En **Ventas diarias** cada celda del calendario muestra ahora las cuatro métricas del día — **Ventas** (azul), **Compras** (naranja), **Gastos** (rojo) y **Ganancia** (verde si es positiva, roja si negativa) — con montos abreviados (`$ 30 mil`, `$ 1,2 M`; `—` cuando el valor es cero) para que quepan en la cuadrícula. En **Ventas mensuales** cada cuadro de mes muestra las mismas cuatro métricas del mes. El detalle exacto (montos completos y conteos) sigue disponible en el modal al hacer clic y en las tarjetas superiores. Sin cambios de backend: `/reports/calendar` ya devolvía estos totales por bucket; se agregó `formatMoneyCompact` a `format.ts` y las clases `.cell-metric*` (con overrides de tema oscuro).
+
+## Cuentas abiertas (v0.3.93–v0.3.95)
+
+Para tiendas con mesas o cuentas por cobrar: el POS permite **abrir una cuenta** (venta pendiente con etiqueta libre, ej. "Mesa 5") sin dejar de facturar normalmente. En la nueva sección **Cuentas abiertas** (menú 📒, staff y admin) se listan las ventas pendientes (`due`/`partial`) con búsqueda por etiqueta y acciones: **Cobrar** (total o parcial con el modal de pagos existente, verifica saldo), **Ver** (detalle con ítems, saldos y cajero) y **Agregar productos** (abre el POS en modo cuenta: agregas solo los productos nuevos y se suman a la cuenta). El backend agrega `POST /api/sales/:id/items` (solo cuentas `due|partial`, staff de su tienda o admin), el filtro `status` en `GET /api/sales` y la etiqueta libre en `customer_name` — **sin DDL**; stock, descuentos guardados y puntos se mantienen consistentes al agregar. La facturación normal del POS no cambia.
+
+## Asistente IA (v0.4.0–v0.4.1)
+
+Chat **solo para administradores** conectado a **OpenRouter** que responde con **datos reales de la tienda**: no inventa cifras — usa *tool calling* (13 herramientas) para consultar datos reales: resumen financiero por rango (ventas/compras/gastos/ganancia), ventas por día/mes/**hora del día/categoría**, productos (más vendidos, **margen**, stock bajo y **sin movimiento**), **clientes (ranking por compras, búsqueda, puntos y deuda pendiente)** y **cuentas abiertas por cobrar**. La **API key es global de la plataforma** (`OPENROUTER_API_KEY` en el `.env` del API; Tienderu cobra el servicio) y el **modelo también se define en el servidor**: `OPENROUTER_MODEL` (por defecto `openai/gpt-oss-20b`) con **fallback automático** (`OPENROUTER_MODEL_FALLBACK`, por defecto `deepseek/deepseek-v4.1-flash-1017`, enviado como el arreglo `models` de OpenRouter). Desde v0.4.2 el admin no ve botón de configuración; la tabla `tec_tenant_ai_settings` (migración `docs/migrations/v0.4.0-tenant-ai-settings.sql`) queda reservada para una fase futura. Preguntas de ejemplo: "¿Cuánto vendí los últimos 3 días?", "¿Cuál es mi producto más vendido este mes?", "¿Qué me sugieres pedir esta semana?", "¿Cómo va mi ganancia del mes?". MVP sin streaming; el admin ve datos de sus propios clientes (solo admin). Límite diario `AI_DAILY_MESSAGES_LIMIT` (default 100/tienda) para controlar el gasto, herramientas en paralelo y caché de 30 s (v0.4.3).
+
 ## Plataforma de gestión de tenants (v0.3.11)
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:

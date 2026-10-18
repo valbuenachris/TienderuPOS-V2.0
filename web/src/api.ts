@@ -86,6 +86,8 @@ export type SalePaymentMethod = 'cash' | 'CC' | 'Transferencia' | 'Sistecredito'
 export interface CreateSalePayload {
   store_id: number;
   customer_id?: number;
+  /** Etiqueta libre para cuentas abiertas ("Mesa 5"); se ignora si viene customer_id. */
+  customer_name?: string;
   items: Array<{ product_id: number; quantity: string }>;
   paid_by?: SalePaymentMethod;
   amount_received?: string;
@@ -816,8 +818,41 @@ export const fetchProducts = (storeId: number, search: string) => {
 export const createSale = (payload: CreateSalePayload) =>
   apiRequest<SaleResult>('/sales', { method: 'POST', body: JSON.stringify(payload) });
 
-export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20, customer = '') =>
-  apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit, customer }));
+export const fetchSales = (from: string | undefined, to: string | undefined, page = 1, limit = 20, customer = '', status = '') =>
+  apiRequest<Paginated<SaleListRow>>(withQuery('/sales', { from, to, page, limit, customer, status }));
+
+/** Agrega productos a una cuenta abierta (venta due/partial). */
+export const appendSaleItems = (id: number, payload: { items: Array<{ product_id: number; quantity: string }> }) =>
+  apiRequest<SaleDetail>(`/sales/${id}/items`, { method: 'POST', body: JSON.stringify(payload) });
+
+export interface AiSettings {
+  enabled: boolean;
+  model: string | null;
+  default_model: string;
+  has_api_key: boolean;
+  key_hint: string | null;
+  source: 'tenant' | 'platform';
+  table_ready: boolean;
+}
+
+export interface AiModelOption {
+  id: string;
+  label: string;
+}
+
+export const fetchAiSettings = () => apiRequest<AiSettings>('/ai/settings');
+
+export const updateAiSettings = (payload: { model?: string; enabled?: boolean }) =>
+  apiRequest<AiSettings>('/ai/settings', { method: 'PUT', body: JSON.stringify(payload) });
+
+export const fetchAiModels = () =>
+  apiRequest<{ models: AiModelOption[]; source: 'openrouter' | 'curated' }>('/ai/models');
+
+export const sendAiChat = (messages: Array<{ role: 'user' | 'assistant'; content: string }>) =>
+  apiRequest<{ reply: string; model: string; tools_used?: number }>('/ai/chat', {
+    method: 'POST',
+    body: JSON.stringify({ messages })
+  });
 
 export interface SaleDetailItem {
   id: number;

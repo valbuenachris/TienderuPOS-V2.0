@@ -3,6 +3,9 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
 import { useTenantsQuery } from '../pos-queries';
 import platformLogoUrl from '../assets/tienderu-logo.svg';
+import Breadcrumbs from '../components/Breadcrumbs';
+import { applyTheme, currentTheme } from '../theme';
+import type { Theme } from '../theme';
 
 interface NavItem {
   to: string;
@@ -17,6 +20,8 @@ const TENANT_ITEMS: NavItem[] = [
   { to: '/pos', label: 'Punto de venta', icon: '🛒' },
   { to: '/dashboard', label: 'Dashboard', icon: '📊' },
   { to: '/ventas', label: 'Ventas', icon: '🧾' },
+  { to: '/cuentas-abiertas', label: 'Cuentas abiertas', icon: '📒' },
+  { to: '/asistente', label: 'Asistente IA', icon: '🤖', admin: true },
   { to: '/productos', label: 'Productos', icon: '📦', admin: true },
   { to: '/categorias', label: 'Categorías', icon: '📂', admin: true },
   { to: '/inventario', label: 'Inventario', icon: '🏷️', admin: true },
@@ -59,6 +64,7 @@ export default function AppLayout() {
   const [switchingTenant, setSwitchingTenant] = useState(false);
   const [tenantError, setTenantError] = useState('');
   const [logoBroken, setLogoBroken] = useState(false);
+  const [theme, setTheme] = useState<Theme>(() => currentTheme());
   const tenantsQuery = useTenantsQuery(token, tenantId, isSuperAdmin);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -103,6 +109,12 @@ export default function AppLayout() {
     } finally {
       setSwitchingTenant(false);
     }
+  }
+
+  function toggleTheme() {
+    const next: Theme = theme === 'dark' ? 'light' : 'dark';
+    applyTheme(next);
+    setTheme(next);
   }
 
   return (
@@ -188,6 +200,14 @@ export default function AppLayout() {
         </nav>
 
         <div className="sidebar-footer">
+          <button
+            className="nav-item nav-logout"
+            onClick={toggleTheme}
+            title={theme === 'dark' ? 'Cambiar a tema claro' : 'Cambiar a tema oscuro'}
+          >
+            <span className="nav-icon" aria-hidden>{theme === 'dark' ? '☀️' : '🌙'}</span>
+            <span className="nav-label">{theme === 'dark' ? 'Tema claro' : 'Tema oscuro'}</span>
+          </button>
           <button className="nav-item nav-logout" onClick={logout} title="Cerrar sesión">
             <span className="nav-icon" aria-hidden>🚪</span>
             <span className="nav-label">Cerrar sesión</span>
@@ -200,6 +220,7 @@ export default function AppLayout() {
           ☰
         </button>
         <main className="page">
+          <Breadcrumbs />
           <Outlet />
         </main>
       </div>

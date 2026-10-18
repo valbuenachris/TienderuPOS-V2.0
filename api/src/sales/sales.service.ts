@@ -9,7 +9,7 @@ import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination
 import { isAdminRole } from '../common/roles';
 import { TenantTimezoneService } from '../common/tenant-timezone.service';
 import { todayInTimeZone } from '../common/timezone';
-import { CreateSaleDto, AddSalePaymentDto, SaleLineDto, SalePaymentMethod, UpdateSaleDto } from './sale.dto';
+import { CreateSaleDto, AddSalePaymentDto, AppendSaleItemsDto, SaleLineDto, SalePaymentMethod, UpdateSaleDto } from './sale.dto';
 
 type ProductRow = Omit<Pick<TableRow<'tec_products'>, 'id' | 'code' | 'name' | 'price' | 'tax' | 'reward_points' | 'type'>, 'price' | 'tax'> & {
   price: string | null;
@@ -220,6 +220,10 @@ export class SalesService {
         if (!customer) throw new NotFoundException('Customer not found in this tenant');
       }
 
+      // Etiqueta libre de cuentas abiertas ("Mesa 5"): solo aplica sin customer_id.
+      const freeLabel = input.customer_name?.trim();
+      const saleCustomerName = customer?.name ?? (freeLabel ? freeLabel : 'Cliente ocasional');
+
       // Los combos se expanden a líneas de producto reales: el stock se descuenta
       // normalmente y la venta queda auditable como productos sueltos.
       const resolvedCombos = await this.combos.resolveCheckoutCombos(client, tenantId, comboLines);
@@ -415,7 +419,7 @@ export class SalesService {
                  '0.00', $13, $14, $14, $15, NULL, '0.00', $15, '0.00')
          RETURNING id, created_at`,
         [
-          tenantId, customer?.id ?? null, customer?.name ?? 'Cliente ocasional',
+          tenantId, customer?.id ?? null, saleCustomerName,
           total.toFixed(2), grandTotal.toFixed(2), paid.toFixed(2), prepared.length,
           totalQuantity.toFixed(2), status, actor.createdBy, actor.storeId, totalRewardPoints,
           discountId, orderDiscount.toFixed(2), taxTotal.toFixed(2),
@@ -451,7 +455,7 @@ export class SalesService {
         id: saleId,
         tenant_id: tenantId,
         customer_id: customer?.id ?? null,
-        customer_name: customer?.name ?? 'Cliente ocasional',
+        customer_name: saleCustomerName,
         customer_phone: customer?.phone ?? null,
         store_id: actor.storeId,
         payment_method: actor.paymentMethod,
@@ -519,7 +523,8 @@ export class SalesService {
     from: string | undefined,
     to: string | undefined,
     pagination: PaginationQuery,
-    customer?: string
+    customer?: string,
+    statuses?: string[]
   ): Promise<Paginated<SalesListRow>> {
     if ((from && !to) || (!from && to)) throw new BadRequestException('from and to must be supplied together');
     if (from && to && from > to) throw new BadRequestException('from must be on or before to');
@@ -544,6 +549,11 @@ export class SalesService {
         values.push(customerPattern);
         customerFilter = ` AND customer_name ILIKE $${values.length}`;
       }
+      let statusFilter = '';
+      if (statuses !== undefined && statuses.length > 0) {
+        values.push(statuses);
+        statusFilter = ` AND status = ANY($${values.length})`;
+      }
       values.push(pagination.limit, pagination.offset);
       values.push(timezone);
       const timezoneIndex = values.length;
@@ -559,6 +569,7 @@ export class SalesService {
            AND created_at < (($3::date + INTERVAL '1 day')::timestamp AT TIME ZONE $${timezoneIndex})
            ${storeFilter}
            ${customerFilter}
+           ${statusFilter}
          ORDER BY created_at DESC, id DESC
          LIMIT $${values.length - 2} OFFSET $${values.length - 1}`,
         values
@@ -579,6 +590,11 @@ export class SalesService {
       values.push(customerPattern);
       customerFilter = ` AND customer_name ILIKE $${values.length}`;
     }
+    let statusFilter = '';
+    if (statuses !== undefined && statuses.length > 0) {
+      values.push(statuses);
+      statusFilter = ` AND status = ANY($${values.length})`;
+    }
     values.push(pagination.limit, pagination.offset);
     const result = await this.database.query<SalesListRow & { total_count: number }>(
       `SELECT id, tenant_id, customer_id, customer_name, total::text AS total,
@@ -590,6 +606,7 @@ export class SalesService {
        WHERE tenant_id = $1
        ${storeFilter}
        ${customerFilter}
+       ${statusFilter}
        ORDER BY created_at DESC, id DESC
        LIMIT $${values.length - 1} OFFSET $${values.length}`,
       values
@@ -1054,6 +1071,248 @@ export class SalesService {
         }
       } else if (newCustomerId !== null) {
         await this.adjustCustomerPoints(client, tenantId, newCustomerId, newCredited - oldCredited);
+      }
+    });
+
+    return this.detail(tenantId, user, saleId);
+  }
+
+  /**
+   * Agrega productos a una cuenta abierta (v0.3.93): solo ventas `due|partial` de la
+   * tienda del cajero. Las unidades adicionales de un producto ya presente conservan
+   * el precio histórico de la cuenta (igual que `update()`); los productos nuevos usan
+   * el precio actual. Reaplica el descuento guardado y ajusta los puntos creditados.
+   */
+  async appendItems(tenantId: string, user: PosUser, saleId: number, input: AppendSaleItemsDto) {
+    const isAdmin = isAdminRole(user.group_name);
+    if (!isAdmin && !user.store_id) {
+      throw new BadRequestException('Assign this POS user to a store before modifying sales');
+    }
+
+    await this.database.transaction(async (client) => {
+      const saleResult = await client.query<EditableSaleRow>(
+        `SELECT id, customer_id, customer_name, paid::text AS paid, store_id, order_discount_id,
+                status, total_reward_points
+         FROM public.tec_sales
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [tenantId, saleId]
+      );
+      const sale = saleResult.rows[0];
+      if (!sale) throw new NotFoundException('Sale not found in this tenant');
+      if (!isAdmin && sale.store_id !== user.store_id) {
+        throw new ForbiddenException('You can only modify sales of your own store');
+      }
+      if (sale.status !== 'due' && sale.status !== 'partial') {
+        throw new BadRequestException('Only open accounts (due or partial) can receive new items');
+      }
+      if (sale.store_id === null) throw new BadRequestException('Sale has no store assigned');
+
+      const oldItemsResult = await client.query<SaleItemLockRow>(
+        `SELECT product_id, quantity::text AS quantity, unit_price::text AS unit_price
+         FROM public.tec_sale_items
+         WHERE tenant_id = $1 AND sale_id = $2
+         ORDER BY id`,
+        [tenantId, saleId]
+      );
+      if (oldItemsResult.rowCount === 0) throw new BadRequestException('Sale has no items to append to');
+
+      const oldItems = new Map<number, { quantity: Decimal; unitPrice: Decimal }>();
+      for (const row of oldItemsResult.rows) {
+        if (row.product_id === null) continue;
+        const quantity = new Decimal(row.quantity ?? '0');
+        const current = oldItems.get(row.product_id);
+        if (current) {
+          current.quantity = current.quantity.plus(quantity);
+        } else {
+          oldItems.set(row.product_id, { quantity, unitPrice: new Decimal(row.unit_price ?? '0') });
+        }
+      }
+      if (oldItems.size === 0) {
+        throw new BadRequestException('Sale contains custom items that cannot be modified from this POS');
+      }
+
+      const appended = new Map<number, Decimal>();
+      for (const line of input.items) {
+        const quantity = new Decimal(line.quantity);
+        if (!quantity.isFinite() || !quantity.isInteger() || quantity.lte(0)) {
+          throw new BadRequestException('Each quantity must be a positive whole number');
+        }
+        appended.set(line.product_id, (appended.get(line.product_id) ?? new Decimal(0)).plus(quantity));
+      }
+      if (appended.size === 0) throw new BadRequestException('At least one product is required');
+
+      const productIds = [...new Set([...oldItems.keys(), ...appended.keys()])].sort((a, b) => a - b);
+      const prepared: Array<{
+        productId: number;
+        quantity: Decimal;
+        unitPrice: Decimal;
+        subtotal: Decimal;
+        rewardPoints: number;
+      }> = [];
+      let total = new Decimal(0);
+      let taxTotal = new Decimal(0);
+      let totalQuantity = new Decimal(0);
+      let totalRewardPoints = 0;
+
+      for (const productId of productIds) {
+        const products = await client.query<ProductRow>(
+          `SELECT id, code, name, price::text AS price, tax::text AS tax,
+                  reward_points, type
+           FROM public.tec_products
+           WHERE tenant_id = $1 AND id = $2
+           LIMIT 1
+           FOR UPDATE`,
+          [tenantId, productId]
+        );
+        const product = products.rows[0];
+        if (!product) throw new NotFoundException(`Product ${productId} not found in this tenant`);
+        if (product.type === 'combo') {
+          throw new BadRequestException(`Combo product ${productId} cannot be modified from this POS`);
+        }
+
+        const old = oldItems.get(productId) ?? null;
+        if (old) {
+          const restored = await client.query(
+            `UPDATE public.tec_products
+             SET quantity = quantity + $1
+             WHERE tenant_id = $2 AND id = $3
+             RETURNING quantity`,
+            [old.quantity.toNumber(), tenantId, productId]
+          );
+          if (restored.rowCount !== 1) {
+            throw new NotFoundException(`Stock for product ${productId} could not be restored`);
+          }
+        }
+
+        const appendedQuantity = appended.get(productId) ?? new Decimal(0);
+        const quantity = old ? old.quantity.plus(appendedQuantity) : appendedQuantity;
+        const deducted = await client.query(
+          `UPDATE public.tec_products
+           SET quantity = quantity - $1
+           WHERE tenant_id = $2 AND id = $3 AND quantity >= $1
+           RETURNING quantity`,
+          [quantity.toNumber(), tenantId, productId]
+        );
+        if (deducted.rowCount !== 1) {
+          throw new BadRequestException(`Insufficient stock for product ${productId}`);
+        }
+
+        let unitPrice: Decimal;
+        if (old) {
+          unitPrice = old.unitPrice;
+          if (!unitPrice.isFinite() || unitPrice.isNegative()) {
+            throw new BadRequestException(`Product ${productId} has an invalid sale price`);
+          }
+        } else {
+          if (product.price === null) throw new BadRequestException(`Product ${productId} has no price`);
+          unitPrice = new Decimal(product.price);
+          if (!unitPrice.isFinite() || unitPrice.isNegative()) {
+            throw new BadRequestException(`Product ${productId} has an invalid price`);
+          }
+        }
+
+        const lineSubtotal = unitPrice.times(quantity).toDecimalPlaces(2, MONEY_ROUNDING);
+        const taxRate = new Decimal(product.tax ?? '0');
+        if (!taxRate.isFinite() || taxRate.isNegative()) {
+          throw new BadRequestException(`Product ${productId} has an invalid tax rate`);
+        }
+        const lineTax = lineSubtotal.times(taxRate).dividedBy(100).toDecimalPlaces(2, MONEY_ROUNDING);
+        const rewardsPerUnit = Number(product.reward_points ?? 0);
+        if (!Number.isSafeInteger(rewardsPerUnit) || rewardsPerUnit < 0) {
+          throw new BadRequestException(`Product ${productId} has invalid reward points`);
+        }
+        const lineRewards = rewardsPerUnit * quantity.toNumber();
+        if (!Number.isSafeInteger(lineRewards)) throw new BadRequestException('Reward points are out of range');
+
+        prepared.push({ productId, quantity, unitPrice, subtotal: lineSubtotal, rewardPoints: lineRewards });
+        total = total.plus(lineSubtotal);
+        taxTotal = taxTotal.plus(lineTax);
+        totalQuantity = totalQuantity.plus(quantity);
+        totalRewardPoints += lineRewards;
+        if (!Number.isSafeInteger(totalRewardPoints)) {
+          throw new BadRequestException('Total reward points are out of range');
+        }
+      }
+
+      total = total.toDecimalPlaces(2, MONEY_ROUNDING);
+      taxTotal = taxTotal.toDecimalPlaces(2, MONEY_ROUNDING);
+      const preDiscount = total.plus(taxTotal).toDecimalPlaces(2, MONEY_ROUNDING);
+
+      let orderDiscount = new Decimal(0);
+      let discountId: string | null = null;
+      const storedDiscountId = sale.order_discount_id?.trim() ?? '';
+      if (storedDiscountId) {
+        if (storedDiscountId.endsWith('%')) {
+          const percent = new Decimal(storedDiscountId.slice(0, -1));
+          if (percent.isFinite() && percent.gte(0) && percent.lte(100)) {
+            orderDiscount = preDiscount.times(percent).dividedBy(100).toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = storedDiscountId;
+          }
+        } else {
+          const fixed = new Decimal(storedDiscountId);
+          if (fixed.isFinite() && fixed.gte(0)) {
+            orderDiscount = Decimal.min(fixed, preDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
+            discountId = orderDiscount.toFixed(2);
+          }
+        }
+      }
+      const grandTotal = preDiscount.minus(orderDiscount).toDecimalPlaces(2, MONEY_ROUNDING);
+      const paid = new Decimal(sale.paid ?? '0');
+      if (paid.gt(grandTotal)) {
+        throw new BadRequestException('El pago registrado supera el nuevo total; ajusta los pagos antes de editar.');
+      }
+      const status = paid.gte(grandTotal) ? 'paid' : (paid.eq(0) ? 'due' : 'partial');
+
+      await client.query(
+        `UPDATE public.tec_sales
+         SET total = $1, grand_total = $2, total_items = $3, total_quantity = $4, status = $5,
+             total_reward_points = $6, product_discount = '0.00', order_discount_id = $7,
+             order_discount = $8, total_discount = $8, product_tax = $9, order_tax_id = NULL,
+             order_tax = '0.00', total_tax = $9, rounding = '0.00'
+         WHERE tenant_id = $10 AND id = $11`,
+        [
+          total.toFixed(2),
+          grandTotal.toFixed(2),
+          prepared.length,
+          totalQuantity.toFixed(2),
+          status,
+          totalRewardPoints,
+          discountId,
+          orderDiscount.toFixed(2),
+          taxTotal.toFixed(2),
+          tenantId,
+          saleId
+        ]
+      );
+
+      await client.query(
+        'DELETE FROM public.tec_sale_items WHERE tenant_id = $1 AND sale_id = $2',
+        [tenantId, saleId]
+      );
+      for (const line of prepared) {
+        await client.query(
+          `INSERT INTO public.tec_sale_items
+            (tenant_id, sale_id, product_id, quantity, unit_price, subtotal, reward_points)
+           VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+          [
+            tenantId,
+            saleId,
+            line.productId,
+            line.quantity.toFixed(2),
+            line.unitPrice.toFixed(2),
+            line.subtotal.toFixed(2),
+            line.rewardPoints
+          ]
+        );
+      }
+
+      // La venta es due/partial (validado arriba): solo `partial` tenía puntos ya creditados.
+      const oldCredited = sale.status === 'partial' ? Number(sale.total_reward_points ?? 0) : 0;
+      const newCredited = (status === 'paid' || status === 'partial') ? totalRewardPoints : 0;
+      if (sale.customer_id !== null) {
+        await this.adjustCustomerPoints(client, tenantId, sale.customer_id, newCredited - oldCredited);
       }
     });
 

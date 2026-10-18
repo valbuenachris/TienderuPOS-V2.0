@@ -15,12 +15,14 @@ import { AddressForm } from '../components/AddressForm';
 import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
+import { useToast } from '../components/ui/Toast';
 
 export function CheckoutPage() {
   const { customer } = useAuth();
   const cart = useCart();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -62,6 +64,7 @@ export function CheckoutPage() {
       if (response.payment_url) {
         window.location.href = response.payment_url;
       } else {
+        toast.push('Pedido creado. No pudimos abrir el pago en línea; reintenta desde tu pedido.', 'info');
         navigate(`/pedidos/${response.id}`);
       }
     },
@@ -227,6 +230,12 @@ export function CheckoutPage() {
                 </p>
               </div>
             </div>
+            {config.data && config.data.payment_enabled === false ? (
+              <div className="mt-3 rounded-md border border-warn-700/30 bg-warn-50 px-3 py-2 text-xs font-medium text-warn-700">
+                El pago en línea (Bold) aún no está habilitado en tienderu.com. Puedes crear tu pedido y
+                pagarlo apenas esté disponible desde «Mis pedidos».
+              </div>
+            ) : null}
           </section>
 
           {error ? (

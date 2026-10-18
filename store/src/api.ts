@@ -133,6 +133,7 @@ export interface StoreHome {
 export interface StoreConfig {
   currency: string;
   shipping_flat: string;
+  payment_enabled?: boolean;
 }
 
 export interface Review {
@@ -241,6 +242,12 @@ export interface CheckoutResponse {
   grand_total: string;
   payment_url: string | null;
 }
+
+export const payMarketplaceOrder = (orderId: number) =>
+  apiRequest<{ order_id: number; order_number: string; payment_url: string; payment_method: string }>(
+    `/marketplace/orders/${orderId}/pay`,
+    { method: 'POST' }
+  );
 
 export interface AuthPayload {
   access_token: string;

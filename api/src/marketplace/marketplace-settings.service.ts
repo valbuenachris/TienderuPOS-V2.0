@@ -27,12 +27,17 @@ export class MarketplaceSettingsService {
   private probe: { exists: boolean; at: number } | null = null;
   private readonly shippingFlat: string;
 
-  constructor(private readonly database: DatabaseService, config: ConfigService) {
+  constructor(private readonly database: DatabaseService, private readonly config: ConfigService) {
     this.shippingFlat = this.parseShippingFlat(config.get<string>('MARKETPLACE_SHIPPING_FLAT'));
   }
 
   shippingFlatValue(): string {
     return this.shippingFlat;
+  }
+
+  /** true solo cuando la cuenta Bold de la plataforma está configurada (fail-closed). */
+  paymentEnabled(): boolean {
+    return (this.config.get<string>('MARKETPLACE_BOLD_API_KEY') ?? '').trim() !== '';
   }
 
   async tableExists(): Promise<boolean> {

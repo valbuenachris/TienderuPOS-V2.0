@@ -24,7 +24,8 @@ export class MarketplacePublicController {
   config() {
     return {
       currency: 'COP',
-      shipping_flat: this.settings.shippingFlatValue()
+      shipping_flat: this.settings.shippingFlatValue(),
+      payment_enabled: this.settings.paymentEnabled()
     };
   }
 

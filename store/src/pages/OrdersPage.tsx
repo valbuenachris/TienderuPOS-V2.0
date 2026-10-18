@@ -1,14 +1,17 @@
+import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery } from '@tanstack/react-query';
 import {
+  ApiError,
   apiRequest,
   formatDate,
   formatMoney,
+  payMarketplaceOrder,
   type Order,
   type OrderWithSuborders,
   type Paginated
 } from '../api';
-import { buttonStyles } from '../components/ui/Button';
+import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { OrderStatusBadge } from '../components/ui/Badge';
 import { Icon } from '../components/ui/Icon';
@@ -119,6 +122,7 @@ export function OrdersPage() {
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const orderId = Number(id);
+  const [payError, setPayError] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['store-order', orderId],
@@ -127,6 +131,18 @@ export function OrderDetailPage() {
     refetchInterval: (query) => {
       const order = query.state.data as Order | undefined;
       return order && order.payment_status !== 'paid' ? 8000 : false;
+    }
+  });
+
+  const payMutation = useMutation({
+    mutationFn: () => payMarketplaceOrder(orderId),
+    onSuccess: (result) => {
+      window.location.href = result.payment_url;
+    },
+    onError: (caught) => {
+      setPayError(
+        caught instanceof ApiError ? caught.message : 'No pudimos iniciar el pago con Bold. Intenta de nuevo.'
+      );
     }
   });
 
@@ -166,10 +182,26 @@ export function OrderDetailPage() {
         {data.payment_status === 'paid' ? 'confirmado' : 'pendiente'}
       </p>
 
-      {data.payment_status !== 'paid' && data.checkout_url ? (
-        <a href={data.checkout_url} className={`${buttonStyles({ variant: 'primary' })} mb-4`}>
-          Completar pago con Bold
-        </a>
+      {data.payment_status !== 'paid' && data.status !== 'cancelled' ? (
+        <div className="mb-4 flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button
+              size="lg"
+              disabled={payMutation.isPending}
+              onClick={() => {
+                setPayError(null);
+                payMutation.mutate();
+              }}
+            >
+              <Icon name="credit-card" className="h-4 w-4" />
+              {payMutation.isPending ? 'Generando pago…' : 'Pagar con Bold'}
+            </Button>
+            <span className="text-xs text-ink-soft">
+              Se abrirá la pasarela segura de Bold (tarjetas y PSE).
+            </span>
+          </div>
+          {payError ? <p className="text-sm font-semibold text-price">{payError}</p> : null}
+        </div>
       ) : null}
 
       <div className="grid gap-4 lg:grid-cols-2">

@@ -1,30 +1,30 @@
--- POS v2 · Datos DEMO del marketplace para el tenant pruebapos (SOLO DML, no es migración)
+-- POS v2 · Datos DEMO del marketplace para el tenant "Prueba Pos" (SOLO DML, no es migración)
+-- Tenant verificado: id 33a557f2-3df7-4857-bbe4-dd94317a22b7 (activo). Se resuelve por UUID,
+-- así el script no depende del nombre exacto (antes requería "pruebapos" y un parche manual).
 -- Genera 8 categorías, 48 productos (códigos DEMO-001..DEMO-048), reseñas demo y activa el
 -- opt-in del marketplace. Re-ejecutable: primero borra SOLO los productos DEMO-% del tenant.
 -- Ejecutar (desde el host del deploy):
 --   URL=$(grep -E '^DATABASE_URL=' .env | cut -d= -f2-)
 --   docker run --rm -i --network "${SUPABASE_NETWORK_NAME:-supabase_default}" postgres:16-alpine \
---     psql "$URL" < docs/demo/pruebapos-marketplace-seed.sql
+--     psql "$URL" < docs/demo/prueba-pos-marketplace-seed.sql
 -- Reversión: ver bloque comentado al final del archivo.
 
 BEGIN;
 
 DROP TABLE IF EXISTS _demo_tenant;
 CREATE TEMP TABLE _demo_tenant AS
-  SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos';
+  SELECT id FROM public.tec_tenants
+  WHERE id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid;
 
 DO $$
 BEGIN
   IF (SELECT COUNT(*) FROM _demo_tenant) = 0 THEN
-    RAISE EXCEPTION 'Tenant "pruebapos" no encontrado en tec_tenants';
-  END IF;
-  IF (SELECT COUNT(*) FROM _demo_tenant) > 1 THEN
-    RAISE EXCEPTION 'Hay más de un tenant llamado pruebapos; revisa tec_tenants';
+    RAISE EXCEPTION 'Tenant "Prueba Pos" (33a557f2-3df7-4857-bbe4-dd94317a22b7) no encontrado en tec_tenants';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.tec_tenants t JOIN _demo_tenant d ON d.id = t.id WHERE t.status = 'active'
   ) THEN
-    RAISE EXCEPTION 'El tenant pruebapos no está activo (status <> active)';
+    RAISE EXCEPTION 'El tenant "Prueba Pos" no está activo (status <> active)';
   END IF;
 END $$;
 
@@ -285,25 +285,25 @@ COMMIT;
 SELECT c.name AS categoria, COUNT(p.id) AS productos_demo
 FROM public.tec_categories c
 LEFT JOIN public.tec_products p ON p.category_id = c.id AND p.tenant_id = c.tenant_id AND p.code LIKE 'DEMO-%'
-WHERE c.tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos')
+WHERE c.tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid
 GROUP BY c.name
 ORDER BY c.name;
 
 SELECT COUNT(*) AS productos_demo FROM public.tec_products
-WHERE tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos') AND code LIKE 'DEMO-%';
+WHERE tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid AND code LIKE 'DEMO-%';
 
 SELECT COUNT(*) AS resenas_demo FROM public.product_reviews r
 JOIN public.tec_products p ON p.id = r.product_id
-WHERE p.code LIKE 'DEMO-%' AND p.tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos');
+WHERE p.code LIKE 'DEMO-%' AND p.tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid;
 
 SELECT enabled, markup_percent, store_display_name FROM public.tec_marketplace_settings
-WHERE tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos');
+WHERE tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid;
 
 -- ============================ REVERSIÓN (opcional) ============================
 -- BEGIN;
 --   DELETE FROM public.tec_products
---   WHERE tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos')
+--   WHERE tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid
 --     AND code LIKE 'DEMO-%';
 --   UPDATE public.tec_marketplace_settings SET enabled = false
---   WHERE tenant_id = (SELECT id FROM public.tec_tenants WHERE lower(btrim(name)) = 'pruebapos');
+--   WHERE tenant_id = '33a557f2-3df7-4857-bbe4-dd94317a22b7'::uuid;
 -- COMMIT;

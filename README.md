@@ -116,7 +116,17 @@ psql "$DATABASE_URL" -f docs/migrations/v0.3.78-tenant-payment-settings.sql
 
 El script crea `tec_tenant_payment_settings` (una fila por tenant: `bold_enabled`/`bold_api_key`/`bold_webhook_secret`, `addi_*`, `sistecredito_*` y `return_url` opcional) e incluye un **seed comentado para Princess Skin**: descoméntalo y reemplaza `LLAVE_IDENTIDAD_BOLD_DE_PRINCESS_SKIN` por la llave real (Bold: Panel de Comercios → Integraciones; `bold_webhook_secret` puede quedar `NULL` porque la firma se valida con la llave de identidad, igual que en el SaaS). Las llaves se guardan en texto plano en el esquema privado: **ningún endpoint las devuelve y nunca se loggeandan**. `TenantPaymentSettingsService` detecta la tabla al arrancar y la cachea 60 s por tenant; `TenantBoldService` crea el link (`POST /online/link/v1`, `x-api-key` del tenant, reference `ORDER-<pedido>-<ts36>`) y valida el webhook con el secreto del tenant.
 
-Flujo de cobro (`POST /api/customer/checkout-with-payment`): si el tenant no tiene el método habilitado o le falta la llave, el checkout falla cerrado con **400 "Este método de pago no está configurado para esta tienda. Por favor, elija Efectivo."** (Efectivo siempre funciona). El webhook `POST /api/webhooks/bold` es de **dos fases**: primero intenta el billing del SaaS (firma con el secreto global) y, si no aplica, resuelve el pedido por la referencia `ORDER-<id>` contra `tec_sales.tenant_id` y valida con la llave/el secreto del tenant; los webhooks `POST /api/webhooks/addi` y `POST /api/webhooks/sistecredito` validan `x-webhook-secret` contra el secreto **del tenant del pedido** (una sola URL de webhook para todos). Al liquidar se registra el pago en `tec_payments` (`CC`/`ADI`/`Sistecredito`) y el pedido pasa de `due` a `paid` creditando puntos como siempre. Addi/Sistecrédito siguen como **stubs** de checkout (URL de sandbox) hasta confirmar el contrato, pero ya usan las credenciales del tenant.
+Flujo de cobro (`POST /api/customer/checkout-with-payment`): si el tenant no tiene el método habilitado o le falta la llave, el checkout falla cerrado con **400 "Este método de pago no está configurado para esta tienda. Por favor, elija Efectivo."** (Efectivo siempre funciona). El webhook `POST /api/webhooks/bold` es de **dos fases**: primero intenta el billing del SaaS (firma con el secreto global) y, si no aplica, resuelve el pedido por la referencia `ORDER-<id>` contra `tec_sales.tenant_id` y valida con la llave/el secreto del tenant; el webhook `POST /api/webhooks/addi` valida **Basic Auth** contra las credenciales del tenant (fail-closed, ver v0.3.79 abajo) y `POST /api/webhooks/sistecredito` valida `x-webhook-secret` contra el secreto del tenant del pedido (una sola URL de webhook para todos). Al liquidar se registra el pago en `tec_payments` (`CC`/`ADI`/`Sistecredito`) y el pedido pasa de `due` a `paid` creditando puntos como siempre. Sistecrédito sigue como **stub** de checkout (URL de sandbox) hasta confirmar el contrato, pero ya usa las credenciales del tenant.
+
+### Addi real (v0.3.79)
+
+La integración de Addi dejó de ser stub y ahora es un cliente server-to-server real (`api/src/payments/addi.service.ts`) con las credenciales del tenant (`addi_api_key` = client_id, `addi_webhook_secret` = client_secret):
+
+- **Token**: OAuth2 client-credentials contra `ADDI_AUTH_URL` (Auth0) con `audience` = `ADDI_AUDIENCE`; acepta base o URL completa (se normaliza a `/oauth/token` y el body va como `application/x-www-form-urlencoded`, el estándar de Auth0 — v0.3.80); el JWT se cachea por tenant (`expires_in` − 5 min) y se invalida si la creación devuelve 401.
+- **Checkout**: `POST {ADDI_API_BASE_URL}{ADDI_APPLICATIONS_PATH}` con `redirect: 'manual'`; la URL de checkout se toma del header `Location` del 301 (fallback defensivo: JSON 2xx con `checkout_url`/`url`). Payload snake_case (v0.3.82): `order_id` único por intento (`ORDER-<venta>-<ts36>`), `amount` COP entero, `currency: 'COP'`, `customer` anidado (`first_name`/`last_name`, `email`, `phone` en formato `57XXXXXXXXXX` (indicativo, sin `+`) vía `normalizePhoneForAddi`, `document_type: 'CC'`, `document_number` desde `ADDI_TEST_DOCUMENT_NUMBER`, default `1001234567`), bloque `shipping` (mismos datos + `address: Calle Falsa 123`, `city: Bogotá`, `country: 'CO'`; desactivable con `ADDI_SEND_SHIPPING=false`), `callback_url` (nuestro webhook), **`redirection_url` siempre presente** (return del tenant → `CUSTOMER_PAYMENT_RETURN_URL` → default `https://pos.tienderu.com/config?payment=return`) e `items` reales de la venta (`sku` = código del producto, `name`, `quantity` y `price` enteros). El payload exacto se loggea en debug antes del fetch (email/teléfono enmascarados **solo en esa copia del log** — el request real va sin máscara) y cualquier error registra el cuerpo **completo** de Addi más su arreglo `errors[]` y el header `x-trace-id` (si viene) para soporte.
+- **Webhook** (`POST /api/webhooks/addi`): **fail-closed** — resuelve el pedido por la referencia `ORDER-<id>` ecoada, exige Basic Auth válida del tenant (se aceptan ambas orientaciones del par, comparación en tiempo constante) y **rechaza con 401** si falta cualquiera de las dos. Solo `approved` liquida la venta; `rejected`/`declined`/`abandoned` se registran y se ignoran. Regla de Oro de Addi: la respuesta es **HTTP 200 con exactamente el mismo JSON recibido** (eco del raw body).
+- **Config global** (`.env`, no confidencial): `ADDI_AUTH_URL`, `ADDI_AUDIENCE`, `ADDI_API_BASE_URL`, `ADDI_APPLICATIONS_PATH`, `ADDI_CALLBACK_URL`. Los defaults apuntan al **sandbox** y el API avisa al arrancar; en producción define los valores reales del portal.
+- **Pendientes marcados en código (`TODO: CAMPO_REAL_DE_ADDI`)**: path exacto de creación de solicitud y nombres exactos de los campos del request/callback de Custom Integrations. Como el webhook es fail-closed, si algún nombre no coincide no se liquida nada (401 visible en logs) — se ajusta en una línea sin riesgo de cobros mal aplicados.
 
 ## Configuración editable (solo admin)
 
@@ -168,13 +178,46 @@ Flujo de pago: **Bold** (v0.3.43) o manual. Con Bold configurado (`BOLD_ENABLED=
 
 En **Nueva venta**, junto al buscador hay dos botones: 📷 (código de barras: EAN-13/8, UPC-A/E, Code-128/39, ITF, Codabar) y 🔳 (QR). Abren un modal con la cámara en vivo, guía de escaneo, animación láser, feedback verde/rojo y beep; incluyen **escaneo continuo** (contador de escaneados) y **entrada manual** como fallback. La cámara solo se enciende al abrir el modal y se libera al cerrarlo (stop + clear). El valor escaneado se parsea (texto, JSON `code|barcode|sku|id` o URL con `code`/`barcode`) y se resuelve contra `GET /api/catalog/products?store_id&q=` por `code` exacto y luego por nombre exacto; se ignora el mismo código repetido en 2 s y el producto entra al ticket con las mismas reglas del POS (combo, precio y stock). Requiere HTTPS (contexto seguro) y permiso de cámara; si se deniega o no hay cámara, queda la entrada manual. Sin cambios de backend.
 
+**Fix v0.3.85:** cerrar el escáner en un equipo sin cámara ya no rompe la app. `html5-qrcode.stop()` lanzaba una excepción síncrona ("Cannot stop, scanner is not running or paused.") cuando la cámara nunca inició y, al no haber error boundary, React desmontaba toda la interfaz (pantalla en blanco al cerrar el modal). Ahora el stop/clear pasa por `safeStopScanner()` con try/catch.
+
 Desde v0.3.27 el mismo escáner está en **Productos** (`/productos`): 📷/🔳 junto al buscador. Al escanear busca por `code` exacto en `GET /api/products?store_id&q=`, filtra la tabla con ese código y avisa **"Producto encontrado"**; si no existe, muestra **"Producto no encontrado. Puede crearlo con el código: X"** y deja el código precargado para **+ Crear producto** (el formulario se abre con el campo Código listo). Además, dentro del modal de crear/editar producto el campo **Código** tiene sus propios 📷/🔳: al escanear se rellena el código, se cierra el escáner y el foco pasa a **Nombre**. Todo lo demás (permisos, limpieza de cámara, continuo, manual) es idéntico al POS.
+
+## Pruebas E2E (Playwright)
+
+El flujo crítico de venta del POS está cubierto por un E2E real de UI (`web/e2e/pos-sale.spec.ts`): login de **cajero** → escaneo de un producto (entrada manual del `ProductScanner`, sin cámara) → **descuento manual del 10%** → **efectivo con monto recibido mayor al total** (verifica el cambio mostrado contra `recibido − total` y el estado "Pagada") → la venta aparece en **/ventas** con badge `Pagada` (`paid`) y el total pagado.
+
+⚠️ El test **crea una venta real** en el ambiente apuntado: ejecútalo solo contra un ambiente de pruebas, nunca producción.
+
+Requisitos:
+- Un **cajero activo con tienda asignada** y credenciales conocidas.
+- Un **producto con precio y stock** cuyo código (barcode/SKU) conozcas.
+- API y web corriendo (dev: `npm run dev:api` + `npm run dev:web` en la raíz) o el stack Docker de pruebas.
+
+```sh
+cd web
+npm install
+npx playwright install chromium        # una sola vez
+E2E_CASHIER_USERNAME='cajero.demo' \
+E2E_CASHIER_PASSWORD='••••••' \
+E2E_PRODUCT_CODE='7701234567890' \
+npm run test:e2e                       # E2E_BASE_URL para apuntar a otro ambiente
+```
+
+Alternativa 100% Docker (sin Node en el host), desde la raíz del repo — el script lee la versión de Playwright del `package.json` y usa la imagen oficial del navegador (`npm ci` corre en el contenedor):
+
+```sh
+E2E_BASE_URL='http://127.0.0.1:8096' \
+E2E_CASHIER_USERNAME='cajero.demo' E2E_CASHIER_PASSWORD='••••••' E2E_PRODUCT_CODE='7701234567890' \
+./web/e2e/run-docker.sh
+```
+
+`E2E_BASE_URL` (default `http://localhost:5173`, el dev de Vite que proxya `/api`) permite apuntar al POS desplegado en pruebas (p. ej. `http://127.0.0.1:8096`). Con `npm run test:e2e:headed` se ve el navegador; los fallos guardan screenshot y trace en `test-results/`/`playwright-report/`.
 
 ## Plataforma de gestión de tenants (v0.3.11)
 
 El área **Gestión de tenants** es visible solo para el super admin y tiene dos modos según el selector **Tenant activo** del sidebar:
 
-- **Vista global** (estado inicial del super admin, sin tenant): el selector muestra "Seleccionar tenant…" y el sidebar lista Dashboard global (🌍, en `/dashboard/global`) y Gestión de tenants con sub-ítems (Tenants, Planes, Pagos de tenants, Datos de tenants). **Configuración no aparece** (es por tenant): las rutas de POS y `/config` redirigen a `/dashboard/global`.
+- **Vista global** (estado inicial del super admin, sin tenant): el selector muestra "Seleccionar tenant…" y el sidebar lista Dashboard global (🌍, en `/dashboard/global`) y Gestión de tenants con sub-ítems (Tenants, Planes, Pagos de tenants, Datos de tenants). **Configuración no aparece** (es por tenant): las rutas de POS y `/config` redirigen a `/dashboard/global`. El sidebar muestra el **logo de la plataforma** (`web/src/assets/tienderu-logo.svg`, fallback al monograma "P") — nunca el de un tenant (v0.3.86).
 - **Vista tenant** (al elegir un tenant en el selector o con "Entrar" desde gestión): sidebar POS completo de ese tenant (POS, Dashboard, Ventas, …, Configuración) y el token pasa a ese contexto. Para volver a la vista global, elegir "Seleccionar tenant…" en el selector.
 
 Páginas de gestión:

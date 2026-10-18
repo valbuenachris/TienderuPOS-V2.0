@@ -1,14 +1,13 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PosCustomer } from '../auth/auth.types';
 import { CustomerCheckoutWithPaymentDto } from '../customer/customer.dto';
 import { DatabaseService } from '../database/database.service';
-import { SalePaymentMethod } from '../sales/sale.dto';
 import { SalesService } from '../sales/sales.service';
+import { AddiService, extractSaleIdFromWebhook, parseBasicAuthHeader, readAmount, secureCompare } from './addi.service';
 import { TenantBoldService } from './tenant-bold.service';
 import { TenantPaymentSettingsService, providerCredentials } from './tenant-payment-settings.service';
 
-type FinancingProvider = 'addi' | 'sistecredito';
 type WebhookEvent = { type?: string; data?: Record<string, unknown> };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,7 +29,8 @@ export class PaymentsService {
     private readonly database: DatabaseService,
     private readonly config: ConfigService,
     private readonly paymentSettings: TenantPaymentSettingsService,
-    private readonly tenantBold: TenantBoldService
+    private readonly tenantBold: TenantBoldService,
+    private readonly addi: AddiService
   ) {}
 
   async checkoutWithPayment(tenantId: string, customer: PosCustomer, input: CustomerCheckoutWithPaymentDto) {
@@ -83,10 +83,26 @@ export class PaymentsService {
       };
     }
 
+    if (method === 'addi') {
+      const paymentUrl = await this.addi.createCheckoutLink({
+        tenantId,
+        saleId: sale.id,
+        amount,
+        customer,
+        redirectionUrl: callbackUrl
+      });
+      return {
+        order_id: sale.id,
+        status: sale.status,
+        payment_url: paymentUrl,
+        payment_method: method
+      };
+    }
+
     return {
       order_id: sale.id,
       status: sale.status,
-      payment_url: this.createFinancingLink(method, sale.id, amount, settings.tenantId, callbackUrl),
+      payment_url: this.createSistecreditoLink(sale.id, amount, settings.tenantId, callbackUrl),
       payment_method: method
     };
   }
@@ -114,11 +130,59 @@ export class PaymentsService {
     }));
   }
 
-  async handleFinancingWebhook(
-    provider: FinancingProvider,
-    payload: unknown,
-    secretHeader?: string
-  ): Promise<{ received: true; handled: boolean }> {
+  /**
+   * Webhook de Addi (v0.3.79): Basic Auth contra las credenciales DEL TENANT
+   * (fail-closed) y liquidación solo con estado `approved`. El controller responde
+   * 200 con el mismo JSON (Regla de Oro de Addi) después de esta validación.
+   */
+  async handleAddiWebhook(payload: unknown, authorization?: string): Promise<{ handled: boolean }> {
+    if (!isRecord(payload)) throw new BadRequestException('Invalid payload');
+
+    const saleId = extractSaleIdFromWebhook(payload);
+    if (saleId === null) {
+      this.logger.warn('Addi webhook sin referencia ORDER-<saleId>; no se puede validar el origen');
+      throw new UnauthorizedException('Invalid Addi webhook credentials');
+    }
+    const sale = await this.resolveSaleTenant(saleId);
+    if (!sale) {
+      this.logger.warn(`Addi webhook para pedido desconocido ${saleId}`);
+      throw new UnauthorizedException('Invalid Addi webhook credentials');
+    }
+
+    const settings = await this.paymentSettings.getForTenant(sale.tenantId);
+    const credentials = settings ? providerCredentials(settings, 'addi') : null;
+    // FAIL-CLOSED: sin credenciales del tenant no se procesa NADA (antes: modo sandbox abierto).
+    if (!credentials || !credentials.enabled || !credentials.apiKey || !credentials.webhookSecret) {
+      this.logger.warn(`Addi webhook rechazado: tenant ${sale.tenantId} sin addi_api_key/addi_webhook_secret`);
+      throw new UnauthorizedException('Invalid Addi webhook credentials');
+    }
+    const basic = parseBasicAuthHeader(authorization);
+    if (!basic) {
+      this.logger.warn(`Addi webhook rechazado: sin Basic Auth (tenant ${sale.tenantId})`);
+      throw new UnauthorizedException('Invalid Addi webhook credentials');
+    }
+    // El portal puede configurar el par en cualquier orden: se aceptan ambas orientaciones.
+    const forward = secureCompare(basic.user, credentials.apiKey) && secureCompare(basic.password, credentials.webhookSecret);
+    const reversed = secureCompare(basic.user, credentials.webhookSecret) && secureCompare(basic.password, credentials.apiKey);
+    if (!forward && !reversed) {
+      this.logger.warn(`Addi webhook rechazado: credenciales inválidas (tenant ${sale.tenantId})`);
+      throw new UnauthorizedException('Invalid Addi webhook credentials');
+    }
+
+    // TODO: CAMPO_REAL_DE_ADDI — confirmar el nombre del campo de estado (hoy status/state).
+    const status = (readString(payload.status) ?? readString(payload.state) ?? '').toLowerCase();
+    if (status !== 'approved') {
+      this.logger.log(`Addi webhook ${status === '' ? 'sin estado' : status} tenant=${sale.tenantId} order=${saleId} ignorado`);
+      return { handled: false };
+    }
+
+    const amount = readAmount(payload.amount);
+    const result = await this.sales.registerGatewayPayment(saleId, 'ADI', amount ?? undefined);
+    this.logger.log(`Addi webhook pagado tenant=${sale.tenantId} order=${saleId} handled=${result.handled}`);
+    return { handled: result.handled };
+  }
+
+  async handleSistecreditoWebhook(payload: unknown, secretHeader?: string): Promise<{ received: true; handled: boolean }> {
     if (!isRecord(payload)) throw new BadRequestException('Invalid payload');
     const orderId = this.readOrderId(payload);
     if (orderId === null) return { received: true, handled: false };
@@ -127,31 +191,29 @@ export class PaymentsService {
     if (!sale) return { received: true, handled: false };
     const settings = await this.paymentSettings.getForTenant(sale.tenantId);
     if (!settings) {
-      this.logger.warn(`[${provider} webhook] tenant ${sale.tenantId} sin configuración de pagos; ignorado`);
+      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin configuración de pagos; ignorado`);
       return { received: true, handled: false };
     }
-    const credentials = providerCredentials(settings, provider);
+    const credentials = providerCredentials(settings, 'sistecredito');
     if (!credentials.enabled) {
-      this.logger.warn(`[${provider} webhook] deshabilitado para tenant ${sale.tenantId}; ignorado`);
+      this.logger.warn(`[sistecredito webhook] deshabilitado para tenant ${sale.tenantId}; ignorado`);
       return { received: true, handled: false };
     }
     const secret = credentials.webhookSecret;
     if (secret !== null) {
-      if (secretHeader !== secret) throw new BadRequestException('Invalid webhook secret');
+      if (secretHeader === undefined || !secureCompare(secretHeader, secret)) {
+        throw new UnauthorizedException('Invalid webhook secret');
+      }
     } else {
-      this.logger.warn(`[${provider} webhook] tenant ${sale.tenantId} sin secreto configurado; modo sandbox (stub)`);
+      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin secreto configurado; modo sandbox (stub)`);
     }
 
-    this.logger.log(
-      `[${provider} webhook] tenant=${sale.tenantId} order=${orderId} ${JSON.stringify(payload)?.slice(0, 500) ?? 'null'}`
-    );
     const status = (readString(payload.status) ?? '').toLowerCase();
     if (status !== 'approved' && status !== 'paid' && status !== 'completed') {
       return { received: true, handled: false };
     }
-    const amount = readString(payload.amount);
-    const paidBy: SalePaymentMethod = provider === 'addi' ? 'ADI' : 'Sistecredito';
-    const result = await this.sales.registerGatewayPayment(orderId, paidBy, amount ?? undefined);
+    const amount = readAmount(payload.amount);
+    const result = await this.sales.registerGatewayPayment(orderId, 'Sistecredito', amount ?? undefined);
     return { received: true, handled: result.handled };
   }
 
@@ -191,9 +253,7 @@ export class PaymentsService {
     }
 
     const amountData = isRecord(event.data?.amount) ? event.data?.amount as Record<string, unknown> : null;
-    const amount = amountData?.total !== undefined && amountData?.total !== null
-      ? String(amountData.total)
-      : null;
+    const amount = readAmount(amountData?.total);
     const result = await this.sales.registerGatewayPayment(
       saleId,
       'bold',
@@ -212,13 +272,7 @@ export class PaymentsService {
     return row ? { saleId: row.id, tenantId: row.tenant_id } : null;
   }
 
-  private createFinancingLink(
-    provider: FinancingProvider,
-    saleId: number,
-    amount: number,
-    tenantId: string,
-    callbackUrl: string | null
-  ): string {
+  private createSistecreditoLink(saleId: number, amount: number, tenantId: string, callbackUrl: string | null): string {
     const payload = {
       merchant_order_id: `ORDER-${saleId}`,
       reference: `ORDER-${saleId}`,
@@ -227,14 +281,10 @@ export class PaymentsService {
       callback_url: callbackUrl ?? 'https://pos.tienderu.com',
       tenant_id: tenantId
     };
-    this.logger.log(`[${provider.toUpperCase()} STUB] tenant=${tenantId} checkout payload: ${JSON.stringify(payload)}`);
-    // TODO: replace this stub with the real provider API call once the contract is confirmed,
-    // using the TENANT's api key (tec_tenant_payment_settings). The order reference is
-    // `ORDER-<saleId>`; the provider must echo it on the webhook, which is then validated
-    // with the tenant's webhook secret.
-    const base = provider === 'addi'
-      ? this.config.get<string>('ADDI_CHECKOUT_BASE_URL') ?? 'https://sandbox.addi.com/checkout'
-      : this.config.get<string>('SISTECREDITO_CHECKOUT_BASE_URL') ?? 'https://sandbox.sistecredito.com/checkout';
+    this.logger.log(`[SISTECREDITO STUB] tenant=${tenantId} checkout payload: ${JSON.stringify(payload)}`);
+    // TODO: integrar la API real de Sistecrédito cuando se confirme el contrato;
+    // AddiService (v0.3.79) es la implementación de referencia.
+    const base = this.config.get<string>('SISTECREDITO_CHECKOUT_BASE_URL') ?? 'https://sandbox.sistecredito.com/checkout';
     return `${base}?order=ORDER-${saleId}`;
   }
 

@@ -69,6 +69,22 @@ function playBeep(): void {
   }
 }
 
+/** Detiene y limpia el escáner sin que html5-qrcode pueda derribar la app (v0.3.85).
+ *  `stop()` lanza "Cannot stop, scanner is not running or paused." si la cámara
+ *  nunca inició (sin dispositivo o sin permiso): es inofensivo y NO debe romper React. */
+async function safeStopScanner(scanner: Html5QrcodeInstance): Promise<void> {
+  try {
+    await scanner.stop();
+  } catch (_error: unknown) {
+    // The scanner was not running (camera unavailable): nothing to stop.
+  }
+  try {
+    scanner.clear();
+  } catch (_error: unknown) {
+    // Ignore DOM cleanup errors.
+  }
+}
+
 export default function ProductScanner({ open, mode, onClose, onScan }: ProductScannerProps) {
   const elementId = useMemo(() => `html5qr-${Math.random().toString(36).slice(2, 10)}`, []);
   const scannerRef = useRef<Html5QrcodeInstance | null>(null);
@@ -140,8 +156,7 @@ export default function ProductScanner({ open, mode, onClose, onScan }: ProductS
           () => undefined
         );
         if (disposed) {
-          await scanner.stop().catch(() => undefined);
-          scanner.clear();
+          await safeStopScanner(scanner);
           return;
         }
         setReady(true);
@@ -160,7 +175,7 @@ export default function ProductScanner({ open, mode, onClose, onScan }: ProductS
       setTorchAvailable(false);
       setTorchOn(false);
       if (scanner) {
-        scanner.stop().then(() => scanner.clear()).catch(() => undefined);
+        void safeStopScanner(scanner);
       }
     };
   }, [open, mode, elementId]);

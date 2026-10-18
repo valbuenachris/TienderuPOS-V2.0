@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
 import { useTenantsQuery } from '../pos-queries';
+import platformLogoUrl from '../assets/tienderu-logo.svg';
 
 interface NavItem {
   to: string;
@@ -57,6 +58,7 @@ export default function AppLayout() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [switchingTenant, setSwitchingTenant] = useState(false);
   const [tenantError, setTenantError] = useState('');
+  const [logoBroken, setLogoBroken] = useState(false);
   const tenantsQuery = useTenantsQuery(token, tenantId, isSuperAdmin);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
@@ -75,8 +77,15 @@ export default function AppLayout() {
   }, [collapsed]);
 
   const showGlobalMenu = isSuperAdmin && selectedTenantId === null;
+  // v0.3.86: la vista global NUNCA usa branding de tenant (el token sigue siendo del
+  // tenant hogar o del último seleccionado); muestra el logo de la plataforma.
+  const sidebarLogoUrl = showGlobalMenu ? platformLogoUrl : (settings?.logo_url ?? null);
   const brandName = showGlobalMenu ? 'Tienderu POS · Manager' : settings?.site_name || 'POS';
   const items = TENANT_ITEMS.filter((item) => !item.admin || isAdmin);
+
+  useEffect(() => {
+    setLogoBroken(false);
+  }, [sidebarLogoUrl]);
 
   async function handleTenantChange(nextTenantId: string) {
     if (nextTenantId === (selectedTenantId ?? '') || switchingTenant) return;
@@ -101,11 +110,12 @@ export default function AppLayout() {
       <aside className="sidebar">
         <div className="sidebar-head">
           <div className="sidebar-brand">
-            {settings?.logo_url ? (
+            {sidebarLogoUrl && !logoBroken ? (
               <img
                 className="brand-mark-logo"
-                src={settings.logo_url}
-                alt={settings.site_name || 'Logo'}
+                src={sidebarLogoUrl}
+                alt={showGlobalMenu ? 'Tienderu POS' : settings?.site_name || 'Logo'}
+                onError={() => setLogoBroken(true)}
               />
             ) : (
               <span className="brand-mark small">P</span>

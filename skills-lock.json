@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "typescript-e2e-testing": {
+      "source": "bmad-labs/skills",
+      "sourceType": "github",
+      "skillPath": "skills/typescript-e2e-testing/SKILL.md",
+      "computedHash": "bfddd43517751607b6f1554994de562912286046848e76b194861cabdcf225a1"
+    }
+  }
+}

@@ -84,6 +84,12 @@ export type Database = {
       tec_tenants: Table<{
         id: string; name: string; host: string | null; status: string; created_at: string | null;
       }>;
+      tec_tenant_payment_settings: Table<{
+        tenant_id: string; bold_enabled: boolean | null; bold_api_key: string | null; bold_webhook_secret: string | null;
+        addi_enabled: boolean | null; addi_api_key: string | null; addi_webhook_secret: string | null;
+        sistecredito_enabled: boolean | null; sistecredito_api_key: string | null; sistecredito_webhook_secret: string | null;
+        return_url: string | null; created_at: string | null; updated_at: string | null;
+      }>;
       product_reviews: Table<{
         id: number; product_id: number; customer_id: number | null; rating: number;
         comment: string | null; created_at: string | null; updated_at: string | null;

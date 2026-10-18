@@ -1,8 +1,10 @@
-import { useQuery } from '@tanstack/react-query';
 import { useParams, useSearchParams } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
 import { apiRequest, type SellerPage as SellerPagePayload } from '../api';
 import { ProductCard } from '../components/ProductCard';
-import { Pagination } from './SearchPage';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Pagination } from '../components/ui/Pagination';
+import { ProductGridSkeleton, Skeleton } from '../components/ui/Skeleton';
 
 export function SellerPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -17,49 +19,67 @@ export function SellerPage() {
 
   if (isLoading) {
     return (
-      <div className="page">
-        <div className="skeleton-line skeleton" />
-        <div className="product-grid">
-          {Array.from({ length: 8 }).map((_, index) => (
-            <div key={index} className="product-card skeleton-card" />
-          ))}
-        </div>
+      <div className="container-page py-6">
+        <Skeleton className="mb-5 h-24 w-full rounded-card" />
+        <ProductGridSkeleton count={8} />
       </div>
     );
   }
+
   if (isError || !data) {
     return (
-      <div className="page empty-state">
-        <h2>Tienda no disponible</h2>
-        <p>Esta tienda no está publicada en tienderu.com.</p>
+      <div className="container-page py-10">
+        <EmptyState
+          icon="store"
+          title="Tienda no disponible"
+          description="Esta tienda no está publicada en tienderu.com."
+        />
       </div>
     );
   }
 
   return (
-    <div className="page">
-      <div className="seller-header">
+    <div className="container-page py-6">
+      <header className="mb-6 flex items-center gap-4 rounded-card bg-white p-5 shadow-card">
         {data.seller.logo_url ? (
-          <img src={data.seller.logo_url} alt={data.seller.name} className="seller-logo" />
+          <img
+            src={data.seller.logo_url}
+            alt={data.seller.name}
+            className="h-16 w-16 rounded-xl border border-line bg-white object-contain p-1"
+          />
         ) : (
-          <div className="seller-logo placeholder">{data.seller.name.charAt(0)}</div>
+          <span className="flex h-16 w-16 items-center justify-center rounded-xl bg-navy-800 text-2xl font-extrabold text-accent-400">
+            {data.seller.name.charAt(0)}
+          </span>
         )}
-        <div>
-          <h1>{data.seller.name}</h1>
-          <p className="muted">
-            {data.products.meta.total} {data.products.meta.total === 1 ? 'producto publicado' : 'productos publicados'}
+        <div className="min-w-0">
+          <h1 className="truncate text-xl font-bold text-ink sm:text-2xl">{data.seller.name}</h1>
+          <p className="text-sm text-ink-soft">
+            {data.products.meta.total}{' '}
+            {data.products.meta.total === 1 ? 'producto publicado' : 'productos publicados'}
           </p>
         </div>
-      </div>
-      <div className="product-grid">
-        {data.products.data.map((product) => (
-          <ProductCard key={product.id} product={product} />
-        ))}
-      </div>
+      </header>
+
+      {data.products.data.length === 0 ? (
+        <EmptyState
+          icon="store"
+          title="Esta tienda no tiene productos disponibles"
+          description="Vuelve pronto: el vendedor está actualizando su catálogo."
+        />
+      ) : (
+        <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+          {data.products.data.map((product) => (
+            <ProductCard key={product.id} product={product} />
+          ))}
+        </div>
+      )}
+
       <Pagination
+        className="mt-8"
         page={page}
         totalPages={data.products.meta.totalPages}
-        onPage={(nextPage) => {
+        onChange={(nextPage) => {
           const next = new URLSearchParams(params);
           next.set('page', String(nextPage));
           setParams(next);

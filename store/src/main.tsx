@@ -5,6 +5,7 @@ import { BrowserRouter } from 'react-router-dom';
 import { App } from './App';
 import { AuthProvider } from './auth';
 import { CartProvider } from './cart';
+import { ToastProvider } from './components/ui/Toast';
 import './styles.css';
 
 const queryClient = new QueryClient({
@@ -24,7 +25,9 @@ createRoot(document.getElementById('root')!).render(
       <BrowserRouter>
         <AuthProvider>
           <CartProvider>
-            <App />
+            <ToastProvider>
+              <App />
+            </ToastProvider>
           </CartProvider>
         </AuthProvider>
       </BrowserRouter>

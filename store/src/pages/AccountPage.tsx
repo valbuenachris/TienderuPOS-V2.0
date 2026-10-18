@@ -3,14 +3,21 @@ import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { ApiError, apiRequest, type Address, type MarketplaceCustomer } from '../api';
 import { useAuth } from '../auth';
+import { AddressForm } from '../components/AddressForm';
+import { Button, buttonStyles } from '../components/ui/Button';
+import { Dialog } from '../components/ui/Dialog';
+import { EmptyState } from '../components/ui/EmptyState';
+import { Field, Input } from '../components/ui/Input';
+import { useToast } from '../components/ui/Toast';
 
 export function AccountPage() {
   const { customer } = useAuth();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const [name, setName] = useState(customer?.name ?? '');
   const [phone, setPhone] = useState(customer?.phone ?? '');
-  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
 
   const addresses = useQuery({
     queryKey: ['store-addresses'],
@@ -25,9 +32,8 @@ export function AccountPage() {
         body: JSON.stringify({ name: name.trim(), phone: phone.trim() })
       }),
     onSuccess: () => {
-      setMessage('Datos actualizados.');
       setError(null);
-      window.setTimeout(() => setMessage(null), 2500);
+      toast.push('Datos actualizados');
     },
     onError: (caught) => {
       setError(caught instanceof ApiError ? caught.message : 'No pudimos guardar tus datos.');
@@ -36,7 +42,10 @@ export function AccountPage() {
 
   const removeAddress = useMutation({
     mutationFn: (id: number) => apiRequest(`/marketplace/addresses/${id}`, { method: 'DELETE' }),
-    onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['store-addresses'] })
+    onSuccess: () => {
+      toast.push('Dirección eliminada');
+      void queryClient.invalidateQueries({ queryKey: ['store-addresses'] });
+    }
   });
 
   const setDefault = useMutation({
@@ -44,70 +53,130 @@ export function AccountPage() {
     onSuccess: () => void queryClient.invalidateQueries({ queryKey: ['store-addresses'] })
   });
 
+  if (!customer) {
+    return (
+      <div className="container-page py-10">
+        <EmptyState
+          icon="user"
+          title="Inicia sesión para ver tu cuenta"
+          action={
+            <Link to="/ingresar?next=/cuenta" className={buttonStyles({ variant: 'primary' })}>
+              Ingresar
+            </Link>
+          }
+        />
+      </div>
+    );
+  }
+
   function submitProfile(event: FormEvent) {
     event.preventDefault();
     saveProfile.mutate();
   }
 
   return (
-    <div className="page account-layout">
-      <section className="account-section">
-        <h1>Mi cuenta</h1>
-        {message && <div className="notice success">{message}</div>}
-        {error && <div className="notice error">{error}</div>}
-        <form className="account-form" onSubmit={submitProfile}>
-          <label>
-            Nombre
-            <input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} required />
-          </label>
-          <label>
-            Correo
-            <input value={customer?.email ?? ''} disabled />
-          </label>
-          <label>
-            Teléfono
-            <input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={30} />
-          </label>
-          <button type="submit" className="btn-primary" disabled={saveProfile.isPending}>
-            Guardar cambios
-          </button>
-        </form>
-      </section>
+    <div className="container-page py-6">
+      <h1 className="mb-4 text-xl font-bold text-ink sm:text-2xl">Mi cuenta</h1>
 
-      <section className="account-section">
-        <h2>Direcciones de envío</h2>
-        {addresses.data && addresses.data.length === 0 && (
-          <p className="muted">
-            Aún no tienes direcciones. Puedes agregarla al finalizar una compra en el{' '}
-            <Link to="/carrito">carrito</Link>.
-          </p>
-        )}
-        <ul className="address-list">
-          {(addresses.data ?? []).map((address) => (
-            <li key={address.id} className={address.is_default ? 'default' : ''}>
-              <div>
-                <strong>{address.recipient_name}</strong> · {address.label}{' '}
-                {address.is_default && <span className="badge-default">Predeterminada</span>}
-                <br />
-                {address.street_address}
-                {address.neighborhood ? `, ${address.neighborhood}` : ''} — {address.city}
-                <br />
-                <span className="muted">Tel: {address.phone}</span>
-              </div>
-              <div className="address-actions">
-                {!address.is_default && (
-                  <button type="button" className="link-button" onClick={() => setDefault.mutate(address.id)}>
-                    Predeterminar
+      <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
+        <section className="rounded-card bg-white p-5 shadow-card sm:p-6">
+          <h2 className="mb-4 text-lg font-bold text-ink">Datos personales</h2>
+          {error ? (
+            <div className="mb-3 rounded-md border border-deal-600/25 bg-red-50 px-3 py-2 text-sm text-price">
+              {error}
+            </div>
+          ) : null}
+          <form onSubmit={submitProfile} className="flex flex-col gap-4">
+            <Field label="Nombre" required>
+              <Input value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={120} required />
+            </Field>
+            <Field label="Correo electrónico">
+              <Input value={customer.email ?? ''} disabled />
+            </Field>
+            <Field label="Teléfono">
+              <Input value={phone} onChange={(event) => setPhone(event.target.value)} maxLength={30} />
+            </Field>
+            <div>
+              <Button type="submit" disabled={saveProfile.isPending}>
+                {saveProfile.isPending ? 'Guardando…' : 'Guardar cambios'}
+              </Button>
+            </div>
+          </form>
+        </section>
+
+        <section className="rounded-card bg-white p-5 shadow-card sm:p-6">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="text-lg font-bold text-ink">Direcciones de envío</h2>
+            <Button variant="outline" size="sm" onClick={() => setAddOpen(true)}>
+              + Agregar
+            </Button>
+          </div>
+
+          {addresses.data && addresses.data.length === 0 ? (
+            <p className="text-sm text-ink-soft">
+              Aún no tienes direcciones guardadas. Agrega una para agilizar tus compras.
+            </p>
+          ) : null}
+
+          <ul className="flex flex-col gap-3">
+            {(addresses.data ?? []).map((address) => (
+              <li
+                key={address.id}
+                className={`flex flex-wrap items-start justify-between gap-3 rounded-card border p-3.5 text-sm ${
+                  address.is_default ? 'border-success-600/50 bg-success-50/40' : 'border-line bg-white'
+                }`}
+              >
+                <div className="min-w-0">
+                  <p className="flex flex-wrap items-center gap-2">
+                    <strong className="text-ink">{address.recipient_name}</strong>
+                    <span className="rounded-full bg-line-soft px-2 py-0.5 text-xs text-ink-soft">{address.label}</span>
+                    {address.is_default ? (
+                      <span className="rounded-full bg-success-50 px-2 py-0.5 text-xs font-bold text-success-600">
+                        Predeterminada
+                      </span>
+                    ) : null}
+                  </p>
+                  <p className="mt-1 text-ink/90">
+                    {address.street_address}
+                    {address.neighborhood ? `, ${address.neighborhood}` : ''} — {address.city}
+                  </p>
+                  <p className="mt-0.5 text-xs text-ink-soft">Tel: {address.phone}</p>
+                </div>
+                <div className="flex shrink-0 gap-3 text-sm">
+                  {!address.is_default ? (
+                    <button
+                      type="button"
+                      className="font-medium text-link-600 hover:text-link-700 hover:underline"
+                      onClick={() => setDefault.mutate(address.id)}
+                    >
+                      Predeterminar
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="font-medium text-price hover:underline"
+                    onClick={() => removeAddress.mutate(address.id)}
+                  >
+                    Eliminar
                   </button>
-                )}
-                <button type="button" className="link-button danger" onClick={() => removeAddress.mutate(address.id)}>
-                  Eliminar
-                </button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      </section>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </section>
+      </div>
+
+      <Dialog open={addOpen} title="Nueva dirección" onClose={() => setAddOpen(false)}>
+        <AddressForm
+          defaultName={customer.name ?? ''}
+          defaultPhone={customer.phone ?? ''}
+          onCreated={() => {
+            void queryClient.invalidateQueries({ queryKey: ['store-addresses'] });
+            setAddOpen(false);
+            toast.push('Dirección guardada');
+          }}
+        />
+      </Dialog>
     </div>
   );
 }

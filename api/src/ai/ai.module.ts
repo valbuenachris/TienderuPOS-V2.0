@@ -11,6 +11,7 @@ import { TenantAiSettingsService } from './tenant-ai-settings.service';
 @Module({
   imports: [AuthModule, ReportsModule, TenantManagementModule],
   controllers: [AiController],
-  providers: [AiService, AiToolsService, OpenRouterClient, TenantAiSettingsService]
+  providers: [AiService, AiToolsService, OpenRouterClient, TenantAiSettingsService],
+  exports: [OpenRouterClient]
 })
 export class AiModule {}

@@ -241,7 +241,11 @@ Chat **solo para administradores** conectado a **OpenRouter** que responde con *
 
 ## WhatsApp (Evolution API) (v0.5.0–v0.5.1)
 
-Cada tienda puede vincular su propio WhatsApp desde el POS (sección **WhatsApp**, solo admin). Botones: **Crear instancia** (una por tenant, nombre derivado `pos-<slug>-<id8>`), **Conectar** (modal con **QR** que se refresca solo; la página detecta automáticamente cuando queda conectado) y **Desconectar** (cierra la sesión de WhatsApp pero **conserva la instancia** para reconectar con un QR nuevo). Usa el **mismo servidor Evolution API** que educol con credenciales globales de la plataforma (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY` en el `.env` del API; la key nunca se expone al navegador ni se guarda por tienda). Requiere la migración `docs/migrations/v0.5.0-tenant-whatsapp.sql`. Próxima fase: avisos y envío de tickets por WhatsApp.
+Cada tienda puede vincular su propio WhatsApp desde el POS (sección **WhatsApp**, solo admin). Botones: **Crear instancia** (una por tenant, nombre derivado `pos-<slug>-<id8>`), **Conectar** (modal con **QR** que se refresca solo; la página detecta automáticamente cuando queda conectado) y **Desconectar** (cierra la sesión de WhatsApp pero **conserva la instancia** para reconectar con un QR nuevo). Usa el **mismo servidor Evolution API** que educol con credenciales globales de la plataforma (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY` en el `.env` del API; la key nunca se expone al navegador ni se guarda por tienda). Requiere la migración `docs/migrations/v0.5.0-tenant-whatsapp.sql`.
+
+### Bot de ventas (v0.6.0–v0.6.1)
+
+Activa el **agente de ventas** en la misma sección: responde precios, disponibilidad y **características** con datos reales (IA con herramientas), recomienda productos, **toma el pedido** y lo deja **pendiente de pago** (venta *Debida* en Cuentas abiertas / Pedidos App, con stock descontado) hasta que la tienda verifique el pago. Configura **nombre** y **tono** (amable / profesional / vendedor / cercano); los datos de la tienda salen de Configuración. Requiere `EVOLUTION_WEBHOOK_TOKEN` en el `.env` y la migración `docs/migrations/v0.6.0-whatsapp-bot.sql`; al activarlo se registra el webhook en Evolution automáticamente. Los clientes se crean solos (nombre del perfil de WhatsApp). Próxima fase: avisos al admin, bandeja de conversaciones con traspaso a humano y link de pago Bold.
 
 ## Plataforma de gestión de tenants (v0.3.11)
 

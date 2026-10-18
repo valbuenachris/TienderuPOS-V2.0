@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useWhatsappConnectQuery, useWhatsappSettingsQuery } from '../pos-queries';
-import { createWhatsappInstance, disconnectWhatsapp } from '../api';
+import { createWhatsappInstance, disconnectWhatsapp, updateWhatsappAgent } from '../api';
 import { formatDate } from '../format';
 
 const STATUS_META: Record<string, { label: string; badge: string }> = {
@@ -20,6 +20,7 @@ export default function WhatsAppPage() {
   const [error, setError] = useState('');
   const [qrOpen, setQrOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [agentDraft, setAgentDraft] = useState<{ enabled: boolean; name: string; tone: string } | null>(null);
 
   // Mientras el modal del QR está abierto, refresca el estado cada 5 s.
   const settingsQuery = useWhatsappSettingsQuery(token, tenantId, qrOpen ? 5000 : false);
@@ -28,6 +29,13 @@ export default function WhatsAppPage() {
 
   const createMutation = useApiMutation(createWhatsappInstance);
   const disconnectMutation = useApiMutation(disconnectWhatsapp);
+  const saveMutation = useApiMutation(updateWhatsappAgent);
+
+  const draft = agentDraft ?? {
+    enabled: settings?.agent_enabled ?? false,
+    name: settings?.agent_name ?? '',
+    tone: settings?.agent_tone ?? 'amable'
+  };
 
   const configured = settings?.configured !== false;
   const tableReady = settings?.table_ready !== false;
@@ -73,6 +81,29 @@ export default function WhatsAppPage() {
         setError(mutationError.message);
       }
     });
+  }
+
+  function saveAgent() {
+    setError('');
+    saveMutation.mutate(
+      {
+        agent_enabled: draft.enabled,
+        agent_name: draft.name.trim(),
+        agent_tone: draft.tone
+      },
+      {
+        onSuccess: async (result) => {
+          setNotice(
+            result.agent_enabled
+              ? `Bot activado: responderá como ${result.agent_name || 'Asesor'}.`
+              : 'Bot desactivado.'
+          );
+          setAgentDraft(null);
+          await invalidate();
+        },
+        onError: (mutationError: Error) => setError(mutationError.message)
+      }
+    );
   }
 
   return (
@@ -140,6 +171,72 @@ export default function WhatsAppPage() {
         <p className="muted">
           "Desconectar" cierra la sesión de WhatsApp pero conserva la instancia, para poder reconectarla con un
           QR nuevo cuando lo necesites.
+        </p>
+      </Panel>
+
+      <Panel className="stack full-width">
+        <div className="section-heading">
+          <div><p className="eyebrow">BOT DE VENTAS</p><h2>Agente de ventas</h2></div>
+        </div>
+        <p className="muted">
+          El agente atiende el WhatsApp de la tienda: responde precios y disponibilidad con datos reales,
+          recomienda productos, toma el pedido y lo deja <strong>pendiente de pago</strong> para que la tienda
+          lo verifique. Los datos de la tienda (nombre, dirección, teléfono…) se toman de Configuración.
+        </p>
+        {!tableReady && !settingsQuery.isPending ? (
+          <Notice tone="error">Falta la migración del bot: ejecuta docs/migrations/v0.6.0-whatsapp-bot.sql.</Notice>
+        ) : null}
+        {draft.enabled && !settings?.webhook_token_ready ? (
+          <Notice tone="error">Define EVOLUTION_WEBHOOK_TOKEN en el .env para activar el bot.</Notice>
+        ) : null}
+        {draft.enabled && status !== 'open' ? (
+          <Notice>El WhatsApp debe estar conectado para que el bot pueda responder.</Notice>
+        ) : null}
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={draft.enabled}
+            onChange={(event) => setAgentDraft({ ...draft, enabled: event.target.checked })}
+            disabled={status === 'none' || !tableReady}
+          />
+          Bot activo (responde automáticamente)
+        </label>
+        <div className="field-row">
+          <label>Nombre del agente
+            <input
+              value={draft.name}
+              onChange={(event) => setAgentDraft({ ...draft, name: event.target.value })}
+              placeholder="Ej: Sara"
+              maxLength={60}
+              disabled={status === 'none' || !tableReady}
+            />
+          </label>
+          <label>Tono
+            <select
+              value={draft.tone}
+              onChange={(event) => setAgentDraft({ ...draft, tone: event.target.value })}
+              disabled={status === 'none' || !tableReady}
+            >
+              <option value="amable">Amable y cercano</option>
+              <option value="profesional">Profesional (usted)</option>
+              <option value="vendedor">Vendedor (persuasivo)</option>
+              <option value="cercano">Muy coloquial y breve</option>
+            </select>
+          </label>
+        </div>
+        <div className="action-grid">
+          <button
+            className="primary"
+            type="button"
+            onClick={saveAgent}
+            disabled={saveMutation.isPending || status === 'none' || !tableReady}
+          >
+            {saveMutation.isPending ? 'Guardando…' : 'Guardar agente'}
+          </button>
+        </div>
+        <p className="muted">
+          Los pedidos del bot se crean como ventas en estado <strong>Debida</strong> (visibles en Cuentas
+          abiertas y en Tienda Virtual → Pedidos App) y el stock se descuenta al confirmar el pedido.
         </p>
       </Panel>
 

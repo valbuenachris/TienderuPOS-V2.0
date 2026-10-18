@@ -144,6 +144,35 @@ export class EvolutionClient {
     }
   }
 
+  /** Envía un mensaje de texto por la instancia (usado por el bot de ventas). */
+  async sendText(instanceName: string, number: string, text: string): Promise<void> {
+    const { key } = this.requireConfig();
+    const result = await this.request(key, 'POST', `/message/sendText/${encodeURIComponent(instanceName)}`, {
+      number,
+      text
+    });
+    if (result.status >= 400) {
+      this.logger.error(`Evolution sendText -> ${result.status}: ${result.text.slice(0, 200)}`);
+      throw new BadRequestException(`Evolution respondió ${result.status} al enviar el mensaje.`);
+    }
+  }
+
+  /** Registra/actualiza el webhook de la instancia (al activar el bot de ventas). */
+  async setWebhook(instanceName: string, url: string): Promise<void> {
+    const { key } = this.requireConfig();
+    const result = await this.request(key, 'POST', `/webhook/set/${encodeURIComponent(instanceName)}`, {
+      webhook: {
+        enabled: true,
+        url,
+        events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
+      }
+    });
+    if (result.status >= 400) {
+      this.logger.error(`Evolution webhook/set -> ${result.status}: ${result.text.slice(0, 200)}`);
+      throw new BadRequestException(`Evolution respondió ${result.status} al registrar el webhook.`);
+    }
+  }
+
   private async request(
     key: string,
     method: 'GET' | 'POST' | 'DELETE',

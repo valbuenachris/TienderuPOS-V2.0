@@ -1,7 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { EvolutionClient } from './evolution.client';
 import { TenantWhatsappSettingsService } from './tenant-whatsapp-settings.service';
+import { UpdateWhatsappSettingsDto } from './whatsapp.dto';
 
 const STATUS_NONE = 'none';
 
@@ -24,7 +26,8 @@ export class WhatsappService {
   constructor(
     private readonly database: DatabaseService,
     private readonly client: EvolutionClient,
-    private readonly settings: TenantWhatsappSettingsService
+    private readonly settings: TenantWhatsappSettingsService,
+    private readonly config: ConfigService
   ) {}
 
   async settingsView(tenantId: string) {
@@ -54,8 +57,37 @@ export class WhatsappService {
       table_ready: ready,
       instance_name: row?.instanceName ?? null,
       status,
-      connected_at: connectedAt
+      connected_at: connectedAt,
+      agent_enabled: row?.agentEnabled ?? false,
+      agent_name: row?.agentName ?? null,
+      agent_tone: row?.agentTone ?? 'amable',
+      webhook_token_ready: (this.config.get<string>('EVOLUTION_WEBHOOK_TOKEN')?.trim() ?? '') !== ''
     };
+  }
+
+  /** Configuración del agente de ventas; al activarlo registra el webhook en Evolution. */
+  async updateSettings(tenantId: string, input: UpdateWhatsappSettingsDto) {
+    const row = await this.requireInstance(tenantId);
+    await this.settings.updateAgent(tenantId, {
+      agentEnabled: input.agent_enabled,
+      agentName: input.agent_name,
+      agentTone: input.agent_tone
+    });
+
+    if (input.agent_enabled === true) {
+      const token = this.config.get<string>('EVOLUTION_WEBHOOK_TOKEN')?.trim() ?? '';
+      if (token === '') {
+        throw new BadRequestException(
+          'Define EVOLUTION_WEBHOOK_TOKEN en el .env antes de activar el bot (seguridad del webhook).'
+        );
+      }
+      const base = (this.config.get<string>('PUBLIC_API_URL')?.trim() || 'https://pos.tienderu.com').replace(/\/+$/, '');
+      const url = `${base}/api/webhooks/evolution/${encodeURIComponent(row.instanceName)}?token=${encodeURIComponent(token)}`;
+      await this.client.setWebhook(row.instanceName, url);
+      this.logger.log(`Webhook del bot registrado en Evolution: ${row.instanceName}`);
+    }
+
+    return this.settingsView(tenantId);
   }
 
   async createInstance(tenantId: string) {

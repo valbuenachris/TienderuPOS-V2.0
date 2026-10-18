@@ -860,7 +860,14 @@ export interface WhatsappSettings {
   instance_name: string | null;
   status: 'none' | 'open' | 'connecting' | 'close';
   connected_at: string | null;
+  agent_enabled: boolean;
+  agent_name: string | null;
+  agent_tone: string;
+  webhook_token_ready: boolean;
 }
+
+export const updateWhatsappAgent = (payload: { agent_enabled?: boolean; agent_name?: string; agent_tone?: string }) =>
+  apiRequest<WhatsappSettings>('/whatsapp/settings', { method: 'PUT', body: JSON.stringify(payload) });
 
 export const fetchWhatsappSettings = () => apiRequest<WhatsappSettings>('/whatsapp/settings');
 

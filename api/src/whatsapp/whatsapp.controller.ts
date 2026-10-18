@@ -1,9 +1,10 @@
-import { Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Post, Put, Req, UseGuards } from '@nestjs/common';
 import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
+import { UpdateWhatsappSettingsDto } from './whatsapp.dto';
 import { WhatsappService } from './whatsapp.service';
 
 /** WhatsApp por tenant (Evolution API): solo el admin de la tienda. */
@@ -15,6 +16,11 @@ export class WhatsappController {
   @Get('settings')
   settings(@Req() request: PosRequest) {
     return this.whatsapp.settingsView(request.tenantId!);
+  }
+
+  @Put('settings')
+  updateSettings(@Req() request: PosRequest, @Body() body: UpdateWhatsappSettingsDto) {
+    return this.whatsapp.updateSettings(request.tenantId!, body);
   }
 
   @Post('instance')

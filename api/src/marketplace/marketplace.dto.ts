@@ -1,4 +1,4 @@
-import { Type } from 'class-transformer';
+import { Transform, Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   ArrayMinSize,
@@ -215,4 +215,74 @@ export class MarketplacePayoutMarkDto {
   @IsInt({ each: true })
   @Min(1, { each: true })
   suborder_ids?: number[];
+}
+
+/** Marca de la plataforma (tienderu.com): logo, favicon y datos del footer. */
+export class AdminBrandingDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  footer_description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(150)
+  footer_email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  footer_phone?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  footer_whatsapp?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  footer_address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  footer_instagram?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  footer_facebook?: string;
+}
+
+/** Banner pequeño del home (multipart: archivo `file` o `image_url`). */
+export class AdminBannerDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  target_url?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  image_url?: string;
+
+  @IsOptional()
+  @Transform(({ value }) =>
+    value === undefined || value === '' ? undefined : Number(value)
+  )
+  @IsInt()
+  @Min(0)
+  @Max(100000)
+  sort_order?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => value === true || value === 'true' || value === '1')
+  @IsBoolean()
+  active?: boolean;
 }

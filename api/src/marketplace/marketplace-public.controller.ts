@@ -1,5 +1,6 @@
 import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
 import { parsePagination } from '../common/pagination';
+import { MarketplaceBrandingService } from './marketplace-branding.service';
 import { MarketplaceCatalogService } from './marketplace-catalog.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 
@@ -17,21 +18,27 @@ function readQueryString(value: unknown): string | undefined {
 export class MarketplacePublicController {
   constructor(
     private readonly catalog: MarketplaceCatalogService,
-    private readonly settings: MarketplaceSettingsService
+    private readonly settings: MarketplaceSettingsService,
+    private readonly branding: MarketplaceBrandingService
   ) {}
 
   @Get('config')
-  config() {
+  async config() {
     return {
       currency: 'COP',
       shipping_flat: this.settings.shippingFlatValue(),
-      payment_enabled: this.settings.paymentEnabled()
+      payment_enabled: this.settings.paymentEnabled(),
+      branding: await this.branding.getPublicBranding()
     };
   }
 
   @Get('home')
-  home() {
-    return this.catalog.getHome();
+  async home() {
+    const [home, promos] = await Promise.all([
+      this.catalog.getHome(),
+      this.branding.getActiveBanners()
+    ]);
+    return { ...home, promos };
   }
 
   @Get('categories')

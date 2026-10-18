@@ -9,6 +9,7 @@ import {
 } from '../../pos-queries';
 import { markMarketplacePayouts } from '../../api';
 import { formatMoney } from '../../format';
+import { MarcaBannersTab } from './MarcaBannersTab';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_payment: 'Pago pendiente',
@@ -28,7 +29,7 @@ const STATUS_FILTERS = [
   { value: 'pending_payment', label: 'Pago pendiente' }
 ];
 
-export default function MarketplaceGlobalPage() {
+function OrdersSummaryTab() {
   const queryClient = useQueryClient();
   const { token, tenantId, settings } = useSession();
   const currency = settings?.currency_prefix || '$';
@@ -63,7 +64,6 @@ export default function MarketplaceGlobalPage() {
 
   return (
     <>
-      <PageHeader eyebrow="PLATAFORMA · TIENDERU.COM" title="Marketplace global" />
       <Panel className="stack full-width">
         <p className="muted">
           Pedidos de la tienda pública, GMV, comisión de la plataforma y liquidación a los vendedores.
@@ -177,6 +177,34 @@ export default function MarketplaceGlobalPage() {
           />
         ) : null}
       </Panel>
+    </>
+  );
+}
+
+type GlobalTab = 'orders' | 'brand';
+
+export default function MarketplaceGlobalPage() {
+  const [tab, setTab] = useState<GlobalTab>('orders');
+  return (
+    <>
+      <PageHeader eyebrow="PLATAFORMA · TIENDERU.COM" title="Marketplace global" />
+      <div className="tabs">
+        <button
+          type="button"
+          className={`tab ${tab === 'orders' ? 'active' : ''}`}
+          onClick={() => setTab('orders')}
+        >
+          Pedidos y liquidaciones
+        </button>
+        <button
+          type="button"
+          className={`tab ${tab === 'brand' ? 'active' : ''}`}
+          onClick={() => setTab('brand')}
+        >
+          Marca y banners
+        </button>
+      </div>
+      {tab === 'orders' ? <OrdersSummaryTab /> : <MarcaBannersTab />}
     </>
   );
 }

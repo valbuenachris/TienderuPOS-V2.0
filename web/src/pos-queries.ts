@@ -34,6 +34,8 @@ import {
   fetchPurchases,
   fetchMarketplaceAdminOrders,
   fetchMarketplaceAdminSummary,
+  fetchMarketplaceBanners,
+  fetchMarketplaceBranding,
   fetchMarketplaceOrders,
   fetchMarketplaceSettings,
   fetchMarketplaceSummary,
@@ -756,6 +758,28 @@ export function useMarketplaceAdminSummaryQuery(token: string | null, tenantId: 
   return useQuery({
     queryKey: ['marketplace-admin-summary', tenantId],
     queryFn: fetchMarketplaceAdminSummary,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Marketplace global · Marca y banners (v0.10.0)
+// ---------------------------------------------------------------------------
+
+export function useMarketplaceBrandingQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace-branding', tenantId],
+    queryFn: fetchMarketplaceBranding,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceBannersQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['marketplace-banners', tenantId],
+    queryFn: fetchMarketplaceBanners,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

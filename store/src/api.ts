@@ -123,17 +123,40 @@ export interface Banner {
   image_url: string;
 }
 
+export interface StoreBranding {
+  logo_url: string | null;
+  favicon_url: string | null;
+  footer: {
+    description: string | null;
+    email: string | null;
+    phone: string | null;
+    whatsapp: string | null;
+    address: string | null;
+    instagram: string | null;
+    facebook: string | null;
+  };
+}
+
+export interface PromoBanner {
+  id: number;
+  title: string | null;
+  image_url: string;
+  target_url: string | null;
+}
+
 export interface StoreHome {
   banners: Banner[];
   categories: Category[];
   newest: Product[];
   top_rated: Product[];
+  promos?: PromoBanner[];
 }
 
 export interface StoreConfig {
   currency: string;
   shipping_flat: string;
   payment_enabled?: boolean;
+  branding?: StoreBranding | null;
 }
 
 export interface Review {

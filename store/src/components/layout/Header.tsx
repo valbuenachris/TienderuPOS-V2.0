@@ -1,10 +1,41 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest, formatMoney, type Paginated, type Product } from '../../api';
+import { apiRequest, formatMoney, type Paginated, type Product, type StoreConfig } from '../../api';
 import { useAuth } from '../../auth';
 import { useCart } from '../../cart';
 import { Icon } from '../ui/Icon';
+
+function BrandLogo() {
+  const config = useQuery({
+    queryKey: ['store-config'],
+    queryFn: () => apiRequest<StoreConfig>('/marketplace/config'),
+    staleTime: 10 * 60 * 1000
+  });
+  const [broken, setBroken] = useState(false);
+  const logoUrl = config.data?.branding?.logo_url ?? null;
+
+  if (logoUrl && !broken) {
+    return (
+      <img
+        src={logoUrl}
+        alt="Tienderu.com"
+        className="h-9 w-auto max-w-[150px] object-contain"
+        onError={() => setBroken(true)}
+      />
+    );
+  }
+  return (
+    <>
+      <span className="flex h-9 w-9 items-center justify-center rounded-md bg-accent-400 text-xl font-extrabold lowercase text-navy-900">
+        t
+      </span>
+      <span className="hidden text-xl font-bold sm:block">
+        tienderu<span className="text-sm font-semibold text-accent-400">.com</span>
+      </span>
+    </>
+  );
+}
 
 const QUICK_LINKS = [
   { to: '/buscar', label: 'Todo' },
@@ -245,12 +276,7 @@ export function Header() {
           </button>
 
           <Link to="/" className="flex shrink-0 items-center gap-2 rounded p-1" aria-label="Tienderu.com — Inicio">
-            <span className="flex h-9 w-9 items-center justify-center rounded-md bg-accent-400 text-xl font-extrabold lowercase text-navy-900">
-              t
-            </span>
-            <span className="hidden text-xl font-bold sm:block">
-              tienderu<span className="text-sm font-semibold text-accent-400">.com</span>
-            </span>
+            <BrandLogo />
           </Link>
 
           <div className="hidden flex-1 justify-center sm:flex">
@@ -302,9 +328,11 @@ export function Header() {
               className="relative flex items-end gap-1 rounded px-2 py-1 transition-colors hover:bg-white/10"
               aria-label={`Carrito de compras, ${cart.count} productos`}
             >
-              <span className="absolute -top-1 left-6 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-400 px-1 text-xs font-bold text-navy-900">
-                {cart.count}
-              </span>
+              {cart.count > 0 ? (
+                <span className="absolute -top-1 left-6 flex h-5 min-w-5 items-center justify-center rounded-full bg-accent-400 px-1 text-xs font-bold text-navy-900">
+                  {cart.count}
+                </span>
+              ) : null}
               <Icon name="cart" className="h-7 w-7" />
               <span className="hidden pb-0.5 text-sm font-bold sm:block">Carrito</span>
             </Link>

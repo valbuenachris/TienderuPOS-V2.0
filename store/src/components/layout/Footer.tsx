@@ -1,7 +1,39 @@
 import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest, type StoreConfig } from '../../api';
 import { Icon } from '../ui/Icon';
 
+function whatsappLink(value: string): string {
+  return `https://wa.me/${value.replace(/\D/g, '')}`;
+}
+
+function socialLink(value: string, base: string): string {
+  if (/^https?:\/\//i.test(value)) return value;
+  return `${base}/${value.replace(/^@/, '')}`;
+}
+
+function mapsLink(address: string): string {
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+}
+
 export function Footer() {
+  const config = useQuery({
+    queryKey: ['store-config'],
+    queryFn: () => apiRequest<StoreConfig>('/marketplace/config'),
+    staleTime: 10 * 60 * 1000
+  });
+  const branding = config.data?.branding ?? null;
+
+  const description =
+    branding?.footer.description ??
+    'Las tiendas de tu ciudad, en línea. Compra local con pago seguro y envío a domicilio.';
+  const email = branding?.footer.email ?? 'info@tienderu.com';
+  const phone = branding?.footer.phone ?? '310 403 9092';
+  const whatsapp = branding?.footer.whatsapp;
+  const address = branding?.footer.address;
+  const instagram = branding?.footer.instagram;
+  const facebook = branding?.footer.facebook;
+
   return (
     <footer className="mt-12 bg-navy-800 text-white/80">
       <button
@@ -17,9 +49,7 @@ export function Footer() {
       <div className="container-page grid gap-8 py-10 sm:grid-cols-2 lg:grid-cols-4">
         <div>
           <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white">Tienderu.com</h4>
-          <p className="text-sm leading-relaxed">
-            Las tiendas de tu ciudad, en línea. Compra local con pago seguro y envío a domicilio.
-          </p>
+          <p className="text-sm leading-relaxed">{description}</p>
         </div>
         <div>
           <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white">Compra</h4>
@@ -59,11 +89,70 @@ export function Footer() {
           <h4 className="mb-3 text-sm font-bold uppercase tracking-wide text-white">Ayuda</h4>
           <ul className="space-y-2 text-sm">
             <li className="flex items-center gap-2">
-              <Icon name="mail" className="h-4 w-4 shrink-0" /> info@tienderu.com
+              <Icon name="mail" className="h-4 w-4 shrink-0" />
+              <a href={`mailto:${email}`} className="transition-colors hover:text-accent-400">
+                {email}
+              </a>
             </li>
             <li className="flex items-center gap-2">
-              <Icon name="phone" className="h-4 w-4 shrink-0" /> 310 403 9092
+              <Icon name="phone" className="h-4 w-4 shrink-0" />
+              <a
+                href={`tel:${phone.replace(/[^\d+]/g, '')}`}
+                className="transition-colors hover:text-accent-400"
+              >
+                {phone}
+              </a>
             </li>
+            {whatsapp ? (
+              <li className="flex items-center gap-2">
+                <Icon name="phone" className="h-4 w-4 shrink-0" />
+                <a
+                  href={whatsappLink(whatsapp)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition-colors hover:text-accent-400"
+                >
+                  WhatsApp {whatsapp}
+                </a>
+              </li>
+            ) : null}
+            {address ? (
+              <li className="flex items-start gap-2">
+                <Icon name="map-pin" className="mt-0.5 h-4 w-4 shrink-0" />
+                <a
+                  href={mapsLink(address)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="transition-colors hover:text-accent-400"
+                >
+                  {address}
+                </a>
+              </li>
+            ) : null}
+            {instagram || facebook ? (
+              <li className="flex items-center gap-3 pt-1">
+                {instagram ? (
+                  <a
+                    href={socialLink(instagram, 'https://instagram.com')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium transition-colors hover:text-accent-400"
+                  >
+                    Instagram
+                  </a>
+                ) : null}
+                {facebook ? (
+                  <a
+                    href={socialLink(facebook, 'https://facebook.com')}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-medium transition-colors hover:text-accent-400"
+                  >
+                    Facebook
+                  </a>
+                ) : null}
+              </li>
+            ) : null}
           </ul>
         </div>
       </div>

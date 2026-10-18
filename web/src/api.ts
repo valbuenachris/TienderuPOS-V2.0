@@ -1522,3 +1522,108 @@ export const markMarketplacePayouts = (payload: { tenant_id: string; suborder_id
     method: 'PATCH',
     body: JSON.stringify(payload)
   });
+
+// ---------------------------------------------------------------------------
+// Marketplace global · Marca y banners (v0.10.0)
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceAdminBranding {
+  id: number;
+  logo_url: string | null;
+  favicon_url: string | null;
+  footer_description: string | null;
+  footer_email: string | null;
+  footer_phone: string | null;
+  footer_whatsapp: string | null;
+  footer_address: string | null;
+  footer_instagram: string | null;
+  footer_facebook: string | null;
+  updated_at: string | null;
+}
+
+export interface MarketplaceBannerAdminRow {
+  id: number;
+  slot: string;
+  title: string | null;
+  image_url: string;
+  target_url: string | null;
+  sort_order: number;
+  active: boolean;
+  created_at: string | null;
+}
+
+export interface MarketplaceBrandingPayload {
+  footer_description?: string;
+  footer_email?: string;
+  footer_phone?: string;
+  footer_whatsapp?: string;
+  footer_address?: string;
+  footer_instagram?: string;
+  footer_facebook?: string;
+  logo?: File | null;
+  favicon?: File | null;
+}
+
+export const fetchMarketplaceBranding = () =>
+  apiRequest<MarketplaceAdminBranding>('/marketplace/admin/branding');
+
+export const updateMarketplaceBranding = (payload: MarketplaceBrandingPayload) => {
+  const form = new FormData();
+  if (payload.logo) form.append('logo', payload.logo);
+  if (payload.favicon) form.append('favicon', payload.favicon);
+  const textFields = [
+    'footer_description',
+    'footer_email',
+    'footer_phone',
+    'footer_whatsapp',
+    'footer_address',
+    'footer_instagram',
+    'footer_facebook'
+  ] as const;
+  for (const field of textFields) {
+    const value = payload[field];
+    if (value !== undefined) form.append(field, value);
+  }
+  return apiRequest<MarketplaceAdminBranding>('/marketplace/admin/branding', {
+    method: 'PUT',
+    body: form
+  });
+};
+
+export const fetchMarketplaceBanners = () =>
+  apiRequest<MarketplaceBannerAdminRow[]>('/marketplace/admin/banners');
+
+export interface MarketplaceBannerPayload {
+  file?: File | null;
+  image_url?: string;
+  title?: string;
+  target_url?: string;
+  sort_order?: number;
+  active?: boolean;
+}
+
+function buildBannerForm(payload: MarketplaceBannerPayload): FormData {
+  const form = new FormData();
+  if (payload.file) form.append('file', payload.file);
+  if (payload.image_url !== undefined) form.append('image_url', payload.image_url);
+  if (payload.title !== undefined) form.append('title', payload.title);
+  if (payload.target_url !== undefined) form.append('target_url', payload.target_url);
+  if (payload.sort_order !== undefined) form.append('sort_order', String(payload.sort_order));
+  if (payload.active !== undefined) form.append('active', String(payload.active));
+  return form;
+}
+
+export const createMarketplaceBanner = (payload: MarketplaceBannerPayload) =>
+  apiRequest<MarketplaceBannerAdminRow>('/marketplace/admin/banners', {
+    method: 'POST',
+    body: buildBannerForm(payload)
+  });
+
+export const updateMarketplaceBanner = (id: number, payload: MarketplaceBannerPayload) =>
+  apiRequest<MarketplaceBannerAdminRow>(`/marketplace/admin/banners/${id}`, {
+    method: 'PUT',
+    body: buildBannerForm(payload)
+  });
+
+export const deleteMarketplaceBanner = (id: number) =>
+  apiRequest<{ id: number; deleted: boolean }>(`/marketplace/admin/banners/${id}`, { method: 'DELETE' });

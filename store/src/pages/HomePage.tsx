@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest, type Banner, type Product, type StoreHome } from '../api';
+import { apiRequest, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
 import { ProductCard } from '../components/ProductCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
@@ -56,6 +56,8 @@ export function HomePage() {
 
       <TrustRow />
 
+      {data.promos && data.promos.length > 0 ? <PromoStrip promos={data.promos} /> : null}
+
       {data.categories.length > 0 ? (
         <section aria-label="Categorías" className="mb-8">
           <h2 className="mb-3 text-lg font-bold text-ink sm:text-xl">Compra por categoría</h2>
@@ -93,6 +95,57 @@ export function HomePage() {
         <ProductRail title="Recién llegados a la tienda" products={data.newest} moreHref="/buscar?sort=newest" />
       ) : null}
     </div>
+  );
+}
+
+/** Fila de banners pequeños del home (solo imagen; toda la tarjeta es clicable si hay link). */
+function PromoStrip({ promos }: { promos: PromoBanner[] }) {
+  const columns =
+    promos.length === 1
+      ? 'grid-cols-1'
+      : promos.length === 2
+        ? 'grid-cols-1 sm:grid-cols-2'
+        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+
+  return (
+    <section aria-label="Promociones destacadas" className={`mb-8 grid gap-4 ${columns}`}>
+      {promos.map((promo) => {
+        const image = (
+          <img
+            src={promo.image_url}
+            alt={promo.title ?? 'Promoción'}
+            loading="lazy"
+            className="h-36 w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-44"
+          />
+        );
+        const target = promo.target_url;
+        if (!target) {
+          return (
+            <div key={promo.id} className="group overflow-hidden rounded-card">
+              {image}
+            </div>
+          );
+        }
+        if (target.startsWith('/')) {
+          return (
+            <Link key={promo.id} to={target} className="group block overflow-hidden rounded-card">
+              {image}
+            </Link>
+          );
+        }
+        return (
+          <a
+            key={promo.id}
+            href={target}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="group block overflow-hidden rounded-card"
+          >
+            {image}
+          </a>
+        );
+      })}
+    </section>
   );
 }
 

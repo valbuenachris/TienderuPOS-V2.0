@@ -5,6 +5,7 @@ import { PaymentsModule } from '../payments/payments.module';
 import { SalesModule } from '../sales/sales.module';
 import { MarketplaceAdminController } from './marketplace-admin.controller';
 import { MarketplaceAuthController } from './marketplace-auth.controller';
+import { MarketplaceBrandingService } from './marketplace-branding.service';
 import { MarketplaceCatalogService } from './marketplace-catalog.service';
 import { MarketplaceCustomerGuard } from './marketplace-customer.guard';
 import { MarketplaceCustomerController } from './marketplace-customer.controller';
@@ -30,6 +31,7 @@ import { MarketplaceTenantController } from './marketplace-tenant.controller';
     MarketplaceCatalogService,
     MarketplaceOrdersService,
     MarketplacePaymentsService,
+    MarketplaceBrandingService,
     MarketplaceCustomerGuard
   ],
   exports: [MarketplacePaymentsService, MarketplaceSettingsService]

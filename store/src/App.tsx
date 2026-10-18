@@ -1,5 +1,7 @@
 import { lazy, Suspense, useEffect, type ReactNode } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { apiRequest, type StoreConfig } from './api';
 import { useAuth } from './auth';
 import { Header } from './components/layout/Header';
 import { Footer } from './components/layout/Footer';
@@ -47,10 +49,30 @@ function ScrollToTop() {
   return null;
 }
 
+/** Favicon dinámico desde la marca configurada en el POS (fallback: el estático del index.html). */
+function StoreFavicon() {
+  const { data } = useQuery({
+    queryKey: ['store-config'],
+    queryFn: () => apiRequest<StoreConfig>('/marketplace/config'),
+    staleTime: 10 * 60 * 1000
+  });
+  const faviconUrl = data?.branding?.favicon_url ?? null;
+  useEffect(() => {
+    if (!faviconUrl) return;
+    const existing = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
+    const link = existing ?? document.createElement('link');
+    link.rel = 'icon';
+    link.href = faviconUrl;
+    if (!existing) document.head.appendChild(link);
+  }, [faviconUrl]);
+  return null;
+}
+
 export function App() {
   return (
     <div className="flex min-h-screen flex-col">
       <ScrollToTop />
+      <StoreFavicon />
       <Header />
       <main className="flex-1 pb-16 sm:pb-0">
         <Suspense fallback={<PageSkeleton />}>

@@ -97,12 +97,10 @@ export function HomePage() {
   );
 }
 
-/** Banners pequeños del home (solo imagen, medio tamaño: 2 por fila; clicables si hay link). */
+/** Banners pequeños del home: 3 columnas en una sola línea (solo imagen; clicables si hay link). */
 function PromoStrip({ promos }: { promos: PromoBanner[] }) {
-  const columns = promos.length === 1 ? 'grid-cols-1' : 'grid-cols-2';
-
   return (
-    <section aria-label="Promociones destacadas" className={`mb-8 grid gap-3 sm:gap-4 ${columns}`}>
+    <section aria-label="Promociones destacadas" className="mb-8 grid grid-cols-3 gap-3 sm:gap-4">
       {promos.map((promo) => {
         const image = (
           <img

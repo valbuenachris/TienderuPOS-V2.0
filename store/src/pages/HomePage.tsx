@@ -56,8 +56,6 @@ export function HomePage() {
 
       <TrustRow />
 
-      {data.promos && data.promos.length > 0 ? <PromoStrip promos={data.promos} /> : null}
-
       {data.categories.length > 0 ? (
         <section aria-label="Categorías" className="mb-8">
           <h2 className="mb-3 text-lg font-bold text-ink sm:text-xl">Compra por categoría</h2>
@@ -91,6 +89,7 @@ export function HomePage() {
       {data.top_rated.length > 0 ? (
         <ProductRail title="Mejor calificados" products={data.top_rated} moreHref="/buscar?sort=rating" />
       ) : null}
+      {data.promos && data.promos.length > 0 ? <PromoStrip promos={data.promos} /> : null}
       {data.newest.length > 0 ? (
         <ProductRail title="Recién llegados a la tienda" products={data.newest} moreHref="/buscar?sort=newest" />
       ) : null}
@@ -98,24 +97,19 @@ export function HomePage() {
   );
 }
 
-/** Fila de banners pequeños del home (solo imagen; toda la tarjeta es clicable si hay link). */
+/** Banners pequeños del home (solo imagen, medio tamaño: 2 por fila; clicables si hay link). */
 function PromoStrip({ promos }: { promos: PromoBanner[] }) {
-  const columns =
-    promos.length === 1
-      ? 'grid-cols-1'
-      : promos.length === 2
-        ? 'grid-cols-1 sm:grid-cols-2'
-        : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3';
+  const columns = promos.length === 1 ? 'grid-cols-1' : 'grid-cols-2';
 
   return (
-    <section aria-label="Promociones destacadas" className={`mb-8 grid gap-4 ${columns}`}>
+    <section aria-label="Promociones destacadas" className={`mb-8 grid gap-3 sm:gap-4 ${columns}`}>
       {promos.map((promo) => {
         const image = (
           <img
             src={promo.image_url}
             alt={promo.title ?? 'Promoción'}
             loading="lazy"
-            className="h-36 w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-44"
+            className="h-18 w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-22"
           />
         );
         const target = promo.target_url;

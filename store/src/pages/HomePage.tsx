@@ -107,7 +107,7 @@ function PromoStrip({ promos }: { promos: PromoBanner[] }) {
             src={promo.image_url}
             alt={promo.title ?? 'Promoción'}
             loading="lazy"
-            className="h-18 w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-22"
+            className="h-[5.85rem] w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-[7.15rem]"
           />
         );
         const target = promo.target_url;

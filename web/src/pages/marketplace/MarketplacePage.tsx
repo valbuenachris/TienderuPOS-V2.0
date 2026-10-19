@@ -136,7 +136,12 @@ function OrdersTab() {
         Pedidos de tienderu.com que le corresponden a tu tienda. Prepara, despacha y marca la entrega de tu parte.
       </p>
       {notice ? <Notice tone={/no |error|inválid|invalid/i.test(notice) ? 'error' : 'success'}>{notice}</Notice> : null}
-      {query.isError ? <Notice tone="error">No fue posible cargar los pedidos del marketplace.</Notice> : null}
+      {query.isError ? (
+        <Notice tone="error">
+          No fue posible cargar los pedidos del marketplace
+          {query.error instanceof Error ? `: ${query.error.message}` : '.'}
+        </Notice>
+      ) : null}
 
       <div className="tab-filters">
         {STATUS_FILTERS.map((item) => (
@@ -202,7 +207,7 @@ function OrdersTab() {
                 </td>
               </tr>
             ))}
-            {rows.length === 0 && !query.isPending ? (
+            {rows.length === 0 && !query.isPending && !query.isError ? (
               <tr><td colSpan={8} className="empty">No hay pedidos del marketplace {status ? 'con este estado' : 'todavía'}.</td></tr>
             ) : null}
           </tbody>

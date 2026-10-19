@@ -188,7 +188,12 @@ function OrdersSummaryTab() {
             </button>
           ))}
         </div>
-        {orders.isError ? <Notice tone="error">No fue posible cargar los pedidos.</Notice> : null}
+        {orders.isError ? (
+          <Notice tone="error">
+            No fue posible cargar los pedidos
+            {orders.error instanceof Error ? `: ${orders.error.message}` : '.'}
+          </Notice>
+        ) : null}
         <div className="table-wrap">
           <table className="data-table">
             <thead>
@@ -216,7 +221,7 @@ function OrdersSummaryTab() {
                   <td>{order.created_at ? new Date(order.created_at).toLocaleDateString('es-CO') : '—'}</td>
                 </tr>
               ))}
-              {rows.length === 0 && !orders.isPending ? (
+              {rows.length === 0 && !orders.isPending && !orders.isError ? (
                 <tr><td colSpan={8} className="empty">No hay pedidos {status ? 'con este estado' : 'todavía'}.</td></tr>
               ) : null}
             </tbody>

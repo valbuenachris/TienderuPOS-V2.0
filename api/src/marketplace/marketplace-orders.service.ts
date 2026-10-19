@@ -620,7 +620,7 @@ export class MarketplaceOrdersService {
     let statusFilter = '';
     if (status !== undefined && status.trim() !== '') {
       const clean = status.trim().toLowerCase();
-      if (!['pending', 'paid', 'preparing', 'shipped', 'delivered'].includes(clean)) {
+      if (!['pending', 'paid', 'preparing', 'shipped', 'delivered', 'cancelled'].includes(clean)) {
         throw new BadRequestException('invalid status');
       }
       values.push(clean);

@@ -162,10 +162,16 @@ export interface StoreConfig {
 
 export interface Review {
   id: number;
+  source: string;
   rating: number;
   comment: string | null;
   created_at: string | null;
   customer_name: string | null;
+}
+
+export interface MyReviewContext {
+  review: Review | null;
+  can_review: boolean;
 }
 
 export interface ReviewsPayload {
@@ -244,8 +250,11 @@ export interface Order {
   shipping_notes: string | null;
   products_total: string;
   shipping_total: string;
+  discount_total: string;
+  coupon_code: string | null;
   grand_total: string;
   status: 'pending_payment' | 'paid' | 'preparing' | 'shipped' | 'delivered' | 'cancelled';
+  payment_method: string;
   payment_status: 'pending' | 'paid' | 'failed';
   checkout_url: string | null;
   paid_at: string | null;
@@ -263,9 +272,20 @@ export interface CheckoutResponse {
   payment_method: string;
   products_total: string;
   shipping_total: string;
+  discount_total: string;
+  coupon_code: string | null;
   grand_total: string;
   payment_url: string | null;
 }
+
+export const submitMarketplaceReview = (productId: number, rating: number, comment: string) =>
+  apiRequest<Review>(`/marketplace/products/${productId}/reviews`, {
+    method: 'POST',
+    body: JSON.stringify({ rating, comment: comment.trim() === '' ? undefined : comment.trim() })
+  });
+
+export const fetchMyReviewContext = (productId: number) =>
+  apiRequest<MyReviewContext>(`/marketplace/products/${productId}/my-review`);
 
 export const payMarketplaceOrder = (orderId: number) =>
   apiRequest<{ order_id: number; order_number: string; payment_url: string; payment_method: string }>(

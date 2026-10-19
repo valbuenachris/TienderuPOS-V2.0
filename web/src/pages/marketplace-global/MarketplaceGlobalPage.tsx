@@ -11,6 +11,7 @@ import { markMarketplacePayouts } from '../../api';
 import { formatMoney } from '../../format';
 import { MarcaBannersTab } from './MarcaBannersTab';
 import { ClientesTab } from './ClientesTab';
+import { CuponesTab } from './CuponesTab';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_payment: 'Pago pendiente',
@@ -182,7 +183,7 @@ function OrdersSummaryTab() {
   );
 }
 
-type GlobalTab = 'orders' | 'brand' | 'customers';
+type GlobalTab = 'orders' | 'brand' | 'customers' | 'coupons';
 
 export default function MarketplaceGlobalPage() {
   const [tab, setTab] = useState<GlobalTab>('orders');
@@ -211,8 +212,23 @@ export default function MarketplaceGlobalPage() {
         >
           Clientes
         </button>
+        <button
+          type="button"
+          className={`tab ${tab === 'coupons' ? 'active' : ''}`}
+          onClick={() => setTab('coupons')}
+        >
+          Cupones
+        </button>
       </div>
-      {tab === 'orders' ? <OrdersSummaryTab /> : tab === 'brand' ? <MarcaBannersTab /> : <ClientesTab />}
+      {tab === 'orders' ? (
+        <OrdersSummaryTab />
+      ) : tab === 'brand' ? (
+        <MarcaBannersTab />
+      ) : tab === 'customers' ? (
+        <ClientesTab />
+      ) : (
+        <CuponesTab />
+      )}
     </>
   );
 }

@@ -1,14 +1,23 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { apiRequest, formatMoney, type ProductDetail, type ReviewsPayload } from '../api';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import {
+  ApiError,
+  apiRequest,
+  fetchMyReviewContext,
+  formatMoney,
+  submitMarketplaceReview,
+  type ProductDetail,
+  type ReviewsPayload
+} from '../api';
+import { useAuth } from '../auth';
 import { useCart } from '../cart';
 import { ProductCard } from '../components/ProductCard';
 import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
 import { Rating } from '../components/ui/Rating';
-import { Select } from '../components/ui/Input';
+import { Select, Textarea } from '../components/ui/Input';
 import { ProductGridSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
 import { pushRecent, snapshotProduct, toggleFavorite, useFavorites } from '../local-lists';
@@ -20,10 +29,15 @@ export function ProductPage() {
   const navigate = useNavigate();
   const cart = useCart();
   const toast = useToast();
+  const { customer } = useAuth();
+  const queryClient = useQueryClient();
 
   const [quantity, setQuantity] = useState(1);
   const [imageIndex, setImageIndex] = useState(0);
   const [reviewsPage, setReviewsPage] = useState(1);
+  const [reviewRating, setReviewRating] = useState(0);
+  const [reviewComment, setReviewComment] = useState('');
+  const [reviewError, setReviewError] = useState<string | null>(null);
 
   const product = useQuery({
     queryKey: ['store-product', productId],
@@ -36,6 +50,30 @@ export function ProductPage() {
     queryFn: () =>
       apiRequest<ReviewsPayload>(`/marketplace/products/${productId}/reviews?page=${reviewsPage}&limit=10`),
     enabled: Number.isSafeInteger(productId) && productId > 0
+  });
+
+  const myReview = useQuery({
+    queryKey: ['store-my-review', productId],
+    queryFn: () => fetchMyReviewContext(productId),
+    enabled: Boolean(customer) && Number.isSafeInteger(productId) && productId > 0
+  });
+
+  const submitReview = useMutation({
+    mutationFn: () => submitMarketplaceReview(productId, reviewRating, reviewComment),
+    onSuccess: () => {
+      toast.push('¡Gracias por tu calificación!');
+      setReviewRating(0);
+      setReviewComment('');
+      setReviewError(null);
+      void queryClient.invalidateQueries({ queryKey: ['store-product-reviews', productId] });
+      void queryClient.invalidateQueries({ queryKey: ['store-my-review', productId] });
+      void queryClient.invalidateQueries({ queryKey: ['store-product', productId] });
+    },
+    onError: (caught) => {
+      setReviewError(
+        caught instanceof ApiError ? caught.message : 'No pudimos guardar tu calificación.'
+      );
+    }
   });
 
   const images = useMemo(() => {
@@ -297,6 +335,76 @@ export function ProductPage() {
 
       <section className="mt-8 rounded-card bg-white p-5 shadow-card sm:p-6" aria-label="Opiniones de clientes">
         <h2 className="mb-4 text-lg font-bold text-ink">Opiniones de clientes</h2>
+
+        {!customer ? (
+          <p className="mb-4 text-sm text-ink-soft">
+            <Link
+              to={`/ingresar?next=/producto/${productId}`}
+              className="font-semibold text-link-600 hover:underline"
+            >
+              Inicia sesión
+            </Link>{' '}
+            para calificar este producto si lo compraste.
+          </p>
+        ) : myReview.data?.review ? (
+          <div className="mb-5 rounded-card border border-line bg-line-soft/40 p-4">
+            <p className="text-sm font-semibold text-ink">Tu calificación</p>
+            <div className="mt-1 flex items-center gap-3">
+              <Rating rating={myReview.data.review.rating} showEmpty={false} />
+              <span className="text-xs text-ink-soft">Gracias por calificar este producto.</span>
+            </div>
+            {myReview.data.review.comment ? (
+              <p className="mt-1 text-sm text-ink/90">{myReview.data.review.comment}</p>
+            ) : null}
+          </div>
+        ) : myReview.data?.can_review ? (
+          <form
+            className="mb-5 rounded-card border border-line bg-line-soft/40 p-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (reviewRating < 1) {
+                setReviewError('Elige de 1 a 5 estrellas.');
+                return;
+              }
+              setReviewError(null);
+              submitReview.mutate();
+            }}
+          >
+            <p className="text-sm font-semibold text-ink">Califica este producto</p>
+            <div className="mt-2 flex items-center gap-0.5" role="radiogroup" aria-label="Calificación">
+              {[1, 2, 3, 4, 5].map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  role="radio"
+                  aria-checked={reviewRating === value}
+                  aria-label={`${value} ${value === 1 ? 'estrella' : 'estrellas'}`}
+                  onClick={() => setReviewRating(value)}
+                  className="rounded p-0.5 transition-transform hover:scale-110"
+                >
+                  <Icon
+                    name="star"
+                    className={`h-6 w-6 ${value <= reviewRating ? 'text-star' : 'text-star-empty'}`}
+                  />
+                </button>
+              ))}
+            </div>
+            <Textarea
+              value={reviewComment}
+              onChange={(event) => setReviewComment(event.target.value)}
+              maxLength={500}
+              rows={3}
+              placeholder="¿Qué te pareció el producto? (opcional)"
+              aria-label="Comentario de la opinión"
+              className="mt-3"
+            />
+            {reviewError ? <p className="mt-2 text-sm font-semibold text-price">{reviewError}</p> : null}
+            <Button type="submit" size="sm" className="mt-3" disabled={submitReview.isPending}>
+              {submitReview.isPending ? 'Enviando…' : 'Publicar opinión'}
+            </Button>
+          </form>
+        ) : null}
+
         {reviews.data && reviews.data.reviews_count === 0 ? (
           <p className="text-sm text-ink-soft">Este producto aún no tiene opiniones.</p>
         ) : null}
@@ -313,7 +421,7 @@ export function ProductPage() {
             </div>
             <ul className="flex flex-col divide-y divide-line-soft">
               {reviews.data.reviews.data.map((review) => (
-                <li key={review.id} className="py-4 first:pt-0">
+                <li key={`${review.source}-${review.id}`} className="py-4 first:pt-0">
                   <div className="mb-1 flex flex-wrap items-center gap-3">
                     <strong className="text-sm text-ink">{review.customer_name ?? 'Cliente'}</strong>
                     <Rating rating={review.rating} showEmpty={false} />

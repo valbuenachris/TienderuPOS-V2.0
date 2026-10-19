@@ -41,18 +41,21 @@ export class MarketplaceNotificationsService {
     orderNumber: string;
     itemsCount: number;
     tenantTotal: string;
+    /** Contraentrega (v0.11.4): el vendedor cobra al entregar. */
+    cod?: boolean;
   }): Promise<void> {
     const instance = await this.openInstance(input.tenantId);
     if (!instance) return;
     const phone = await this.tenantContactPhone(input.tenantId);
     if (!phone) return;
-    await this.send(
-      instance,
-      phone,
-      `🛒 Tienderu.com · Pedido pagado ${input.orderNumber}\n` +
+    const text = input.cod
+      ? `🛒 Tienderu.com · Nuevo pedido contraentrega ${input.orderNumber}\n` +
         `${input.itemsCount} producto(s) de ${input.tenantName} por ${formatMoney(input.tenantTotal)}\n` +
-        `Recibes ${formatMoney(input.tenantTotal)}. Prepáralo en el POS → Marketplace → Pedidos.`
-    );
+        `Cobras ${formatMoney(input.tenantTotal)} al entregar. Prepáralo en el POS → Marketplace → Pedidos.`
+      : `🛒 Tienderu.com · Pedido pagado ${input.orderNumber}\n` +
+        `${input.itemsCount} producto(s) de ${input.tenantName} por ${formatMoney(input.tenantTotal)}\n` +
+        `Recibes ${formatMoney(input.tenantTotal)}. Prepáralo en el POS → Marketplace → Pedidos.`;
+    await this.send(instance, phone, text);
   }
 
   /** Avisa al comprador el estado de su sub-pedido (pagado/enviado/entregado). */

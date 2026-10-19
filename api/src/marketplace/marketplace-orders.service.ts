@@ -4,11 +4,13 @@ import { PosMarketplaceCustomer } from '../auth/auth.types';
 import { CatalogService } from '../catalog/catalog.service';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService, SqlExecutor } from '../database/database.service';
+import { SalesService } from '../sales/sales.service';
 import {
   MarketplaceCheckoutDto,
   MarketplaceOrderStatusDto,
   MarketplacePayoutMarkDto
 } from './marketplace.dto';
+import { MarketplaceCouponsService } from './marketplace-coupons.service';
 import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
 import { MarketplaceNotificationsService } from './marketplace-notifications.service';
 import { computeParentOrderStatus } from './marketplace-order-status';
@@ -81,6 +83,8 @@ export type MarketplaceOrderRow = {
   shipping_notes: string | null;
   products_total: string;
   shipping_total: string;
+  discount_total: string;
+  coupon_code: string | null;
   grand_total: string;
   commission_total: string;
   tenant_total: string;
@@ -155,7 +159,9 @@ export class MarketplaceOrdersService {
     private readonly settings: MarketplaceSettingsService,
     private readonly payments: MarketplacePaymentsService,
     private readonly maintenance: MarketplaceMaintenanceService,
-    private readonly notifications: MarketplaceNotificationsService
+    private readonly notifications: MarketplaceNotificationsService,
+    private readonly coupons: MarketplaceCouponsService,
+    private readonly sales: SalesService
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -209,6 +215,8 @@ export class MarketplaceOrdersService {
     if (!address) throw new NotFoundException('Address not found');
 
     const shippingFlat = new Decimal(this.settings.shippingFlatValue());
+    const paymentMethod = input.payment_method ?? 'bold';
+    const isCash = paymentMethod === 'cash';
 
     const created = await this.database.transaction(async (client) => {
       const productIds = [...quantities.keys()].sort((a, b) => a - b);
@@ -321,27 +329,48 @@ export class MarketplaceOrdersService {
       const productsTotal = prepared.reduce((sum, line) => sum.plus(line.lineTotal), new Decimal(0));
       const commissionTotal = prepared.reduce((sum, line) => sum.plus(line.commissionTotal), new Decimal(0));
       const tenantTotal = prepared.reduce((sum, line) => sum.plus(line.lineSubtotal), new Decimal(0));
-      const grandTotal = productsTotal.plus(shippingFlat).toDecimalPlaces(2, MONEY_ROUNDING);
+      // Cupón (v0.11.4): descuento absorbido por la comisión de la plataforma;
+      // el tenant recibe siempre `tenantTotal` completo.
+      const coupon = await this.coupons.resolveForCheckout(client, input.coupon_code, productsTotal);
+      const discountTotal = coupon?.discount ?? new Decimal(0);
+      const grandTotal = productsTotal
+        .plus(shippingFlat)
+        .minus(discountTotal)
+        .toDecimalPlaces(2, MONEY_ROUNDING);
+      const commissionNet = Decimal.max(commissionTotal.minus(discountTotal), 0).toDecimalPlaces(
+        2,
+        MONEY_ROUNDING
+      );
+      const orderStatus = isCash ? 'paid' : 'pending_payment';
+      const orderPaymentStatus = 'pending';
 
       await client.query(
         `INSERT INTO public.tec_marketplace_orders
            (id, order_number, customer_id, customer_name, customer_email, customer_phone,
             shipping_recipient, shipping_phone, shipping_address, shipping_neighborhood, shipping_city, shipping_notes,
-            products_total, shipping_total, grand_total, commission_total, tenant_total,
+            products_total, shipping_total, discount_total, coupon_code, grand_total, commission_total, tenant_total,
             status, payment_method, payment_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12,
-                 $13, $14, $15, $16, $17, 'pending_payment', 'bold', 'pending')`,
+                 $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)`,
         [
           orderId, orderNumber, customer.id, customer.name ?? 'Cliente', customer.email, customer.phone,
           address.recipient_name, address.phone, address.street_address, address.neighborhood,
           address.city ?? 'Bogotá', address.additional_notes,
-          productsTotal.toFixed(2), shippingFlat.toFixed(2), grandTotal.toFixed(2),
-          commissionTotal.toFixed(2), tenantTotal.toFixed(2)
+          productsTotal.toFixed(2), shippingFlat.toFixed(2), discountTotal.toFixed(2),
+          coupon?.code ?? null, grandTotal.toFixed(2), commissionNet.toFixed(2), tenantTotal.toFixed(2),
+          orderStatus, paymentMethod, orderPaymentStatus
         ]
       );
 
       let suborderIndex = 0;
-      const suborders: Array<{ id: number; tenantId: string; saleId: number | null; tenantTotal: string }> = [];
+      const suborders: Array<{
+        id: number;
+        tenantId: string;
+        saleId: number | null;
+        tenantTotal: string;
+        tenantName: string;
+        itemsCount: number;
+      }> = [];
       for (const [tenantId, lines] of byTenant) {
         suborderIndex += 1;
         const storeResult = await client.query<StoreRow>(
@@ -368,12 +397,14 @@ export class MarketplaceOrdersService {
         const suborderResult = await client.query<SuborderIdRow>(
           `INSERT INTO public.tec_marketplace_suborders
              (order_id, tenant_id, sale_id, suborder_number, status, products_total, shipping_total,
-              tenant_total, commission)
-           VALUES ($1, $2, $3, $4, 'pending', $5, '0.00', $6, $7)
+              tenant_total, commission, payout_status, paid_out_at)
+           VALUES ($1, $2, $3, $4, $5, $6, '0.00', $7, $8, $9,
+                   CASE WHEN $9 = 'paid' THEN NOW() ELSE NULL END)
            RETURNING id`,
           [
-            orderId, tenantId, saleId, suborderNumber,
-            suborderTotal.toFixed(2), suborderTenantTotal.toFixed(2), suborderCommission.toFixed(2)
+            orderId, tenantId, saleId, suborderNumber, isCash ? 'paid' : 'pending',
+            suborderTotal.toFixed(2), suborderTenantTotal.toFixed(2), suborderCommission.toFixed(2),
+            isCash ? 'paid' : 'pending'
           ]
         );
         const suborderId = suborderResult.rows[0]?.id;
@@ -396,22 +427,54 @@ export class MarketplaceOrdersService {
           );
         }
 
-        suborders.push({ id: suborderId, tenantId, saleId, tenantTotal: suborderTenantTotal.toFixed(2) });
+        suborders.push({
+          id: suborderId,
+          tenantId,
+          saleId,
+          tenantTotal: suborderTenantTotal.toFixed(2),
+          tenantName: lines[0]?.tenantName ?? 'Tienda',
+          itemsCount: lines.reduce((sum, line) => sum + line.quantity, 0)
+        });
       }
 
       return {
         order: {
           id: orderId,
           order_number: orderNumber,
-          status: 'pending_payment',
-          payment_method: 'bold',
+          status: orderStatus,
+          payment_method: paymentMethod,
+          payment_status: orderPaymentStatus,
           products_total: productsTotal.toFixed(2),
           shipping_total: shippingFlat.toFixed(2),
+          discount_total: discountTotal.toFixed(2),
+          coupon_code: coupon?.code ?? null,
           grand_total: grandTotal.toFixed(2)
         },
         suborders
       };
     });
+
+    if (isCash) {
+      // Contraentrega (v0.11.4): sin link de pago; avisa al vendedor y al comprador.
+      for (const suborder of created.suborders) {
+        await this.notifications.notifySellerPaidOrder({
+          tenantId: suborder.tenantId,
+          tenantName: suborder.tenantName,
+          orderNumber: created.order.order_number,
+          itemsCount: suborder.itemsCount,
+          tenantTotal: suborder.tenantTotal,
+          cod: true
+        });
+        await this.notifications.notifyCustomer({
+          tenantId: suborder.tenantId,
+          tenantName: suborder.tenantName,
+          phone: customer.phone,
+          orderNumber: created.order.order_number,
+          event: 'paid'
+        });
+      }
+      return { ...created.order, payment_url: null };
+    }
 
     let paymentUrl: string | null = null;
     try {
@@ -439,6 +502,9 @@ export class MarketplaceOrdersService {
     }
     if (order.status === 'cancelled') {
       throw new BadRequestException('Este pedido fue cancelado');
+    }
+    if (order.payment_method === 'cash') {
+      throw new BadRequestException('Este pedido es contraentrega: pagas en efectivo al recibirlo.');
     }
     const link = await this.payments.createPlatformLink({
       orderId: order.id,
@@ -477,6 +543,7 @@ export class MarketplaceOrdersService {
       `SELECT id, order_number, customer_id, customer_name, customer_email, customer_phone,
               shipping_recipient, shipping_phone, shipping_address, shipping_neighborhood, shipping_city, shipping_notes,
               products_total::text AS products_total, shipping_total::text AS shipping_total,
+              discount_total::text AS discount_total, coupon_code,
               grand_total::text AS grand_total, commission_total::text AS commission_total,
               tenant_total::text AS tenant_total, status, payment_method, payment_status,
               checkout_url, paid_at, created_at, COUNT(*) OVER() AS total_count
@@ -503,6 +570,7 @@ export class MarketplaceOrdersService {
       `SELECT id, order_number, customer_id, customer_name, customer_email, customer_phone,
               shipping_recipient, shipping_phone, shipping_address, shipping_neighborhood, shipping_city, shipping_notes,
               products_total::text AS products_total, shipping_total::text AS shipping_total,
+              discount_total::text AS discount_total, coupon_code,
               grand_total::text AS grand_total, commission_total::text AS commission_total,
               tenant_total::text AS tenant_total, status, payment_method, payment_status,
               checkout_url, paid_at, created_at
@@ -524,7 +592,17 @@ export class MarketplaceOrdersService {
     tenantId: string,
     status: string | undefined,
     pagination: PaginationQuery
-  ): Promise<Paginated<MarketplaceSuborderRow & { order_number: string; customer_name: string; shipping_city: string }>> {
+  ): Promise<
+    Paginated<
+      MarketplaceSuborderRow & {
+        order_number: string;
+        customer_name: string;
+        shipping_city: string;
+        payment_method: string;
+        order_payment_status: string;
+      }
+    >
+  > {
     await this.settings.assertAvailable();
     const values: unknown[] = [tenantId];
     let statusFilter = '';
@@ -538,13 +616,20 @@ export class MarketplaceOrdersService {
     }
     values.push(pagination.limit, pagination.offset);
     const result = await this.database.query<
-      MarketplaceSuborderRow & { order_number: string; customer_name: string; shipping_city: string }
+      MarketplaceSuborderRow & {
+        order_number: string;
+        customer_name: string;
+        shipping_city: string;
+        payment_method: string;
+        order_payment_status: string;
+      }
     >(
       `SELECT s.id, s.order_id, s.tenant_id::text AS tenant_id, s.sale_id, s.suborder_number, s.status,
               s.products_total::text AS products_total, s.shipping_total::text AS shipping_total,
               s.tenant_total::text AS tenant_total, s.commission::text AS commission,
               s.tracking_note, s.shipped_at, s.delivered_at, s.payout_status, s.paid_out_at, s.created_at,
               o.order_number, o.customer_name, o.shipping_city,
+              o.payment_method, o.payment_status AS order_payment_status,
               COUNT(*) OVER() AS total_count
        FROM public.tec_marketplace_suborders s
        JOIN public.tec_marketplace_orders o ON o.id = s.order_id
@@ -577,6 +662,8 @@ export class MarketplaceOrdersService {
         shipping_city: string;
         shipping_notes: string | null;
         order_status: string;
+        payment_method: string;
+        order_payment_status: string;
         paid_at: string | null;
         tenant_name: string;
       }
@@ -588,6 +675,7 @@ export class MarketplaceOrdersService {
               o.order_number, o.customer_name, o.customer_email, o.customer_phone,
               o.shipping_recipient, o.shipping_phone, o.shipping_address, o.shipping_neighborhood,
               o.shipping_city, o.shipping_notes, o.status AS order_status, o.paid_at,
+              o.payment_method, o.payment_status AS order_payment_status,
               t.name AS tenant_name
        FROM public.tec_marketplace_suborders s
        JOIN public.tec_marketplace_orders o ON o.id = s.order_id
@@ -659,6 +747,12 @@ export class MarketplaceOrdersService {
 
       await this.recomputeOrderStatus(client, suborder.order_id);
     });
+
+    // Contraentrega (v0.11.4): al entregar, el vendedor ya cobró en efectivo;
+    // se salda la venta POS y el pedido queda con pago confirmado.
+    if (input.status === 'delivered') {
+      await this.settleCashDelivery(tenantId, suborderId);
+    }
 
     const detail = await this.tenantOrderDetail(tenantId, suborderId);
     // Notificación al comprador (v0.11.1) en enviado/entregado; best-effort.
@@ -738,6 +832,7 @@ export class MarketplaceOrdersService {
       `SELECT o.id, o.order_number, o.customer_id, o.customer_name, o.customer_email, o.customer_phone,
               o.shipping_recipient, o.shipping_phone, o.shipping_address, o.shipping_neighborhood, o.shipping_city, o.shipping_notes,
               o.products_total::text AS products_total, o.shipping_total::text AS shipping_total,
+              o.discount_total::text AS discount_total, o.coupon_code,
               o.grand_total::text AS grand_total, o.commission_total::text AS commission_total,
               o.tenant_total::text AS tenant_total, o.status, o.payment_method, o.payment_status,
               o.checkout_url, o.paid_at, o.created_at,
@@ -893,6 +988,51 @@ export class MarketplaceOrdersService {
       );
     }
     return saleId;
+  }
+
+  /**
+   * Liquidación contraentrega (v0.11.4): al entregarse una sub-orden de un pedido
+   * `cash`, registra el pago en efectivo de la venta POS y marca el pago del
+   * pedido cuando ya no quedan sub-órdenes activas. Idempotente; best-effort.
+   */
+  private async settleCashDelivery(tenantId: string, suborderId: number): Promise<void> {
+    try {
+      const result = await this.database.query<{
+        order_id: number;
+        sale_id: number | null;
+        payment_method: string;
+        payment_status: string;
+      }>(
+        `SELECT s.sale_id, s.order_id, o.payment_method, o.payment_status
+         FROM public.tec_marketplace_suborders s
+         JOIN public.tec_marketplace_orders o ON o.id = s.order_id
+         WHERE s.id = $1 AND s.tenant_id = $2
+         LIMIT 1`,
+        [suborderId, tenantId]
+      );
+      const row = result.rows[0];
+      if (!row || row.payment_method !== 'cash' || row.payment_status === 'paid') return;
+
+      if (row.sale_id !== null) {
+        await this.sales.registerGatewayPayment(row.sale_id, 'cash');
+      }
+      await this.database.query(
+        `UPDATE public.tec_marketplace_orders o
+         SET payment_status = 'paid', paid_at = COALESCE(paid_at, NOW()), updated_at = NOW()
+         WHERE o.id = $1 AND o.payment_method = 'cash' AND o.payment_status = 'pending'
+           AND NOT EXISTS (
+             SELECT 1 FROM public.tec_marketplace_suborders s
+             WHERE s.order_id = o.id AND s.status NOT IN ('delivered', 'cancelled')
+           )`,
+        [row.order_id]
+      );
+    } catch (error: unknown) {
+      this.logger.error(
+        `Marketplace: no se pudo liquidar la contraentrega de la sub-orden ${suborderId}: ${
+          error instanceof Error ? error.message : 'unknown'
+        }`
+      );
+    }
   }
 
   private async recomputeOrderStatus(client: SqlExecutor, orderId: number): Promise<void> {

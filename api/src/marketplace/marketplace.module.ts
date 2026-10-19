@@ -8,6 +8,7 @@ import { MarketplaceAdminController } from './marketplace-admin.controller';
 import { MarketplaceAuthController } from './marketplace-auth.controller';
 import { MarketplaceBrandingService } from './marketplace-branding.service';
 import { MarketplaceCatalogService } from './marketplace-catalog.service';
+import { MarketplaceCouponsService } from './marketplace-coupons.service';
 import { MarketplaceCustomerGuard } from './marketplace-customer.guard';
 import { MarketplaceCustomerController } from './marketplace-customer.controller';
 import { MarketplaceCustomersService } from './marketplace-customers.service';
@@ -16,6 +17,7 @@ import { MarketplaceNotificationsService } from './marketplace-notifications.ser
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
 import { MarketplacePublicController } from './marketplace-public.controller';
+import { MarketplaceReviewsService } from './marketplace-reviews.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 import { MarketplaceTenantController } from './marketplace-tenant.controller';
 
@@ -37,6 +39,8 @@ import { MarketplaceTenantController } from './marketplace-tenant.controller';
     MarketplaceBrandingService,
     MarketplaceMaintenanceService,
     MarketplaceNotificationsService,
+    MarketplaceReviewsService,
+    MarketplaceCouponsService,
     MarketplaceCustomerGuard
   ],
   exports: [MarketplacePaymentsService, MarketplaceSettingsService]

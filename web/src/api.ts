@@ -1399,6 +1399,8 @@ export interface MarketplaceSuborderRow {
   order_number: string;
   customer_name: string;
   shipping_city: string;
+  payment_method?: string;
+  order_payment_status?: string;
   items: MarketplaceOrderItemRow[];
 }
 
@@ -1653,3 +1655,48 @@ export const resetMarketplaceCustomerPassword = (id: number) =>
     `/marketplace/admin/customers/${id}/reset-password`,
     { method: 'POST' }
   );
+
+// ---------------------------------------------------------------------------
+// Marketplace global · Cupones de plataforma (v0.11.4)
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceCouponAdminRow {
+  id: number;
+  code: string;
+  discount_type: 'percent' | 'fixed';
+  discount_value: string;
+  min_total: string;
+  max_uses: number | null;
+  uses: number;
+  active: boolean;
+  expires_at: string | null;
+  created_at: string | null;
+}
+
+export interface MarketplaceCouponPayload {
+  code?: string;
+  discount_type?: 'percent' | 'fixed';
+  discount_value?: number;
+  min_total?: number;
+  max_uses?: number;
+  active?: boolean;
+  expires_at?: string;
+}
+
+export const fetchMarketplaceCoupons = () =>
+  apiRequest<MarketplaceCouponAdminRow[]>('/marketplace/admin/coupons');
+
+export const createMarketplaceCoupon = (payload: MarketplaceCouponPayload) =>
+  apiRequest<MarketplaceCouponAdminRow>('/marketplace/admin/coupons', {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+
+export const updateMarketplaceCoupon = (id: number, payload: MarketplaceCouponPayload) =>
+  apiRequest<MarketplaceCouponAdminRow>(`/marketplace/admin/coupons/${id}`, {
+    method: 'PATCH',
+    body: JSON.stringify(payload)
+  });
+
+export const deleteMarketplaceCoupon = (id: number) =>
+  apiRequest<void>(`/marketplace/admin/coupons/${id}`, { method: 'DELETE' });

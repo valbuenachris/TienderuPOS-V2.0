@@ -21,16 +21,19 @@ import {
   MarketplaceAddressDto,
   MarketplaceAddressUpdateDto,
   MarketplaceCheckoutDto,
-  MarketplacePasswordChangeDto
+  MarketplacePasswordChangeDto,
+  MarketplaceReviewCreateDto
 } from './marketplace.dto';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
+import { MarketplaceReviewsService } from './marketplace-reviews.service';
 
 @Controller('marketplace')
 @UseGuards(JwtAuthGuard, MarketplaceCustomerGuard)
 export class MarketplaceCustomerController {
   constructor(
     private readonly customers: MarketplaceCustomersService,
-    private readonly orders: MarketplaceOrdersService
+    private readonly orders: MarketplaceOrdersService,
+    private readonly reviews: MarketplaceReviewsService
   ) {}
 
   @Get('account')
@@ -111,5 +114,19 @@ export class MarketplaceCustomerController {
   @Post('orders/:id/cancel')
   cancelOrder(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
     return this.orders.cancelCustomerOrder(request.posMarketplaceCustomer!.id, id);
+  }
+
+  @Post('products/:id/reviews')
+  createReview(
+    @Req() request: PosRequest,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: MarketplaceReviewCreateDto
+  ) {
+    return this.reviews.create(request.posMarketplaceCustomer!.id, id, body.rating, body.comment);
+  }
+
+  @Get('products/:id/my-review')
+  myReview(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.reviews.getMyReviewContext(request.posMarketplaceCustomer!.id, id);
   }
 }

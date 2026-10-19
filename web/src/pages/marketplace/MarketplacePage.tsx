@@ -38,6 +38,16 @@ const STATUS_FILTERS = [
   { value: 'cancelled', label: 'Cancelados' }
 ];
 
+/** Contraentrega sin despacho (v0.11.4): cancelable aunque el pago esté pendiente. */
+function canCancelSuborder(order: MarketplaceSuborderRow): boolean {
+  if (order.status === 'pending') return true;
+  return (
+    order.payment_method === 'cash' &&
+    order.order_payment_status === 'pending' &&
+    order.status === 'paid'
+  );
+}
+
 export default function MarketplacePage() {
   const [tab, setTab] = useState<Tab>('orders');
   const { token, tenantId } = useSession();
@@ -160,6 +170,12 @@ function OrdersTab() {
                   <span className={`badge ${order.status === 'paid' ? 'paid' : order.status === 'delivered' ? 'paid' : 'due'}`}>
                     {SUBORDER_STATUS_LABELS[order.status] ?? order.status}
                   </span>
+                  {order.payment_method === 'cash' && order.order_payment_status === 'pending' ? (
+                    <>
+                      {' '}
+                      <span className="badge none">Contraentrega</span>
+                    </>
+                  ) : null}
                 </td>
                 <td>{order.created_at ? new Date(order.created_at).toLocaleDateString('es-CO') : '—'}</td>
                 <td className="row-actions">
@@ -173,7 +189,7 @@ function OrdersTab() {
                       {NEXT_STATUS[order.status]?.label}
                     </button>
                   ) : null}
-                  {order.status === 'pending' ? (
+                  {canCancelSuborder(order) ? (
                     <button
                       type="button"
                       className="quiet"
@@ -237,6 +253,12 @@ function OrdersTab() {
               Recibes <strong>{formatMoney(detail.data.tenant_total, currency)}</strong> por esta sub-orden ·
               Comisión plataforma: {formatMoney(detail.data.commission, currency)}
             </p>
+            {detail.data.payment_method === 'cash' && detail.data.order_payment_status === 'pending' ? (
+              <p className="muted">
+                Pago: <strong>contraentrega</strong> — cobras en efectivo al entregar. La sub-orden quedará
+                marcada como pagada al confirmar la entrega.
+              </p>
+            ) : null}
             {detail.data.tracking_note ? <p className="muted">Nota de despacho: {detail.data.tracking_note}</p> : null}
             <div className="modal-actions">
               {NEXT_STATUS[detail.data.status] ? (
@@ -251,7 +273,7 @@ function OrdersTab() {
                   {NEXT_STATUS[detail.data.status]?.label}
                 </button>
               ) : null}
-              {detail.data.status === 'pending' ? (
+              {canCancelSuborder(detail.data as MarketplaceSuborderRow) ? (
                 <button
                   type="button"
                   className="quiet"

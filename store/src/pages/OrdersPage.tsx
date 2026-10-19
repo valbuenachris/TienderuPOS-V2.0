@@ -84,7 +84,12 @@ export function OrdersPage() {
                 <p className="text-xs text-ink-soft">Total</p>
                 <p className="text-sm font-bold text-price">{formatMoney(order.grand_total)}</p>
               </div>
-              <div className="ml-auto">
+              <div className="ml-auto flex items-center gap-2">
+                {order.payment_method === 'cash' ? (
+                  <span className="rounded-full bg-line-soft px-2.5 py-0.5 text-xs font-medium text-ink-soft">
+                    Contraentrega
+                  </span>
+                ) : null}
                 <OrderStatusBadge status={order.status} />
               </div>
             </div>
@@ -97,12 +102,14 @@ export function OrdersPage() {
               ))}
             </div>
             <div className="flex flex-wrap items-center justify-between gap-3">
-              {order.payment_status !== 'paid' ? (
+              {order.payment_status === 'paid' ? (
+                <span />
+              ) : order.payment_method === 'cash' ? (
+                <p className="text-xs text-ink-soft">Contraentrega — pagas en efectivo al recibir.</p>
+              ) : (
                 <p className="text-xs text-warn-700">
                   Pago pendiente — abre el detalle para reintentar el pago.
                 </p>
-              ) : (
-                <span />
               )}
               <Link to={`/pedidos/${order.id}`} className={buttonStyles({ variant: 'primary', size: 'sm' })}>
                 Ver detalle
@@ -139,7 +146,8 @@ export function OrderDetailPage() {
     enabled: Number.isSafeInteger(orderId) && orderId > 0,
     refetchInterval: (query) => {
       const order = query.state.data as Order | undefined;
-      return order && order.payment_status !== 'paid' ? 8000 : false;
+      if (!order || order.payment_status === 'paid' || order.payment_method === 'cash') return false;
+      return 8000;
     }
   });
 
@@ -239,7 +247,13 @@ export function OrderDetailPage() {
       </div>
       <p className="mb-4 text-sm text-ink-soft">
         Realizado el {formatDate(data.created_at)} · Pago:{' '}
-        {data.payment_status === 'paid' ? 'confirmado' : 'pendiente'}
+        {data.payment_status === 'paid'
+          ? data.payment_method === 'cash'
+            ? 'contraentrega cobrada al entregar'
+            : 'confirmado'
+          : data.payment_method === 'cash'
+            ? 'contraentrega (pagas al recibir)'
+            : 'pendiente'}
       </p>
 
       {data.payment_status === 'paid' ? (
@@ -254,18 +268,21 @@ export function OrderDetailPage() {
       {data.payment_status !== 'paid' && data.status !== 'cancelled' ? (
         <div className="mb-4 flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-3">
-            <Button
-              size="lg"
-              disabled={payMutation.isPending}
-              onClick={() => {
-                setPayError(null);
-                payMutation.mutate();
-              }}
-            >
-              <Icon name="credit-card" className="h-4 w-4" />
-              {payMutation.isPending ? 'Generando pago…' : 'Pagar con Bold'}
-            </Button>
-            {data.status === 'pending_payment' ? (
+            {data.payment_method !== 'cash' ? (
+              <Button
+                size="lg"
+                disabled={payMutation.isPending}
+                onClick={() => {
+                  setPayError(null);
+                  payMutation.mutate();
+                }}
+              >
+                <Icon name="credit-card" className="h-4 w-4" />
+                {payMutation.isPending ? 'Generando pago…' : 'Pagar con Bold'}
+              </Button>
+            ) : null}
+            {data.status === 'pending_payment' ||
+            (data.payment_method === 'cash' && data.status === 'paid') ? (
               <Button
                 variant="outline"
                 disabled={cancelMutation.isPending}
@@ -279,7 +296,9 @@ export function OrderDetailPage() {
               </Button>
             ) : null}
             <span className="text-xs text-ink-soft">
-              Se abrirá la pasarela segura de Bold (tarjetas y PSE).
+              {data.payment_method === 'cash'
+                ? 'Pagas en efectivo al recibir; el vendedor coordina la entrega.'
+                : 'Se abrirá la pasarela segura de Bold (tarjetas y PSE).'}
             </span>
           </div>
           {payError ? <p className="text-sm font-semibold text-price">{payError}</p> : null}
@@ -321,6 +340,14 @@ export function OrderDetailPage() {
               {Number(data.shipping_total) === 0 ? 'Gratis' : formatMoney(data.shipping_total)}
             </span>
           </div>
+          {Number(data.discount_total) > 0 ? (
+            <div className="mt-1.5 flex justify-between text-sm">
+              <span className="text-ink-soft">
+                Descuento{data.coupon_code ? ` (${data.coupon_code})` : ''}
+              </span>
+              <span className="font-medium text-success-600">-{formatMoney(data.discount_total)}</span>
+            </div>
+          ) : null}
           <div className="mt-2.5 flex justify-between border-t border-line pt-2.5 text-base font-bold text-price">
             <span>Total</span>
             <span>{formatMoney(data.grand_total)}</span>

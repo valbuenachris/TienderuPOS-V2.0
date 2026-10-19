@@ -19,8 +19,9 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { parsePagination } from '../common/pagination';
-import { AdminBannerDto, AdminBrandingDto, MarketplacePayoutMarkDto } from './marketplace.dto';
+import { AdminBannerDto, AdminBrandingDto, AdminCouponDto, MarketplacePayoutMarkDto } from './marketplace.dto';
 import { MarketplaceBrandingService, UploadedBrandFiles } from './marketplace-branding.service';
+import { MarketplaceCouponsService } from './marketplace-coupons.service';
 import { MarketplaceCustomersService } from './marketplace-customers.service';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 
@@ -36,7 +37,8 @@ export class MarketplaceAdminController {
   constructor(
     private readonly orders: MarketplaceOrdersService,
     private readonly branding: MarketplaceBrandingService,
-    private readonly customers: MarketplaceCustomersService
+    private readonly customers: MarketplaceCustomersService,
+    private readonly coupons: MarketplaceCouponsService
   ) {}
 
   @Get('orders')
@@ -81,6 +83,30 @@ export class MarketplaceAdminController {
   @Post('customers/:id/reset-password')
   resetCustomerPassword(@Param('id', ParseIntPipe) id: number) {
     return this.customers.adminResetPassword(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Cupones de plataforma (v0.11.4): descuento absorbido por la comisión
+  // ---------------------------------------------------------------------------
+
+  @Get('coupons')
+  listCoupons() {
+    return this.coupons.adminList();
+  }
+
+  @Post('coupons')
+  createCoupon(@Body() body: AdminCouponDto) {
+    return this.coupons.adminCreate(body);
+  }
+
+  @Patch('coupons/:id')
+  updateCoupon(@Param('id', ParseIntPipe) id: number, @Body() body: AdminCouponDto) {
+    return this.coupons.adminUpdate(id, body);
+  }
+
+  @Delete('coupons/:id')
+  deleteCoupon(@Param('id', ParseIntPipe) id: number) {
+    return this.coupons.adminRemove(id);
   }
 
   // ---------------------------------------------------------------------------

@@ -171,6 +171,74 @@ export class MarketplaceCheckoutDto {
   @Min(1)
   @Max(2147483647)
   address_id!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  coupon_code?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['bold', 'cash'])
+  payment_method?: 'bold' | 'cash';
+}
+
+/** Reseña de un comprador del marketplace (v0.11.4). */
+export class MarketplaceReviewCreateDto {
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(5)
+  rating!: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  comment?: string;
+}
+
+/** Cupón de plataforma (super admin, v0.11.4). */
+export class AdminCouponDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(3)
+  @MaxLength(40)
+  code?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['percent', 'fixed'])
+  discount_type?: 'percent' | 'fixed';
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0.01)
+  @Max(10000000)
+  discount_value?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsNumber({ maxDecimalPlaces: 2 })
+  @Min(0)
+  @Max(100000000)
+  min_total?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(1000000)
+  max_uses?: number;
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(40)
+  expires_at?: string;
 }
 
 export class MarketplaceOrderStatusDto {

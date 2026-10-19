@@ -15,6 +15,7 @@ import { AddressForm } from '../components/AddressForm';
 import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
+import { Input } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
 import { useDocumentMeta } from '../use-document-meta';
 
@@ -28,6 +29,8 @@ export function CheckoutPage() {
   const [selectedAddressId, setSelectedAddressId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [couponCode, setCouponCode] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'bold' | 'cash' | null>(null);
 
   const addresses = useQuery({
     queryKey: ['store-addresses'],
@@ -43,6 +46,8 @@ export function CheckoutPage() {
 
   const shipping = Number(config.data?.shipping_flat ?? 0);
   const total = cart.total + shipping;
+  const boldEnabled = config.data?.payment_enabled !== false;
+  const effectivePayment: 'bold' | 'cash' = paymentMethod ?? (boldEnabled ? 'bold' : 'cash');
   const effectiveAddressId =
     selectedAddressId ??
     addresses.data?.find((address) => address.is_default)?.id ??
@@ -55,7 +60,9 @@ export function CheckoutPage() {
         method: 'POST',
         body: JSON.stringify({
           items: cart.items.map((item) => ({ product_id: item.product_id, quantity: item.quantity })),
-          address_id: effectiveAddressId
+          address_id: effectiveAddressId,
+          coupon_code: couponCode.trim() === '' ? undefined : couponCode.trim(),
+          payment_method: effectivePayment
         })
       });
       return response;
@@ -65,10 +72,15 @@ export function CheckoutPage() {
       void queryClient.invalidateQueries({ queryKey: ['store-orders'] });
       if (response.payment_url) {
         window.location.href = response.payment_url;
-      } else {
-        toast.push('Pedido creado. No pudimos abrir el pago en línea; reintenta desde tu pedido.', 'info');
-        navigate(`/pedidos/${response.id}`);
+        return;
       }
+      if (effectivePayment === 'cash') {
+        toast.push('Pedido confirmado. Pagas en efectivo al recibir.');
+        navigate(`/pedidos/${response.id}`);
+        return;
+      }
+      toast.push('Pedido creado. No pudimos abrir el pago en línea; reintenta desde tu pedido.', 'info');
+      navigate(`/pedidos/${response.id}`);
     },
     onError: (caught) => {
       setError(caught instanceof ApiError ? caught.message : 'No pudimos crear tu pedido.');
@@ -221,21 +233,61 @@ export function CheckoutPage() {
               </span>
               Pago
             </h2>
-            <div className="flex items-center gap-4 rounded-card border border-line bg-line-soft/50 p-4">
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-link-600 shadow-sm">
-                <Icon name="credit-card" className="h-5 w-5" />
-              </span>
-              <div>
-                <p className="text-sm font-bold text-ink">Tarjetas débito/crédito y PSE con Bold</p>
-                <p className="text-xs text-ink-soft">
-                  Pago 100% seguro. Serás redirigido a Bold para completar el pago.
-                </p>
-              </div>
+            <div className="flex flex-col gap-2">
+              <label
+                className={`flex cursor-pointer items-start gap-4 rounded-card border p-4 transition-colors ${
+                  effectivePayment === 'bold'
+                    ? 'border-link-600 bg-sky-50/60'
+                    : 'border-line bg-white hover:border-link-600/50'
+                } ${boldEnabled ? '' : 'cursor-not-allowed opacity-60'}`}
+              >
+                <input
+                  type="radio"
+                  name="payment"
+                  className="mt-1.5 accent-[#007185]"
+                  checked={effectivePayment === 'bold'}
+                  disabled={!boldEnabled}
+                  onChange={() => setPaymentMethod('bold')}
+                />
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-link-600 shadow-sm">
+                  <Icon name="credit-card" className="h-5 w-5" />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-ink">Tarjetas débito/crédito y PSE con Bold</span>
+                  <span className="block text-xs text-ink-soft">
+                    Pago 100% seguro. Serás redirigido a Bold para completar el pago.
+                  </span>
+                </span>
+              </label>
+              <label
+                className={`flex cursor-pointer items-start gap-4 rounded-card border p-4 transition-colors ${
+                  effectivePayment === 'cash'
+                    ? 'border-link-600 bg-sky-50/60'
+                    : 'border-line bg-white hover:border-link-600/50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="payment"
+                  className="mt-1.5 accent-[#007185]"
+                  checked={effectivePayment === 'cash'}
+                  onChange={() => setPaymentMethod('cash')}
+                />
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white text-link-600 shadow-sm">
+                  <Icon name="truck" className="h-5 w-5" />
+                </span>
+                <span>
+                  <span className="block text-sm font-bold text-ink">Contraentrega (efectivo al recibir)</span>
+                  <span className="block text-xs text-ink-soft">
+                    Pagas en efectivo al recibir tu pedido. El vendedor coordina la entrega.
+                  </span>
+                </span>
+              </label>
             </div>
             {config.data && config.data.payment_enabled === false ? (
               <div className="mt-3 rounded-md border border-warn-700/30 bg-warn-50 px-3 py-2 text-xs font-medium text-warn-700">
-                El pago en línea (Bold) aún no está habilitado en tienderu.com. Puedes crear tu pedido y
-                pagarlo apenas esté disponible desde «Mis pedidos».
+                El pago en línea (Bold) aún no está habilitado en tienderu.com. Puedes pagar contraentrega
+                al recibir tu pedido.
               </div>
             ) : null}
           </section>
@@ -257,6 +309,21 @@ export function CheckoutPage() {
             <span className="text-ink-soft">Envío</span>
             <span className="font-medium text-ink">{shipping === 0 ? 'Gratis' : formatMoney(shipping)}</span>
           </div>
+          <label className="mt-3 block border-t border-line-soft pt-3">
+            <span className="mb-1 block text-xs font-semibold text-ink-soft">Cupón de descuento (opcional)</span>
+            <Input
+              value={couponCode}
+              onChange={(event) => setCouponCode(event.target.value.toUpperCase())}
+              maxLength={40}
+              placeholder="Ej: BIENVENIDO10"
+              aria-label="Cupón de descuento"
+            />
+            {couponCode.trim() !== '' ? (
+              <span className="mt-1 block text-xs text-ink-soft">
+                El descuento se valida y aplica al confirmar el pedido.
+              </span>
+            ) : null}
+          </label>
           <div className="mt-3 flex justify-between border-t border-line pt-3 text-lg font-bold text-price">
             <span>Total a pagar</span>
             <span>{formatMoney(total)}</span>
@@ -271,7 +338,11 @@ export function CheckoutPage() {
               checkout.mutate();
             }}
           >
-            {checkout.isPending ? 'Creando pedido…' : 'Pagar con Bold'}
+            {checkout.isPending
+              ? 'Creando pedido…'
+              : effectivePayment === 'cash'
+                ? 'Confirmar pedido (contraentrega)'
+                : 'Pagar con Bold'}
           </Button>
           {effectiveAddressId === null ? (
             <p className="mt-2 text-xs text-ink-soft">Agrega una dirección para continuar.</p>
@@ -279,10 +350,17 @@ export function CheckoutPage() {
           <p className="mt-3 flex items-center gap-2 text-xs text-ink-soft">
             <Icon name="shield" className="h-4 w-4 shrink-0" /> Al pagar aceptas los términos de tienderu.com
           </p>
-          <p className="mt-2 text-xs text-ink-soft">
-            Si no completas el pago en {config.data?.payment_ttl_minutes ?? 60} minutos, el pedido se
-            cancelará automáticamente y el stock volverá a la tienda.
-          </p>
+          {effectivePayment === 'bold' ? (
+            <p className="mt-2 text-xs text-ink-soft">
+              Si no completas el pago en {config.data?.payment_ttl_minutes ?? 60} minutos, el pedido se
+              cancelará automáticamente y el stock volverá a la tienda.
+            </p>
+          ) : (
+            <p className="mt-2 text-xs text-ink-soft">
+              Pagas en efectivo al recibir. Puedes cancelar el pedido desde «Mis pedidos» mientras el
+              vendedor no lo haya despachado.
+            </p>
+          )}
         </aside>
       </div>
     </div>

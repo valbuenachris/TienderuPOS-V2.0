@@ -48,8 +48,8 @@ Títulos/meta/OG dinámicos por página y producto; `robots.txt` + `sitemap.xml`
 ### Fase 4 — Conversión/UX (v0.11.3) ✅ EJECUTADA
 Compartir producto por WhatsApp; comprar de nuevo; vistos recientemente; wishlist; filtros por rating/stock/vendedor; `unaccent`+trigram (DDL).
 
-### Fase 5 — Confianza/crecimiento (v0.11.4) — PENDIENTE
-Reseñas del marketplace (DDL); cupones (DDL); contraentrega; número de guía; flujo de reembolso para cancelaciones de pedidos pagados.
+### Fase 5 — Confianza/crecimiento (v0.11.4) ✅ EJECUTADA
+Reseñas del marketplace (DDL `docs/migrations/v0.11.4-reviews-coupons.sql`: tabla `tec_marketplace_reviews` con compra verificada + vista unificada `v_marketplace_reviews` que fusiona las reseñas de la app y del marketplace en la ficha pública); cupones de plataforma (DDL, mismo script: `tec_marketplace_coupons`, descuento absorbido por la comisión — el vendedor recibe el valor completo —, consumo atómico en el checkout, CRUD en `/marketplace-global` → pestaña Cupones); contraentrega (efectivo al recibir: el pedido se confirma al crearlo, el vendedor cobra al entregar y la venta POS se salda al marcar «entregado»; cancelable por cliente/vendedor mientras no haya despacho). Número de guía: ya existía como `tracking_note` (el vendedor lo escribe al despachar y viaja en la notificación WhatsApp). **Diferido a fase posterior**: flujo de reembolso automático para cancelaciones de pedidos pagados (sigue siendo manual, documentado en el mensaje de error del vendedor).
 
 ### Fase 6 — Calidad/ops (v0.11.5) — PENDIENTE
 Headers de seguridad en nginx (store y web); rate limiting de endpoints públicos; tests E2E smoke del store (Playwright); monitoreo/alertas de webhooks fallidos y pedidos estancados.

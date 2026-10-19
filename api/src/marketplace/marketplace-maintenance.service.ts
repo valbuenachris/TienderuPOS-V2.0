@@ -78,18 +78,31 @@ export class MarketplaceMaintenanceService {
     options: { reason: string; paymentStatus?: 'failed' | null }
   ): Promise<boolean> {
     return this.database.transaction(async (client) => {
-      const orderResult = await client.query<{ id: number; order_number: string; status: string }>(
-        `SELECT id, order_number, status FROM public.tec_marketplace_orders WHERE id = $1 LIMIT 1 FOR UPDATE`,
+      const orderResult = await client.query<{
+        id: number;
+        order_number: string;
+        status: string;
+        payment_method: string;
+        payment_status: string;
+      }>(
+        `SELECT id, order_number, status, payment_method, payment_status
+         FROM public.tec_marketplace_orders WHERE id = $1 LIMIT 1 FOR UPDATE`,
         [orderId]
       );
       const order = orderResult.rows[0];
-      if (!order || order.status !== 'pending_payment') return false;
+      if (!order) return false;
+      // Impago clásico (Bold) o contraentrega sin despacho (v0.11.4).
+      const cancelable =
+        order.status === 'pending_payment' ||
+        (order.payment_method === 'cash' && order.payment_status === 'pending' && order.status === 'paid');
+      if (!cancelable) return false;
 
       const suborders = await client.query<{ id: number; sale_id: number | null; status: string }>(
         `SELECT id, sale_id, status FROM public.tec_marketplace_suborders WHERE order_id = $1 FOR UPDATE`,
         [orderId]
       );
-      const blocked = suborders.rows.find((suborder) => suborder.status !== 'pending');
+      const allowedStatuses = order.payment_method === 'cash' ? ['pending', 'paid'] : ['pending'];
+      const blocked = suborders.rows.find((suborder) => !allowedStatuses.includes(suborder.status));
       if (blocked) {
         this.logger.warn(
           `Marketplace: pedido ${order.order_number} no se cancela (${options.reason}): sub-orden ${blocked.id} en estado ${blocked.status}`
@@ -147,12 +160,16 @@ export class MarketplaceMaintenanceService {
         sale_id: number | null;
         status: string;
         suborder_number: string;
+        payment_method: string;
+        order_payment_status: string;
       }>(
-        `SELECT id, order_id, sale_id, status, suborder_number
-         FROM public.tec_marketplace_suborders
-         WHERE id = $1 AND tenant_id = $2
+        `SELECT s.id, s.order_id, s.sale_id, s.status, s.suborder_number,
+                o.payment_method, o.payment_status AS order_payment_status
+         FROM public.tec_marketplace_suborders s
+         JOIN public.tec_marketplace_orders o ON o.id = s.order_id
+         WHERE s.id = $1 AND s.tenant_id = $2
          LIMIT 1
-         FOR UPDATE`,
+         FOR UPDATE OF s`,
         [suborderId, tenantId]
       );
       const suborder = current.rows[0];
@@ -160,9 +177,15 @@ export class MarketplaceMaintenanceService {
       if (suborder.status === 'cancelled') {
         throw new BadRequestException('Este pedido ya fue cancelado');
       }
-      if (suborder.status !== 'pending') {
+      // Contraentrega sin despacho (v0.11.4): cancelable aunque esté "paid".
+      const cashPending =
+        suborder.payment_method === 'cash' && suborder.order_payment_status === 'pending';
+      const cancelable = suborder.status === 'pending' || (cashPending && suborder.status === 'paid');
+      if (!cancelable) {
         throw new BadRequestException(
-          'Solo puedes cancelar sub-órdenes sin pago confirmado; las pagadas requieren reembolso manual.'
+          cashPending
+            ? 'La sub-orden ya está en despacho; requiere reembolso manual.'
+            : 'Solo puedes cancelar sub-órdenes sin pago confirmado; las pagadas requieren reembolso manual.'
         );
       }
       if (suborder.sale_id !== null) {

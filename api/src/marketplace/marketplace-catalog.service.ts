@@ -43,11 +43,14 @@ type BannerRow = { id: number; image_url: string | null };
 
 type ReviewRow = {
   id: number;
+  source: string;
   rating: number;
   comment: string | null;
   created_at: string | null;
   customer_name: string | null;
 };
+
+type ReviewsSource = 'view' | 'table' | null;
 
 const PROBE_CACHE_MS = 60_000;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -75,7 +78,7 @@ function parseMoneyFilter(value: string | undefined, field: string): Decimal | n
  */
 @Injectable()
 export class MarketplaceCatalogService {
-  private reviewsProbe: { exists: boolean; at: number } | null = null;
+  private reviewsProbe: { source: ReviewsSource; at: number } | null = null;
   private bannersProbe: { exists: boolean; at: number } | null = null;
   private categoriesProbe: { exists: boolean; at: number } | null = null;
   private unaccentProbe: { exists: boolean; at: number } | null = null;
@@ -142,7 +145,8 @@ export class MarketplaceCatalogService {
       filters.push(`p.id <> $${values.length}`);
     }
 
-    const includeRatings = await this.reviewsTableExists();
+    const reviewsSource = await this.reviewsSource();
+    const includeRatings = reviewsSource !== null;
     const includeCategories = await this.categoriesTableExists();
     const sort = (query.sort ?? 'relevance').trim().toLowerCase();
     if (!(SORT_OPTIONS as readonly string[]).includes(sort)) {
@@ -153,13 +157,7 @@ export class MarketplaceCatalogService {
       filters.push(`COALESCE(r.average_rating, 0) >= $${values.length}::numeric`);
     }
     const orderBy = this.orderBy(sort, includeRatings);
-    const ratingsJoin = includeRatings
-      ? `LEFT JOIN (
-           SELECT product_id, AVG(rating)::numeric(3,2) AS average_rating, COUNT(*)::integer AS reviews_count
-           FROM public.product_reviews
-           GROUP BY product_id
-         ) r ON r.product_id = p.id`
-      : '';
+    const ratingsJoin = this.ratingsJoin(reviewsSource);
     const ratingsSelect = includeRatings
       ? `r.average_rating::text AS average_rating, COALESCE(r.reviews_count, 0)::integer AS reviews_count`
       : `NULL::text AS average_rating, 0::integer AS reviews_count`;
@@ -201,15 +199,10 @@ export class MarketplaceCatalogService {
 
   async getProduct(productId: number) {
     if (!(await this.settings.tableExists())) throw new NotFoundException('Product not found');
-    const includeRatings = await this.reviewsTableExists();
+    const reviewsSource = await this.reviewsSource();
+    const includeRatings = reviewsSource !== null;
     const includeCategories = await this.categoriesTableExists();
-    const ratingsJoin = includeRatings
-      ? `LEFT JOIN (
-           SELECT product_id, AVG(rating)::numeric(3,2) AS average_rating, COUNT(*)::integer AS reviews_count
-           FROM public.product_reviews
-           GROUP BY product_id
-         ) r ON r.product_id = p.id`
-      : '';
+    const ratingsJoin = this.ratingsJoin(reviewsSource);
     const ratingsSelect = includeRatings
       ? `r.average_rating::text AS average_rating, COALESCE(r.reviews_count, 0)::integer AS reviews_count`
       : `NULL::text AS average_rating, 0::integer AS reviews_count`;
@@ -361,28 +354,30 @@ export class MarketplaceCatalogService {
   }
 
   async listReviews(productId: number, pagination: PaginationQuery) {
-    if (!(await this.reviewsTableExists())) {
+    const source = await this.reviewsSource();
+    if (source === null) {
       return { product_id: productId, average_rating: null, reviews_count: 0, reviews: buildPaginated([], 0, pagination) };
     }
+    const from = source === 'view' ? 'public.v_marketplace_reviews' : 'public.product_reviews';
+    const nameColumn = source === 'view' ? 'r.customer_name_raw' : 'c.name';
+    const nameJoin = source === 'view' ? '' : 'LEFT JOIN public.tec_customers c ON c.id = r.customer_id';
+    const sourceSelect = source === 'view' ? 'r.source,' : `'app'::text AS source,`;
     const [summary, list] = await Promise.all([
       this.database.query<{ average_rating: string | null; reviews_count: number }>(
         `SELECT AVG(rating)::numeric(3,2)::text AS average_rating, COUNT(*)::integer AS reviews_count
-         FROM public.product_reviews
+         FROM ${from}
          WHERE product_id = $1`,
         [productId]
       ),
       this.database.query<ReviewRow & { total_count: number }>(
         `SELECT r.id, r.rating, r.comment, r.created_at,
-                CASE
-                  WHEN c.name IS NULL OR btrim(c.name) = '' THEN '${REVIEW_IDENTITIES_HIDDEN}'
-                  WHEN POSITION(' ' IN btrim(c.name)) = 0 THEN SPLIT_PART(btrim(c.name), ' ', 1)
-                  ELSE CONCAT(SPLIT_PART(btrim(c.name), ' ', 1), ' ', LEFT(SPLIT_PART(btrim(c.name), ' ', 2), 1), '.')
-                END AS customer_name,
+                ${this.displayNameSql(nameColumn)} AS customer_name,
+                ${sourceSelect}
                 COUNT(*) OVER() AS total_count
-         FROM public.product_reviews r
-         LEFT JOIN public.tec_customers c ON c.id = r.customer_id
+         FROM ${from} r
+         ${nameJoin}
          WHERE r.product_id = $1
-         ORDER BY r.id DESC
+         ORDER BY r.created_at DESC NULLS LAST, r.id DESC
          LIMIT $2 OFFSET $3`,
         [productId, pagination.limit, pagination.offset]
       )
@@ -398,6 +393,25 @@ export class MarketplaceCatalogService {
         pagination
       )
     };
+  }
+
+  /** Nombre público de quien reseña (sin apellidos completos ni identidad completa). */
+  private displayNameSql(column: string): string {
+    return `CASE
+      WHEN ${column} IS NULL OR btrim(${column}) = '' THEN '${REVIEW_IDENTITIES_HIDDEN}'
+      WHEN POSITION(' ' IN btrim(${column})) = 0 THEN SPLIT_PART(btrim(${column}), ' ', 1)
+      ELSE CONCAT(SPLIT_PART(btrim(${column}), ' ', 1), ' ', LEFT(SPLIT_PART(btrim(${column}), ' ', 2), 1), '.')
+    END`;
+  }
+
+  private ratingsJoin(source: ReviewsSource): string {
+    if (source === null) return '';
+    const from = source === 'view' ? 'public.v_marketplace_reviews' : 'public.product_reviews';
+    return `LEFT JOIN (
+           SELECT product_id, AVG(rating)::numeric(3,2) AS average_rating, COUNT(*)::integer AS reviews_count
+           FROM ${from}
+           GROUP BY product_id
+         ) r ON r.product_id = p.id`;
   }
 
   private orderBy(sort: string, includeRatings: boolean): string {
@@ -451,15 +465,21 @@ export class MarketplaceCatalogService {
     return exists;
   }
 
-  private async reviewsTableExists(): Promise<boolean> {
+  /**
+   * Origen de las reseñas: la vista unificada `v_marketplace_reviews` (v0.11.4)
+   * cuando existe; si no, la tabla clásica `product_reviews` de la app.
+   */
+  private async reviewsSource(): Promise<ReviewsSource> {
     const now = Date.now();
-    if (this.reviewsProbe && now - this.reviewsProbe.at < PROBE_CACHE_MS) return this.reviewsProbe.exists;
-    const result = await this.database.query<{ table_name: string | null }>(
-      `SELECT to_regclass('public.product_reviews')::text AS table_name`
+    if (this.reviewsProbe && now - this.reviewsProbe.at < PROBE_CACHE_MS) return this.reviewsProbe.source;
+    const result = await this.database.query<{ view_name: string | null; table_name: string | null }>(
+      `SELECT to_regclass('public.v_marketplace_reviews')::text AS view_name,
+              to_regclass('public.product_reviews')::text AS table_name`
     );
-    const exists = Boolean(result.rows[0]?.table_name);
-    this.reviewsProbe = { exists, at: now };
-    return exists;
+    const row = result.rows[0];
+    const source: ReviewsSource = row?.view_name ? 'view' : row?.table_name ? 'table' : null;
+    this.reviewsProbe = { source, at: now };
+    return source;
   }
 
   private async categoriesTableExists(): Promise<boolean> {

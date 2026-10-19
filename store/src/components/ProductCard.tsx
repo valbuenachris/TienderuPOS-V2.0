@@ -1,14 +1,52 @@
+import { useEffect, useRef, useState, type MouseEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { formatMoney, type Product } from '../api';
+import { useCart } from '../cart';
 import { snapshotProduct, toggleFavorite, useFavorites } from '../local-lists';
+import { Button } from './ui/Button';
 import { Icon } from './ui/Icon';
 import { Rating } from './ui/Rating';
+import { useToast } from './ui/Toast';
 
 export function ProductCard({ product }: { product: Product }) {
   const image = product.image_url ?? product.image_2_url ?? product.image_3_url;
   const lowStock = product.available_quantity > 0 && product.available_quantity <= 5;
   const favorites = useFavorites();
   const favorite = favorites.includes(product.id);
+  const cart = useCart();
+  const toast = useToast();
+  const [added, setAdded] = useState(false);
+  const resetTimer = useRef<number | null>(null);
+  const outOfStock = product.available_quantity <= 0;
+
+  useEffect(
+    () => () => {
+      if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    },
+    []
+  );
+
+  function addToCart(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    if (outOfStock || added) return;
+    cart.addItem(
+      {
+        product_id: product.id,
+        name: product.name ?? `Producto ${product.id}`,
+        price: product.price,
+        image_url: image,
+        seller_id: product.seller.id,
+        seller_name: product.seller.name,
+        available_quantity: product.available_quantity
+      },
+      1
+    );
+    toast.push('Producto agregado al carrito');
+    setAdded(true);
+    if (resetTimer.current !== null) window.clearTimeout(resetTimer.current);
+    resetTimer.current = window.setTimeout(() => setAdded(false), 1500);
+  }
 
   return (
     <Link
@@ -58,6 +96,19 @@ export function ProductCard({ product }: { product: Product }) {
             </p>
           ) : null}
         </div>
+        <Button
+          size="sm"
+          full
+          disabled={outOfStock}
+          onClick={addToCart}
+          aria-label={outOfStock ? 'Producto agotado' : added ? 'Agregado al carrito' : 'Agregar al carrito'}
+          className="mt-1 hover:shadow-md"
+        >
+          <Icon name={added ? 'check' : 'cart'} className="h-4 w-4 shrink-0" />
+          <span className={added ? 'inline' : 'hidden sm:inline'}>
+            {added ? 'Agregado' : 'Agregar al carrito'}
+          </span>
+        </Button>
       </div>
     </Link>
   );

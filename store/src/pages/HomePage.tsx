@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
@@ -51,7 +52,7 @@ export function HomePage() {
 
   return (
     <div className="container-page py-6">
-      {data.banners.length > 0 ? <BannerGrid banners={data.banners} /> : null}
+      {data.banners.length > 0 ? <BannerCarousel banners={data.banners} /> : null}
 
       <TrustRow />
 
@@ -205,20 +206,58 @@ function ProductRailSkeleton() {
   );
 }
 
-/** Banners grandes del inicio: cuadrícula de 2 por fila (mitad de ancho cada uno). */
-function BannerGrid({ banners }: { banners: Banner[] }) {
+function BannerCarousel({ banners }: { banners: Banner[] }) {
+  const [index, setIndex] = useState(0);
+
+  useEffect(() => {
+    if (banners.length < 2) return;
+    const timer = window.setInterval(() => {
+      setIndex((current) => (current + 1) % banners.length);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [banners.length]);
+
+  const banner = banners[index];
+  if (!banner) return null;
+
   return (
-    <section aria-label="Promociones" className="mb-6 grid gap-3 sm:grid-cols-2 sm:gap-4">
-      {banners.map((banner) => (
-        <div key={banner.id} className="overflow-hidden rounded-card bg-white shadow-card">
-          <img
-            src={banner.image_url}
-            alt="Promoción"
-            loading="lazy"
-            className="h-60 w-full object-cover transition-transform duration-200 hover:scale-[1.02] sm:h-88"
-          />
-        </div>
-      ))}
+    <section aria-label="Promociones" className="relative mb-6 overflow-hidden rounded-card bg-white shadow-card">
+      <img src={banner.image_url} alt="Promoción" className="h-56 w-full object-cover sm:h-80" />
+      {banners.length > 1 ? (
+        <>
+          <button
+            type="button"
+            aria-label="Promoción anterior"
+            onClick={() => setIndex((current) => (current - 1 + banners.length) % banners.length)}
+            className="absolute left-3 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-ink shadow-card transition-colors hover:bg-white sm:flex"
+          >
+            <Icon name="chevron-left" className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            aria-label="Promoción siguiente"
+            onClick={() => setIndex((current) => (current + 1) % banners.length)}
+            className="absolute right-3 top-1/2 hidden h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/85 text-ink shadow-card transition-colors hover:bg-white sm:flex"
+          >
+            <Icon name="chevron-right" className="h-5 w-5" />
+          </button>
+          <div className="absolute inset-x-0 bottom-3 flex justify-center gap-1.5">
+            {banners.map((item, dotIndex) => (
+              <button
+                key={item.id}
+                type="button"
+                aria-label={`Ir a la promoción ${dotIndex + 1}`}
+                onClick={() => setIndex(dotIndex)}
+                className={
+                  dotIndex === index
+                    ? 'h-2.5 w-2.5 rounded-full bg-white shadow'
+                    : 'h-2.5 w-2.5 rounded-full bg-white/50 shadow'
+                }
+              />
+            ))}
+          </div>
+        </>
+      ) : null}
     </section>
   );
 }

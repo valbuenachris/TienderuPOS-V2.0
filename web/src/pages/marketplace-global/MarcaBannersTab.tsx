@@ -187,7 +187,7 @@ export function MarcaBannersTab() {
     });
   }
 
-  // ---------------------------------------------------- Banners grandes del inicio
+  // ---------------------------------------------------- Banners del carrusel
   const [bigUrl, setBigUrl] = useState('');
   const createBig = useApiMutation((imageUrl: string) => createAdminBanner({ image_url: imageUrl }));
   const removeBig = useApiMutation((id: string) => deleteAdminBanner(id));
@@ -199,7 +199,7 @@ export function MarcaBannersTab() {
     setNotice('');
     createBig.mutate(clean, {
       onSuccess: async () => {
-        setNotice('Banner agregado al inicio (se muestra en cuadrícula de 2 por fila).');
+        setNotice('Banner agregado al carrusel principal.');
         setBigUrl('');
         await queryClient.invalidateQueries({ queryKey: ['admin-banners'] });
       },
@@ -471,10 +471,10 @@ export function MarcaBannersTab() {
       </Panel>
 
       <Panel className="stack full-width">
-        <h2>Banners grandes del inicio</h2>
+        <h2>Banners del carrusel principal</h2>
         <p className="muted">
-          Se muestran en el inicio en cuadrícula de 2 por fila (cada uno a mitad de ancho). Se agregan
-          por URL de imagen (usa Supabase Storage u otro host público). <strong>Estos banners también aparecen en la app móvil de todos los tenants.</strong>
+          El carrusel grande del home. Se agregan por URL de imagen (usa Supabase Storage u otro host
+          público). <strong>Estos banners también aparecen en la app móvil de todos los tenants.</strong>
         </p>
         <form className="stack" onSubmit={submitBig}>
           <Field label="URL de la imagen">
@@ -487,7 +487,7 @@ export function MarcaBannersTab() {
           </Field>
           <div>
             <button type="submit" className="primary" disabled={createBig.isPending}>
-              {createBig.isPending ? 'Agregando…' : 'Agregar banner'}
+              {createBig.isPending ? 'Agregando…' : 'Agregar al carrusel'}
             </button>
           </div>
         </form>
@@ -515,10 +515,10 @@ export function MarcaBannersTab() {
                       className="quiet"
                       disabled={removeBig.isPending}
                       onClick={() => {
-                        if (!window.confirm('¿Eliminar este banner del inicio?')) return;
+                        if (!window.confirm('¿Eliminar este banner del carrusel?')) return;
                         removeBig.mutate(banner.id, {
                           onSuccess: async () => {
-                            setNotice('Banner del inicio eliminado.');
+                            setNotice('Banner del carrusel eliminado.');
                             await queryClient.invalidateQueries({ queryKey: ['admin-banners'] });
                           },
                           onError: (error: Error) => setNotice(error.message)
@@ -533,7 +533,7 @@ export function MarcaBannersTab() {
               {(bigBanners.data ?? []).length === 0 && !bigBanners.isPending ? (
                 <tr>
                   <td colSpan={3} className="empty">
-                    El inicio no tiene banners grandes todavía.
+                    El carrusel no tiene banners todavía.
                   </td>
                 </tr>
               ) : null}

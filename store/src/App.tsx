@@ -49,7 +49,7 @@ function ScrollToTop() {
   return null;
 }
 
-/** Favicon dinámico desde la marca configurada en el POS (fallback: el estático del index.html). */
+/** Favicon dinámico desde la marca configurada en el POS (reemplaza el estático del index.html). */
 function StoreFavicon() {
   const { data } = useQuery({
     queryKey: ['store-config'],
@@ -59,11 +59,20 @@ function StoreFavicon() {
   const faviconUrl = data?.branding?.favicon_url ?? null;
   useEffect(() => {
     if (!faviconUrl) return;
-    const existing = document.querySelector<HTMLLinkElement>('link[rel="icon"]');
-    const link = existing ?? document.createElement('link');
-    link.rel = 'icon';
-    link.href = faviconUrl;
-    if (!existing) document.head.appendChild(link);
+    const apply = (selector: string, rel: string) => {
+      const existing = document.querySelector<HTMLLinkElement>(selector);
+      const link = existing ?? document.createElement('link');
+      link.rel = rel;
+      link.href = faviconUrl;
+      if (/\.svg(\?|$)/i.test(faviconUrl)) {
+        link.type = 'image/svg+xml';
+      } else if (/\.png(\?|$)/i.test(faviconUrl)) {
+        link.type = 'image/png';
+      }
+      if (!existing) document.head.appendChild(link);
+    };
+    apply('link[rel="icon"]', 'icon');
+    apply('link[rel="apple-touch-icon"]', 'apple-touch-icon');
   }, [faviconUrl]);
   return null;
 }

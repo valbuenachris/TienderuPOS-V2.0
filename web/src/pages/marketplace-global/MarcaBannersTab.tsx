@@ -53,6 +53,7 @@ export function MarcaBannersTab() {
   // ---------------------------------------------------------------- Marca
   const [form, setForm] = useState<BrandingFormState>(EMPTY_FORM);
   const [synced, setSynced] = useState(false);
+  const [fileWarning, setFileWarning] = useState<string | null>(null);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [faviconFile, setFaviconFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
@@ -87,7 +88,19 @@ export function MarcaBannersTab() {
     })
   );
 
+  function warnIfJpeg(file: File | null, kind: 'logo' | 'favicon') {
+    if (file && (file.type === 'image/jpeg' || /\.jpe?g$/i.test(file.name))) {
+      setFileWarning(
+        `«${file.name}» es un JPG y los JPEG no soportan transparencia: el fondo saldrá blanco. ` +
+          `Vuelve a exportar ${kind === 'logo' ? 'el logo' : 'el favicon'} como PNG (o SVG) con fondo transparente.`
+      );
+    } else {
+      setFileWarning(null);
+    }
+  }
+
   function pickLogo(file: File | null) {
+    warnIfJpeg(file, 'logo');
     setLogoFile(file);
     setLogoPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous);
@@ -96,6 +109,7 @@ export function MarcaBannersTab() {
   }
 
   function pickFavicon(file: File | null) {
+    warnIfJpeg(file, 'favicon');
     setFaviconFile(file);
     setFaviconPreview((previous) => {
       if (previous) URL.revokeObjectURL(previous);
@@ -200,9 +214,11 @@ export function MarcaBannersTab() {
       <Panel className="stack full-width">
         <h2>Marca de tienderu.com</h2>
         <p className="muted">
-          Logo y favicon de la tienda (PNG, JPG, WEBP o SVG, máx 2 MB) y datos de contacto del footer.
-          Si dejas un campo vacío, se muestra el valor por defecto.
+          Logo y favicon de la tienda: usa <strong>PNG o SVG con fondo transparente</strong> — los JPG
+          no conservan la transparencia y el fondo blanco quedará visible (máx 2 MB). Si dejas un
+          campo vacío del footer, se muestra el valor por defecto.
         </p>
+        {fileWarning ? <Notice tone="error">{fileWarning}</Notice> : null}
         {branding.isError ? (
           <Notice tone="error">
             No fue posible cargar la marca: ejecuta la migración v0.10.0-marketplace-branding.sql.

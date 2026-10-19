@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
@@ -52,9 +52,9 @@ export function HomePage() {
 
   return (
     <div className="container-page py-6">
-      {data.banners.length > 0 ? <BannerCarousel banners={data.banners} /> : null}
-
       <TrustRow />
+
+      {data.banners.length > 0 ? <BannerCarousel banners={data.banners} /> : null}
 
       {data.categories.length > 0 ? (
         <section aria-label="Categorías" className="mb-8">
@@ -97,46 +97,104 @@ export function HomePage() {
   );
 }
 
-/** Banners pequeños del home: 3 columnas en una sola línea (solo imagen; clicables si hay link). */
+/** Banners pequeños: en móvil 1 visible con slider (swipe + puntos); en desktop 3 columnas en una línea. */
 function PromoStrip({ promos }: { promos: PromoBanner[] }) {
+  const trackRef = useRef<HTMLDivElement>(null);
+  const [mobileIndex, setMobileIndex] = useState(0);
+
+  function handleScroll() {
+    const track = trackRef.current;
+    if (!track) return;
+    let nearest = 0;
+    let best = Number.POSITIVE_INFINITY;
+    [...track.children].forEach((child, index) => {
+      const distance = Math.abs((child as HTMLElement).offsetLeft - track.scrollLeft);
+      if (distance < best) {
+        best = distance;
+        nearest = index;
+      }
+    });
+    setMobileIndex(nearest);
+  }
+
+  function goTo(index: number) {
+    const track = trackRef.current;
+    const child = track?.children[index] as HTMLElement | undefined;
+    if (track && child) track.scrollTo({ left: child.offsetLeft, behavior: 'smooth' });
+  }
+
+  function card(promo: PromoBanner, imageClass: string) {
+    const image = (
+      <img
+        src={promo.image_url}
+        alt={promo.title ?? 'Promoción'}
+        loading="lazy"
+        className={`${imageClass} w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02]`}
+      />
+    );
+    const target = promo.target_url;
+    if (!target) {
+      return <div className="group overflow-hidden rounded-card">{image}</div>;
+    }
+    if (target.startsWith('/')) {
+      return (
+        <Link to={target} className="group block overflow-hidden rounded-card">
+          {image}
+        </Link>
+      );
+    }
+    return (
+      <a
+        href={target}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="group block overflow-hidden rounded-card"
+      >
+        {image}
+      </a>
+    );
+  }
+
   return (
-    <section aria-label="Promociones destacadas" className="mb-8 grid grid-cols-3 gap-3 sm:gap-4">
-      {promos.map((promo) => {
-        const image = (
-          <img
-            src={promo.image_url}
-            alt={promo.title ?? 'Promoción'}
-            loading="lazy"
-            className="h-[8.19rem] w-full rounded-card object-cover shadow-card transition-transform duration-200 group-hover:scale-[1.02] sm:h-[10.01rem]"
-          />
-        );
-        const target = promo.target_url;
-        if (!target) {
-          return (
-            <div key={promo.id} className="group overflow-hidden rounded-card">
-              {image}
+    <section aria-label="Promociones destacadas" className="mb-8">
+      {/* Móvil: 1 banner visible con slider (swipe) y puntos */}
+      <div className="sm:hidden">
+        <div
+          ref={trackRef}
+          onScroll={handleScroll}
+          className="flex snap-x snap-mandatory gap-3 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
+          {promos.map((promo) => (
+            <div key={promo.id} className="w-full shrink-0 snap-center">
+              {card(promo, 'h-[8.19rem]')}
             </div>
-          );
-        }
-        if (target.startsWith('/')) {
-          return (
-            <Link key={promo.id} to={target} className="group block overflow-hidden rounded-card">
-              {image}
-            </Link>
-          );
-        }
-        return (
-          <a
-            key={promo.id}
-            href={target}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="group block overflow-hidden rounded-card"
-          >
-            {image}
-          </a>
-        );
-      })}
+          ))}
+        </div>
+        {promos.length > 1 ? (
+          <div className="mt-2 flex justify-center gap-1.5">
+            {promos.map((promo, index) => (
+              <button
+                key={promo.id}
+                type="button"
+                aria-label={`Ir al banner ${index + 1}`}
+                onClick={() => goTo(index)}
+                className={
+                  index === mobileIndex
+                    ? 'h-2 w-2 rounded-full bg-navy-800'
+                    : 'h-2 w-2 rounded-full bg-ink-soft/40'
+                }
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {/* Desktop: 3 columnas en una sola línea */}
+      <div className="hidden gap-4 sm:grid sm:grid-cols-3">
+        {promos.map((promo) => (
+          <div key={promo.id}>{card(promo, 'h-[10.01rem]')}</div>
+        ))}
+      </div>
     </section>
   );
 }

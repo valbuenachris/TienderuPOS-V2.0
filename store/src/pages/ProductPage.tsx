@@ -273,26 +273,49 @@ export function ProductPage() {
 
           {data.details ? <p className="whitespace-pre-line text-sm leading-relaxed text-ink/90">{data.details}</p> : null}
 
-          <div className="mt-2 flex flex-col gap-3 rounded-card border border-line bg-line-soft/50 p-4 sm:flex-row sm:items-center">
-            <label className="flex items-center gap-2 text-sm font-medium text-ink">
-              Cantidad
-              <span className="w-20">
-                <Select
-                  value={quantity}
-                  onChange={(event) => setQuantity(Number(event.target.value))}
-                  disabled={!inStock}
-                  aria-label="Cantidad"
+          <div className="mt-2 flex flex-col gap-3 rounded-card border border-line bg-line-soft/50 p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <label className="flex items-center gap-2 text-sm font-medium text-ink">
+                Cantidad
+                <span className="w-20">
+                  <Select
+                    value={quantity}
+                    onChange={(event) => setQuantity(Number(event.target.value))}
+                    disabled={!inStock}
+                    aria-label="Cantidad"
+                  >
+                    {Array.from({ length: Math.min(10, Math.max(1, data.available_quantity)) }).map((_, index) => (
+                      <option key={index + 1} value={index + 1}>
+                        {index + 1}
+                      </option>
+                    ))}
+                  </Select>
+                </span>
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="h-12"
+                  aria-label={favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                  onClick={() => {
+                    const added = toggleFavorite(snapshotProduct(data));
+                    toast.push(added ? 'Agregado a favoritos' : 'Quitado de favoritos');
+                  }}
                 >
-                  {Array.from({ length: Math.min(10, Math.max(1, data.available_quantity)) }).map((_, index) => (
-                    <option key={index + 1} value={index + 1}>
-                      {index + 1}
-                    </option>
-                  ))}
-                </Select>
-              </span>
-            </label>
-            <div className="flex flex-1 flex-col gap-2 sm:flex-row">
-              <Button size="lg" disabled={!inStock} onClick={() => addToCart(false)} className="flex-1">
+                  <Icon name="heart" className={favorite ? 'h-4 w-4 fill-current text-deal-600' : 'h-4 w-4'} />
+                </Button>
+                <Button variant="outline" className="h-12 whitespace-nowrap" onClick={shareWhatsApp}>
+                  <Icon name="phone" className="h-4 w-4" /> Compartir
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2 sm:flex-row">
+              <Button
+                size="lg"
+                disabled={!inStock}
+                onClick={() => addToCart(false)}
+                className="h-12 whitespace-nowrap sm:flex-1"
+              >
                 <Icon name="cart" className="h-4 w-4" /> Agregar al carrito
               </Button>
               <Button
@@ -300,24 +323,9 @@ export function ProductPage() {
                 variant="dark"
                 disabled={!inStock}
                 onClick={() => addToCart(true)}
-                className="flex-1"
+                className="h-12 whitespace-nowrap sm:flex-1"
               >
                 Comprar ahora
-              </Button>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant="outline"
-                aria-label={favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
-                onClick={() => {
-                  const added = toggleFavorite(snapshotProduct(data));
-                  toast.push(added ? 'Agregado a favoritos' : 'Quitado de favoritos');
-                }}
-              >
-                <Icon name="heart" className={favorite ? 'h-4 w-4 fill-current text-deal-600' : 'h-4 w-4'} />
-              </Button>
-              <Button variant="outline" onClick={shareWhatsApp}>
-                <Icon name="phone" className="h-4 w-4" /> Compartir
               </Button>
             </div>
           </div>

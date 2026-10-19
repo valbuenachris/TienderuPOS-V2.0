@@ -1429,13 +1429,34 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme='dark'] .chip { background: var(--d-surface); border-color: var(--d-border); color: var(--d-muted); }
 [data-theme='dark'] .chip.active { background: var(--d-brand); border-color: var(--d-brand); color: #fff; }
 
-/* Marketplace global · Marca y banners (v0.10.0) */
+/* Marketplace global · Marca y banners (v0.10.0)
+   Los previews NO agregan fondo: patrón de transparencia (cuadritos) para mostrar
+   la imagen tal cual se subió (los logos/favicons sin fondo se ven sin recuadros). */
 .brand-uploads { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-bottom: 6px; }
 .brand-upload { display: flex; flex-direction: column; gap: 8px; padding: 14px; border: 1px solid #e2e9e3; border-radius: 12px; background: #fbfdfb; }
-.brand-logo-preview { max-height: 56px; max-width: 180px; object-fit: contain; background: #131921; border-radius: 8px; padding: 6px; }
-.brand-favicon-preview { height: 40px; width: 40px; object-fit: contain; border-radius: 8px; background: #fff; border: 1px solid #e2e9e3; }
+.brand-logo-preview,
+.brand-favicon-preview {
+  object-fit: contain;
+  border: 1px solid #e2e9e3;
+  border-radius: 8px;
+  background-color: #f7fafa;
+  background-image:
+    linear-gradient(45deg, #e4e9e9 25%, transparent 25%, transparent 75%, #e4e9e9 75%),
+    linear-gradient(45deg, #e4e9e9 25%, transparent 25%, transparent 75%, #e4e9e9 75%);
+  background-position: 0 0, 8px 8px;
+  background-size: 16px 16px;
+}
+.brand-logo-preview { max-height: 56px; max-width: 180px; padding: 4px; }
+.brand-favicon-preview { height: 40px; width: 40px; }
 .banner-preview { max-height: 120px; width: auto; border-radius: 10px; border: 1px solid #e2e9e3; align-self: flex-start; }
 .banner-thumb { height: 44px; width: 88px; object-fit: cover; border-radius: 6px; border: 1px solid #e2e9e3; display: block; }
 [data-theme='dark'] .brand-upload { background: var(--d-surface); border-color: var(--d-border); }
-[data-theme='dark'] .brand-favicon-preview, [data-theme='dark'] .banner-preview, [data-theme='dark'] .banner-thumb { border-color: var(--d-border); }
-[data-theme='dark'] .brand-favicon-preview { background: var(--d-input); }
+[data-theme='dark'] .brand-logo-preview,
+[data-theme='dark'] .brand-favicon-preview {
+  border-color: var(--d-border);
+  background-color: #1b241f;
+  background-image:
+    linear-gradient(45deg, #2a352d 25%, transparent 25%, transparent 75%, #2a352d 75%),
+    linear-gradient(45deg, #2a352d 25%, transparent 25%, transparent 75%, #2a352d 75%);
+}
+[data-theme='dark'] .banner-preview, [data-theme='dark'] .banner-thumb { border-color: var(--d-border); }

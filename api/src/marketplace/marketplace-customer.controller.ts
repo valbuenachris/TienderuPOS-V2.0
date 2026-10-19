@@ -97,4 +97,9 @@ export class MarketplaceCustomerController {
   payOrder(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
     return this.orders.payOrder(request.posMarketplaceCustomer!.id, id);
   }
+
+  @Post('orders/:id/cancel')
+  cancelOrder(@Req() request: PosRequest, @Param('id', ParseIntPipe) id: number) {
+    return this.orders.cancelCustomerOrder(request.posMarketplaceCustomer!.id, id);
+  }
 }

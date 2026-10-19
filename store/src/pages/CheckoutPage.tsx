@@ -277,6 +277,10 @@ export function CheckoutPage() {
           <p className="mt-3 flex items-center gap-2 text-xs text-ink-soft">
             <Icon name="shield" className="h-4 w-4 shrink-0" /> Al pagar aceptas los términos de tienderu.com
           </p>
+          <p className="mt-2 text-xs text-ink-soft">
+            Si no completas el pago en {config.data?.payment_ttl_minutes ?? 60} minutos, el pedido se
+            cancelará automáticamente y el stock volverá a la tienda.
+          </p>
         </aside>
       </div>
     </div>

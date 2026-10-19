@@ -40,6 +40,13 @@ export class MarketplaceSettingsService {
     return (this.config.get<string>('MARKETPLACE_BOLD_API_KEY') ?? '').trim() !== '';
   }
 
+  /** Minutos antes de expirar/cancelar un pedido impago (default 60, rango 5..1440). */
+  paymentTtlMinutes(): number {
+    const raw = Number(this.config.get<string>('MARKETPLACE_PAYMENT_TTL_MINUTES') ?? 60);
+    if (!Number.isFinite(raw)) return 60;
+    return Math.min(Math.max(Math.round(raw), 5), 1440);
+  }
+
   async tableExists(): Promise<boolean> {
     const now = Date.now();
     if (this.probe && now - this.probe.at < PROBE_CACHE_MS) return this.probe.exists;

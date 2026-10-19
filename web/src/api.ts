@@ -1499,7 +1499,7 @@ export const fetchMarketplaceOrderDetail = (id: number) =>
 
 export const updateMarketplaceOrderStatus = (
   id: number,
-  payload: { status: 'preparing' | 'shipped' | 'delivered'; note?: string }
+  payload: { status: 'preparing' | 'shipped' | 'delivered' | 'cancelled'; note?: string }
 ) =>
   apiRequest<MarketplaceSuborderRow>(`/marketplace/orders/${id}/status`, {
     method: 'PATCH',

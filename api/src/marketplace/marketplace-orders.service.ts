@@ -9,10 +9,14 @@ import {
   MarketplaceOrderStatusDto,
   MarketplacePayoutMarkDto
 } from './marketplace.dto';
+import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
+import { computeParentOrderStatus } from './marketplace-order-status';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
+const MAX_PENDING_ORDERS_PER_CUSTOMER = 5;
+const CHECKOUT_DEDUPE_WINDOW_MS = 60_000;
 const SUBORDER_STATUS_RANK: Record<string, number> = {
   pending: 0,
   paid: 1,
@@ -141,12 +145,15 @@ type AddressRow = {
 @Injectable()
 export class MarketplaceOrdersService {
   private readonly logger = new Logger(MarketplaceOrdersService.name);
+  /** Anti-duplicado de checkout (en memoria): fingerprint de items -> timestamp. */
+  private readonly recentCheckouts = new Map<string, number>();
 
   constructor(
     private readonly database: DatabaseService,
     private readonly catalog: CatalogService,
     private readonly settings: MarketplaceSettingsService,
-    private readonly payments: MarketplacePaymentsService
+    private readonly payments: MarketplacePaymentsService,
+    private readonly maintenance: MarketplaceMaintenanceService
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -163,6 +170,31 @@ export class MarketplaceOrdersService {
     if (quantities.size === 0) throw new BadRequestException('El carrito está vacío');
     const totalUnits = [...quantities.values()].reduce((sum, value) => sum + value, 0);
     if (totalUnits > 999) throw new BadRequestException('El pedido supera el máximo de unidades');
+
+    // Anti-abuso (v0.11.0): limita pedidos pendientes simultáneos y duplicados inmediatos.
+    const pending = await this.database.query<{ count: number }>(
+      `SELECT COUNT(*)::integer AS count FROM public.tec_marketplace_orders
+       WHERE customer_id = $1 AND status = 'pending_payment'`,
+      [customer.id]
+    );
+    if ((pending.rows[0]?.count ?? 0) >= MAX_PENDING_ORDERS_PER_CUSTOMER) {
+      throw new BadRequestException(
+        'Tienes varios pedidos pendientes de pago. Completa el pago o espera su cancelación automática antes de crear otro.'
+      );
+    }
+    const fingerprint = `${customer.id}|${[...quantities.entries()]
+      .map(([productId, quantity]) => `${productId}x${quantity}`)
+      .sort()
+      .join(',')}`;
+    const now = Date.now();
+    const lastCheckout = this.recentCheckouts.get(fingerprint);
+    if (lastCheckout !== undefined && now - lastCheckout < CHECKOUT_DEDUPE_WINDOW_MS) {
+      throw new BadRequestException('Este pedido ya está en proceso. Revisa «Mis pedidos» para completar el pago.');
+    }
+    this.recentCheckouts.set(fingerprint, now);
+    for (const [key, at] of this.recentCheckouts) {
+      if (now - at > CHECKOUT_DEDUPE_WINDOW_MS) this.recentCheckouts.delete(key);
+    }
 
     const addressResult = await this.database.query<AddressRow>(
       `SELECT id, recipient_name, street_address, neighborhood, city, phone, additional_notes
@@ -415,6 +447,25 @@ export class MarketplaceOrdersService {
     return { order_id: order.id, order_number: order.order_number, payment_url: link.url, payment_method: 'bold' };
   }
 
+  /** Cancelación del cliente (v0.11.0): solo pedidos impagos; repone stock y elimina la venta POS. */
+  async cancelCustomerOrder(customerId: number, orderId: number) {
+    await this.settings.assertAvailable();
+    const order = await this.getCustomerOrder(customerId, orderId);
+    if (order.payment_status === 'paid') {
+      throw new BadRequestException('Este pedido ya está pagado; solicita la cancelación al vendedor.');
+    }
+    if (order.status === 'cancelled') {
+      throw new BadRequestException('Este pedido ya fue cancelado');
+    }
+    const cancelled = await this.maintenance.cancelPendingOrder(orderId, { reason: 'customer' });
+    if (!cancelled) {
+      throw new BadRequestException(
+        'Este pedido ya no se puede cancelar (solo pedidos sin pago confirmado y sin despacho iniciado).'
+      );
+    }
+    return this.customerOrderDetail(customerId, orderId);
+  }
+
   async listCustomerOrders(
     customerId: number,
     pagination: PaginationQuery
@@ -548,6 +599,12 @@ export class MarketplaceOrdersService {
 
   async updateTenantOrderStatus(tenantId: string, suborderId: number, input: MarketplaceOrderStatusDto) {
     await this.settings.assertAvailable();
+    // Cancelación del vendedor (v0.11.0): solo sub-órdenes impagas; repone stock y
+    // elimina la venta POS si no tiene pagos. Las pagadas requieren reembolso manual.
+    if (input.status === 'cancelled') {
+      await this.maintenance.cancelSuborder(tenantId, suborderId);
+      return this.tenantOrderDetail(tenantId, suborderId);
+    }
     const targetRank = SUBORDER_STATUS_RANK[input.status];
     const note = input.note?.trim().slice(0, 300);
 
@@ -829,23 +886,18 @@ export class MarketplaceOrdersService {
        GROUP BY status`,
       [orderId]
     );
-    const counts = new Map(result.rows.map((row) => [row.status, row.count]));
-    const total = result.rows.reduce((sum, row) => sum + row.count, 0);
-    const delivered = counts.get('delivered') ?? 0;
-    const shipped = (counts.get('shipped') ?? 0) + delivered;
-    const preparing = (counts.get('preparing') ?? 0) + shipped;
-    const paid = (counts.get('paid') ?? 0) + preparing;
-    let status = 'pending_payment';
-    if (delivered === total) status = 'delivered';
-    else if (shipped === total) status = 'shipped';
-    else if (preparing === total) status = 'preparing';
-    else if (paid === total) status = 'paid';
+    const next = computeParentOrderStatus(result.rows);
 
     await client.query(
       `UPDATE public.tec_marketplace_orders
-       SET status = CASE WHEN status = 'pending_payment' THEN status ELSE $2 END, updated_at = NOW()
+       SET status = CASE
+             WHEN $2 = 'cancelled' THEN 'cancelled'
+             WHEN status = 'pending_payment' THEN status
+             ELSE $2
+           END,
+           updated_at = NOW()
        WHERE id = $1`,
-      [orderId, status]
+      [orderId, next]
     );
   }
 

@@ -156,6 +156,7 @@ export interface StoreConfig {
   currency: string;
   shipping_flat: string;
   payment_enabled?: boolean;
+  payment_ttl_minutes?: number;
   branding?: StoreBranding | null;
 }
 
@@ -271,6 +272,9 @@ export const payMarketplaceOrder = (orderId: number) =>
     `/marketplace/orders/${orderId}/pay`,
     { method: 'POST' }
   );
+
+export const cancelMarketplaceOrder = (orderId: number) =>
+  apiRequest<OrderWithSuborders>(`/marketplace/orders/${orderId}/cancel`, { method: 'POST' });
 
 export interface AuthPayload {
   access_token: string;

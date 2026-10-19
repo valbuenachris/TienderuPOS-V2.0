@@ -175,8 +175,8 @@ export class MarketplaceCheckoutDto {
 
 export class MarketplaceOrderStatusDto {
   @IsString()
-  @IsIn(['preparing', 'shipped', 'delivered'])
-  status!: 'preparing' | 'shipped' | 'delivered';
+  @IsIn(['preparing', 'shipped', 'delivered', 'cancelled'])
+  status!: 'preparing' | 'shipped' | 'delivered' | 'cancelled';
 
   @IsOptional()
   @IsString()

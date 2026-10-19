@@ -28,6 +28,7 @@ export class MarketplacePublicController {
       currency: 'COP',
       shipping_flat: this.settings.shippingFlatValue(),
       payment_enabled: this.settings.paymentEnabled(),
+      payment_ttl_minutes: this.settings.paymentTtlMinutes(),
       branding: await this.branding.getPublicBranding()
     };
   }

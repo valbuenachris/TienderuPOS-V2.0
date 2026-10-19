@@ -10,6 +10,7 @@ import { MarketplaceCatalogService } from './marketplace-catalog.service';
 import { MarketplaceCustomerGuard } from './marketplace-customer.guard';
 import { MarketplaceCustomerController } from './marketplace-customer.controller';
 import { MarketplaceCustomersService } from './marketplace-customers.service';
+import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
 import { MarketplacePublicController } from './marketplace-public.controller';
@@ -32,6 +33,7 @@ import { MarketplaceTenantController } from './marketplace-tenant.controller';
     MarketplaceOrdersService,
     MarketplacePaymentsService,
     MarketplaceBrandingService,
+    MarketplaceMaintenanceService,
     MarketplaceCustomerGuard
   ],
   exports: [MarketplacePaymentsService, MarketplaceSettingsService]

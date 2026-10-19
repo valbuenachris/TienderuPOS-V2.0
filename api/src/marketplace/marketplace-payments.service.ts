@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { DatabaseService } from '../database/database.service';
 import { SalesService } from '../sales/sales.service';
 import { TenantBoldService } from '../payments/tenant-bold.service';
+import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
 
 type WebhookEvent = { type?: string; data?: Record<string, unknown> };
 
@@ -52,7 +53,8 @@ export class MarketplacePaymentsService {
     private readonly database: DatabaseService,
     private readonly sales: SalesService,
     private readonly tenantBold: TenantBoldService,
-    private readonly config: ConfigService
+    private readonly config: ConfigService,
+    private readonly maintenance: MarketplaceMaintenanceService
   ) {}
 
   async createPlatformLink(input: {
@@ -130,8 +132,18 @@ export class MarketplacePaymentsService {
       return { handled: false };
     }
 
-    if ((event.type ?? '') !== 'SALE_APPROVED') {
-      this.logger.log(`Bold marketplace webhook ${event.type ?? 'UNKNOWN'} order=${order.order_number} ignorado`);
+    const eventType = event.type ?? '';
+    // Pago rechazado (v0.11.0): repone stock y cancela el pedido impago.
+    if (eventType === 'SALE_REJECTED') {
+      const cancelled = await this.maintenance.cancelPendingOrder(orderId, {
+        reason: 'bold_rejected',
+        paymentStatus: 'failed'
+      });
+      this.logger.log(`Bold marketplace SALE_REJECTED order=${order.order_number} cancelado=${cancelled}`);
+      return { handled: cancelled };
+    }
+    if (eventType !== 'SALE_APPROVED') {
+      this.logger.log(`Bold marketplace webhook ${eventType || 'UNKNOWN'} order=${order.order_number} ignorado`);
       return { handled: false };
     }
 
@@ -178,6 +190,12 @@ export class MarketplacePaymentsService {
       );
       const order = current.rows[0];
       if (!order) return [];
+      if (order.status === 'cancelled') {
+        this.logger.warn(
+          `Bold marketplace: pedido ${order.order_number} cancelado; SALE_APPROVED ignorado (revisar manualmente)`
+        );
+        return [];
+      }
 
       // Idempotente: repite las actualizaciones sin efecto si ya estaba pagado, y
       // SIEMPRE devuelve las sub-órdenes para reintentar la liquidación de ventas.

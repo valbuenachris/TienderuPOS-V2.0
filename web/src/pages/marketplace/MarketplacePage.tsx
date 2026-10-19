@@ -34,7 +34,8 @@ const STATUS_FILTERS = [
   { value: 'paid', label: 'Pagados' },
   { value: 'preparing', label: 'Preparando' },
   { value: 'shipped', label: 'Enviados' },
-  { value: 'delivered', label: 'Entregados' }
+  { value: 'delivered', label: 'Entregados' },
+  { value: 'cancelled', label: 'Cancelados' }
 ];
 
 export default function MarketplacePage() {
@@ -77,7 +78,7 @@ function OrdersTab() {
     enabled: detailId !== null
   });
 
-  const statusMutation = useApiMutation((input: { id: number; status: 'preparing' | 'shipped' | 'delivered'; note?: string }) =>
+  const statusMutation = useApiMutation((input: { id: number; status: 'preparing' | 'shipped' | 'delivered' | 'cancelled'; note?: string }) =>
     updateMarketplaceOrderStatus(input.id, { status: input.status, ...(input.note ? { note: input.note } : {}) })
   );
 
@@ -90,6 +91,22 @@ function OrdersTab() {
     statusMutation.mutate({ id: order.id, status: next.value, note }, {
       onSuccess: async () => {
         setNotice(`Pedido ${order.suborder_number}: ahora está «${SUBORDER_STATUS_LABELS[next.value]}».`);
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] }),
+          queryClient.invalidateQueries({ queryKey: ['marketplace-summary'] })
+        ]);
+        if (detailId !== null) await detail.refetch();
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
+  }
+
+  function cancelOrder(order: MarketplaceSuborderRow) {
+    if (!window.confirm(`¿Cancelar la sub-orden ${order.suborder_number}? El stock volverá a la tienda.`)) return;
+    setNotice('');
+    statusMutation.mutate({ id: order.id, status: 'cancelled' }, {
+      onSuccess: async () => {
+        setNotice(`Pedido ${order.suborder_number} cancelado; el stock volvió a la tienda.`);
         await Promise.all([
           queryClient.invalidateQueries({ queryKey: ['marketplace-orders'] }),
           queryClient.invalidateQueries({ queryKey: ['marketplace-summary'] })
@@ -151,6 +168,16 @@ function OrdersTab() {
                       onClick={() => advance(order)}
                     >
                       {NEXT_STATUS[order.status]?.label}
+                    </button>
+                  ) : null}
+                  {order.status === 'pending' ? (
+                    <button
+                      type="button"
+                      className="quiet"
+                      disabled={statusMutation.isPending}
+                      onClick={() => cancelOrder(order)}
+                    >
+                      Cancelar
                     </button>
                   ) : null}
                 </td>
@@ -219,6 +246,16 @@ function OrdersTab() {
                   }}
                 >
                   {NEXT_STATUS[detail.data.status]?.label}
+                </button>
+              ) : null}
+              {detail.data.status === 'pending' ? (
+                <button
+                  type="button"
+                  className="quiet"
+                  disabled={statusMutation.isPending}
+                  onClick={() => cancelOrder(detail.data as MarketplaceSuborderRow)}
+                >
+                  Cancelar sub-orden
                 </button>
               ) : null}
             </div>

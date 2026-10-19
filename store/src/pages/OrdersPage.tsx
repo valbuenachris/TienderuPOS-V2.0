@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Link, useParams, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
   apiRequest,
+  cancelMarketplaceOrder,
   formatDate,
   formatMoney,
   payMarketplaceOrder,
@@ -17,6 +18,7 @@ import { OrderStatusBadge } from '../components/ui/Badge';
 import { Icon } from '../components/ui/Icon';
 import { Pagination } from '../components/ui/Pagination';
 import { PageSkeleton } from '../components/ui/Skeleton';
+import { useToast } from '../components/ui/Toast';
 
 export function OrdersPage() {
   const [params, setParams] = useSearchParams();
@@ -122,7 +124,10 @@ export function OrdersPage() {
 export function OrderDetailPage() {
   const { id } = useParams<{ id: string }>();
   const orderId = Number(id);
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const [payError, setPayError] = useState<string | null>(null);
+  const [cancelError, setCancelError] = useState<string | null>(null);
 
   const { data, isLoading, isError } = useQuery({
     queryKey: ['store-order', orderId],
@@ -143,6 +148,18 @@ export function OrderDetailPage() {
       setPayError(
         caught instanceof ApiError ? caught.message : 'No pudimos iniciar el pago con Bold. Intenta de nuevo.'
       );
+    }
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: () => cancelMarketplaceOrder(orderId),
+    onSuccess: async () => {
+      toast.push('Pedido cancelado. El stock volvió a la tienda.');
+      await queryClient.invalidateQueries({ queryKey: ['store-order', orderId] });
+      await queryClient.invalidateQueries({ queryKey: ['store-orders'] });
+    },
+    onError: (caught) => {
+      setCancelError(caught instanceof ApiError ? caught.message : 'No pudimos cancelar el pedido.');
     }
   });
 
@@ -196,11 +213,25 @@ export function OrderDetailPage() {
               <Icon name="credit-card" className="h-4 w-4" />
               {payMutation.isPending ? 'Generando pago…' : 'Pagar con Bold'}
             </Button>
+            {data.status === 'pending_payment' ? (
+              <Button
+                variant="outline"
+                disabled={cancelMutation.isPending}
+                onClick={() => {
+                  if (!window.confirm('¿Cancelar este pedido? El stock volverá a la tienda.')) return;
+                  setCancelError(null);
+                  cancelMutation.mutate();
+                }}
+              >
+                {cancelMutation.isPending ? 'Cancelando…' : 'Cancelar pedido'}
+              </Button>
+            ) : null}
             <span className="text-xs text-ink-soft">
               Se abrirá la pasarela segura de Bold (tarjetas y PSE).
             </span>
           </div>
           {payError ? <p className="text-sm font-semibold text-price">{payError}</p> : null}
+          {cancelError ? <p className="text-sm font-semibold text-price">{cancelError}</p> : null}
         </div>
       ) : null}
 

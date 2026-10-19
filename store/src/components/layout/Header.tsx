@@ -20,18 +20,18 @@ function BrandLogo() {
       <img
         src={logoUrl}
         alt="Tienderu.com"
-        className="h-13 w-auto max-w-[216px] object-contain"
+        className="h-17 w-auto max-w-[281px] object-contain"
         onError={() => setBroken(true)}
       />
     );
   }
   return (
     <>
-      <span className="flex h-13 w-13 items-center justify-center rounded-md bg-accent-400 text-[1.8rem] font-extrabold lowercase text-navy-900">
+      <span className="flex h-17 w-17 items-center justify-center rounded-md bg-accent-400 text-[2.34rem] font-extrabold lowercase text-navy-900">
         t
       </span>
-      <span className="hidden text-[1.8rem] font-bold sm:block">
-        tienderu<span className="text-[1.2rem] font-semibold text-accent-400">.com</span>
+      <span className="hidden text-[2.34rem] font-bold sm:block">
+        tienderu<span className="text-[1.56rem] font-semibold text-accent-400">.com</span>
       </span>
     </>
   );

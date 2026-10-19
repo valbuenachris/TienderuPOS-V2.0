@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest, trackBannerClick, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
+import { readRecent, savedToProduct } from '../local-lists';
 import { useDocumentMeta } from '../use-document-meta';
 import { ProductCard } from '../components/ProductCard';
 import { Skeleton } from '../components/ui/Skeleton';
@@ -9,6 +10,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
 
 export function HomePage() {
+  const [recent] = useState(() => readRecent());
   useDocumentMeta({
     title: 'Tienderu.com — Todo lo que buscas de las tiendas de tu ciudad',
     description:
@@ -98,6 +100,9 @@ export function HomePage() {
       {data.promos && data.promos.length > 0 ? <PromoStrip promos={data.promos} /> : null}
       {data.newest.length > 0 ? (
         <ProductRail title="Recién llegados a la tienda" products={data.newest} moreHref="/buscar?sort=newest" />
+      ) : null}
+      {recent.length >= 2 ? (
+        <ProductRail title="Vistos recientemente" products={recent.map(savedToProduct)} />
       ) : null}
     </div>
   );
@@ -237,17 +242,19 @@ function TrustRow() {
   );
 }
 
-function ProductRail({ title, products, moreHref }: { title: string; products: Product[]; moreHref: string }) {
+function ProductRail({ title, products, moreHref }: { title: string; products: Product[]; moreHref?: string }) {
   return (
     <section className="mb-8">
       <div className="mb-3 flex items-baseline justify-between gap-4">
         <h2 className="text-lg font-bold text-ink sm:text-xl">{title}</h2>
-        <Link
-          to={moreHref}
-          className="inline-flex items-center gap-1 text-sm font-medium text-link-600 hover:text-link-700 hover:underline"
-        >
-          Ver más <Icon name="chevron-right" className="h-4 w-4" />
-        </Link>
+        {moreHref ? (
+          <Link
+            to={moreHref}
+            className="inline-flex items-center gap-1 text-sm font-medium text-link-600 hover:text-link-700 hover:underline"
+          >
+            Ver más <Icon name="chevron-right" className="h-4 w-4" />
+          </Link>
+        ) : null}
       </div>
       <div className="-mx-4 flex snap-x gap-4 overflow-x-auto px-4 pb-2 sm:mx-0 sm:grid sm:grid-cols-3 sm:overflow-visible sm:px-0 lg:grid-cols-4 xl:grid-cols-4">
         {products.map((product) => (

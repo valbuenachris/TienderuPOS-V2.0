@@ -103,6 +103,9 @@ export function AccountPage() {
   return (
     <div className="container-page py-6">
       <h1 className="mb-4 text-xl font-bold text-ink sm:text-2xl">Mi cuenta</h1>
+      <p className="mb-4 text-sm text-ink-soft">
+        También puedes ver tus <Link to="/favoritos" className="font-semibold text-link-600 hover:underline">productos favoritos</Link>.
+      </p>
 
       <div className="grid gap-4 lg:grid-cols-2 lg:items-start">
         <section className="rounded-card bg-white p-5 shadow-card sm:p-6">

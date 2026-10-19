@@ -12,6 +12,9 @@ const HomePage = lazy(() => import('./pages/HomePage').then((module) => ({ defau
 const SearchPage = lazy(() => import('./pages/SearchPage').then((module) => ({ default: module.SearchPage })));
 const ProductPage = lazy(() => import('./pages/ProductPage').then((module) => ({ default: module.ProductPage })));
 const SellerPage = lazy(() => import('./pages/SellerPage').then((module) => ({ default: module.SellerPage })));
+const FavoritesPage = lazy(() =>
+  import('./pages/FavoritesPage').then((module) => ({ default: module.FavoritesPage }))
+);
 const CartPage = lazy(() => import('./pages/CartPage').then((module) => ({ default: module.CartPage })));
 const CheckoutPage = lazy(() =>
   import('./pages/CheckoutPage').then((module) => ({ default: module.CheckoutPage }))
@@ -91,6 +94,7 @@ export function App() {
             <Route path="/producto/:id" element={<ProductPage />} />
             <Route path="/vendedor/:tenantId" element={<SellerPage />} />
             <Route path="/carrito" element={<CartPage />} />
+            <Route path="/favoritos" element={<FavoritesPage />} />
             <Route path="/ingresar" element={<AuthPage mode="login" />} />
             <Route path="/registro" element={<AuthPage mode="register" />} />
             <Route

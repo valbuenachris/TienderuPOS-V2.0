@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { apiRequest, formatMoney, type ProductDetail, type ReviewsPayload } from '../api';
@@ -11,6 +11,7 @@ import { Rating } from '../components/ui/Rating';
 import { Select } from '../components/ui/Input';
 import { ProductGridSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
+import { pushRecent, snapshotProduct, toggleFavorite, useFavorites } from '../local-lists';
 import { useDocumentMeta } from '../use-document-meta';
 
 export function ProductPage() {
@@ -44,6 +45,11 @@ export function ProductPage() {
     );
   }, [product.data]);
 
+  const favorites = useFavorites();
+  const favorite = product.data ? favorites.includes(product.data.id) : false;
+  useEffect(() => {
+    if (product.data) pushRecent(snapshotProduct(product.data));
+  }, [product.data]);
   useDocumentMeta({
     title: product.data ? `${product.data.name} — Tienderu.com` : 'Tienderu.com',
     description: product.data?.details ? product.data.details.slice(0, 160) : null,
@@ -86,6 +92,12 @@ export function ProductPage() {
   const data = product.data;
   const currentImage = images[imageIndex] ?? null;
   const inStock = data.available_quantity > 0;
+
+  function shareWhatsApp() {
+    if (!data) return;
+    const text = `${data.name} — ${formatMoney(data.price)}\n${window.location.href}`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank', 'noopener');
+  }
 
   function addToCart(goCheckout: boolean) {
     if (!data) return;
@@ -253,6 +265,21 @@ export function ProductPage() {
                 className="flex-1"
               >
                 Comprar ahora
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                aria-label={favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+                onClick={() => {
+                  const added = toggleFavorite(snapshotProduct(data));
+                  toast.push(added ? 'Agregado a favoritos' : 'Quitado de favoritos');
+                }}
+              >
+                <Icon name="heart" className={favorite ? 'h-4 w-4 fill-current text-deal-600' : 'h-4 w-4'} />
+              </Button>
+              <Button variant="outline" onClick={shareWhatsApp}>
+                <Icon name="phone" className="h-4 w-4" /> Compartir
               </Button>
             </div>
           </div>

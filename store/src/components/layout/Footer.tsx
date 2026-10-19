@@ -69,6 +69,11 @@ export function Footer() {
                 Mis pedidos
               </Link>
             </li>
+            <li>
+              <Link to="/favoritos" className="transition-colors hover:text-accent-400">
+                Favoritos
+              </Link>
+            </li>
           </ul>
         </div>
         <div>

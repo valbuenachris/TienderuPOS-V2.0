@@ -11,6 +11,7 @@ export type MarketplaceProductQuery = {
   tenant?: string;
   minPrice?: string;
   maxPrice?: string;
+  minRating?: string;
   sort?: string;
   excludeId?: number;
 };
@@ -77,6 +78,7 @@ export class MarketplaceCatalogService {
   private reviewsProbe: { exists: boolean; at: number } | null = null;
   private bannersProbe: { exists: boolean; at: number } | null = null;
   private categoriesProbe: { exists: boolean; at: number } | null = null;
+  private unaccentProbe: { exists: boolean; at: number } | null = null;
 
   constructor(
     private readonly database: DatabaseService,
@@ -98,7 +100,13 @@ export class MarketplaceCatalogService {
     if (search !== '') {
       const pattern = `%${escapeLike(search)}%`;
       values.push(pattern);
-      filters.push(`(p.name ILIKE $${values.length} OR p.code ILIKE $${values.length} OR t.name ILIKE $${values.length})`);
+      const index = values.length;
+      const useUnaccent = await this.unaccentAvailable();
+      filters.push(
+        useUnaccent
+          ? `(public.immutable_unaccent(p.name) ILIKE public.immutable_unaccent($${index}) OR p.code ILIKE $${index} OR public.immutable_unaccent(t.name) ILIKE public.immutable_unaccent($${index}))`
+          : `(p.name ILIKE $${index} OR p.code ILIKE $${index} OR t.name ILIKE $${index})`
+      );
     }
     if (query.category !== undefined && query.category.trim() !== '') {
       values.push(query.category.trim().slice(0, 120));
@@ -109,6 +117,15 @@ export class MarketplaceCatalogService {
       if (!UUID_RE.test(tenant)) throw new BadRequestException('tenant must be a UUID');
       values.push(tenant);
       filters.push(`p.tenant_id = $${values.length}`);
+    }
+    const minRatingRaw = query.minRating?.trim() ?? '';
+    let minRating: number | null = null;
+    if (minRatingRaw !== '') {
+      const parsed = Number(minRatingRaw);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 5) {
+        throw new BadRequestException('min_rating must be between 1 and 5');
+      }
+      minRating = parsed;
     }
     const minPrice = parseMoneyFilter(query.minPrice, 'min_price');
     const maxPrice = parseMoneyFilter(query.maxPrice, 'max_price');
@@ -130,6 +147,10 @@ export class MarketplaceCatalogService {
     const sort = (query.sort ?? 'relevance').trim().toLowerCase();
     if (!(SORT_OPTIONS as readonly string[]).includes(sort)) {
       throw new BadRequestException(`sort must be one of ${SORT_OPTIONS.join(', ')}`);
+    }
+    if (minRating !== null && includeRatings) {
+      values.push(minRating.toFixed(2));
+      filters.push(`COALESCE(r.average_rating, 0) >= $${values.length}::numeric`);
     }
     const orderBy = this.orderBy(sort, includeRatings);
     const ratingsJoin = includeRatings
@@ -417,6 +438,17 @@ export class MarketplaceCatalogService {
       average_rating: row.average_rating === null ? null : Number(row.average_rating),
       reviews_count: Number(row.reviews_count ?? 0)
     };
+  }
+
+  private async unaccentAvailable(): Promise<boolean> {
+    const now = Date.now();
+    if (this.unaccentProbe && now - this.unaccentProbe.at < PROBE_CACHE_MS) return this.unaccentProbe.exists;
+    const result = await this.database.query<{ fn: string | null }>(
+      `SELECT to_regprocedure('public.immutable_unaccent(text)')::text AS fn`
+    );
+    const exists = Boolean(result.rows[0]?.fn);
+    this.unaccentProbe = { exists, at: now };
+    return exists;
   }
 
   private async reviewsTableExists(): Promise<boolean> {

@@ -1,16 +1,35 @@
 import { Link } from 'react-router-dom';
 import { formatMoney, type Product } from '../api';
+import { snapshotProduct, toggleFavorite, useFavorites } from '../local-lists';
+import { Icon } from './ui/Icon';
 import { Rating } from './ui/Rating';
 
 export function ProductCard({ product }: { product: Product }) {
   const image = product.image_url ?? product.image_2_url ?? product.image_3_url;
   const lowStock = product.available_quantity > 0 && product.available_quantity <= 5;
+  const favorites = useFavorites();
+  const favorite = favorites.includes(product.id);
 
   return (
     <Link
       to={`/producto/${product.id}`}
-      className="group flex h-full flex-col overflow-hidden rounded-card border border-transparent bg-white shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:border-line hover:shadow-card-hover"
+      className="group relative flex h-full flex-col overflow-hidden rounded-card border border-transparent bg-white shadow-card transition-all duration-150 hover:-translate-y-0.5 hover:border-line hover:shadow-card-hover"
     >
+      <button
+        type="button"
+        aria-label={favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+        title={favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          toggleFavorite(snapshotProduct(product));
+        }}
+        className={`absolute right-2 top-2 z-10 rounded-full bg-white/90 p-1.5 shadow-card transition-colors hover:bg-white ${
+          favorite ? 'text-deal-600' : 'text-ink-soft'
+        }`}
+      >
+        <Icon name="heart" className={favorite ? 'h-4 w-4 fill-current' : 'h-4 w-4'} />
+      </button>
       <div className="flex h-44 items-center justify-center bg-white p-3 sm:h-48">
         {image ? (
           <img

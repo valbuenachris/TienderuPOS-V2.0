@@ -91,6 +91,7 @@ export class MarketplacePublicController {
     @Query('tenant') tenant?: string,
     @Query('min_price') minPrice?: string,
     @Query('max_price') maxPrice?: string,
+    @Query('min_rating') minRating?: string,
     @Query('sort') sort?: string,
     @Query('page') page?: string,
     @Query('limit') limit?: string
@@ -103,6 +104,7 @@ export class MarketplacePublicController {
         tenant: readQueryString(tenant),
         minPrice: readQueryString(minPrice),
         maxPrice: readQueryString(maxPrice),
+        minRating: readQueryString(minRating),
         sort: readQueryString(sort)
       },
       pagination

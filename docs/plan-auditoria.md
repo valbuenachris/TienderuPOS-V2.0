@@ -1,6 +1,6 @@
 # Plan: Auditoría del Marketplace Tienderu.com — Hallazgos y Mejoras (v0.11.x)
 
-Estado: **Fases 1–3 ejecutadas** (v0.11.0 `f40b829`, v0.11.1 `f4fbcb4`, v0.11.2); Fases 4–6 pendientes. Fecha: 2026-10-19.
+Estado: **Fases 1–4 ejecutadas** (v0.11.0 `f40b829`, v0.11.1 `f4fbcb4`, v0.11.2 `1ad8913`, v0.11.3); Fases 5–6 pendientes. Fecha: 2026-10-19.
 
 ## Decisiones confirmadas por el usuario
 - **Arranque por la Fase 1** (higiene operativa: expiración de pedidos impagos, reposición de stock, cancelaciones).
@@ -45,7 +45,7 @@ WhatsApp al vendedor (pedido pagado) y al cliente (pagado/despachado/entregado) 
 ### Fase 3 — SEO, social y analítica (v0.11.2) ✅ EJECUTADA
 Títulos/meta/OG dinámicos por página y producto; `robots.txt` + `sitemap.xml`; JSON-LD (Product/Offer/Breadcrumb); Umami/Plausible self-hosted en el VPS (contenedor propio) + eventos de clic de banners (DDL `tec_marketplace_banner_events`).
 
-### Fase 4 — Conversión/UX (v0.11.3) — PENDIENTE
+### Fase 4 — Conversión/UX (v0.11.3) ✅ EJECUTADA
 Compartir producto por WhatsApp; comprar de nuevo; vistos recientemente; wishlist; filtros por rating/stock/vendedor; `unaccent`+trigram (DDL).
 
 ### Fase 5 — Confianza/crecimiento (v0.11.4) — PENDIENTE

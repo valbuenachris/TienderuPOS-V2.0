@@ -217,6 +217,9 @@ function MobileDrawer({ onClose }: { onClose: () => void }) {
           <Link to="/pedidos" className={itemClass} onClick={onClose}>
             <Icon name="package" className="h-4 w-4" /> Mis pedidos
           </Link>
+          <Link to="/favoritos" className={itemClass} onClick={onClose}>
+            <Icon name="heart" className="h-4 w-4" /> Favoritos
+          </Link>
           {customer ? (
             <>
               <Link to="/cuenta" className={itemClass} onClick={onClose}>

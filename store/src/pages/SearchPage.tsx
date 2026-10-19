@@ -29,6 +29,7 @@ export function SearchPage() {
   const sort = params.get('sort') ?? 'relevance';
   const minPrice = params.get('min_price') ?? '';
   const maxPrice = params.get('max_price') ?? '';
+  const minRating = params.get('min_rating') ?? '';
   const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
 
   const query = new URLSearchParams();
@@ -37,6 +38,7 @@ export function SearchPage() {
   query.set('sort', sort);
   if (minPrice) query.set('min_price', minPrice);
   if (maxPrice) query.set('max_price', maxPrice);
+  if (minRating) query.set('min_rating', minRating);
   query.set('page', String(page));
   query.set('limit', '24');
 
@@ -77,6 +79,12 @@ export function SearchPage() {
     activeChips.push({
       label: `Precio: ${minPrice || '0'} – ${maxPrice || '∞'}`,
       clear: () => applyPrice('', '')
+    });
+  }
+  if (minRating) {
+    activeChips.push({
+      label: `${minRating}★ o más`,
+      clear: () => updateFilter('min_rating', '')
     });
   }
   if (sort !== 'relevance')
@@ -130,6 +138,20 @@ export function SearchPage() {
             </button>
           ))}
         </div>
+      </div>
+
+      <div>
+        <h3 className="mb-2 text-sm font-bold uppercase tracking-wide text-ink-soft">Calificación</h3>
+        <Select
+          value={minRating}
+          onChange={(event) => updateFilter('min_rating', event.target.value)}
+          aria-label="Calificación mínima"
+        >
+          <option value="">Todas</option>
+          <option value="4">4★ o más</option>
+          <option value="3">3★ o más</option>
+          <option value="2">2★ o más</option>
+        </Select>
       </div>
 
       <div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ApiError,
@@ -10,8 +10,10 @@ import {
   payMarketplaceOrder,
   type Order,
   type OrderWithSuborders,
-  type Paginated
+  type Paginated,
+  type Product
 } from '../api';
+import { useCart } from '../cart';
 import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { OrderStatusBadge } from '../components/ui/Badge';
@@ -153,6 +155,45 @@ export function OrderDetailPage() {
     }
   });
 
+  const cart = useCart();
+  const navigate = useNavigate();
+  const buyAgain = useMutation({
+    mutationFn: async () => {
+      const uniqueIds = [
+        ...new Set((data?.suborders ?? []).flatMap((suborder) => suborder.items.map((item) => item.product_id)))
+      ];
+      const results = await Promise.allSettled(
+        uniqueIds.map((productId) => apiRequest<Product>(`/marketplace/products/${productId}`))
+      );
+      let added = 0;
+      for (const result of results) {
+        if (result.status !== 'fulfilled') continue;
+        const product = result.value;
+        cart.addItem({
+          product_id: product.id,
+          name: product.name ?? `Producto ${product.id}`,
+          price: product.price,
+          image_url: product.image_url,
+          seller_id: product.seller.id,
+          seller_name: product.seller.name,
+          available_quantity: product.available_quantity
+        });
+        added += 1;
+      }
+      return { added, total: uniqueIds.length };
+    },
+    onSuccess: ({ added, total }) => {
+      if (added === 0) {
+        toast.push('Los productos de este pedido ya no están disponibles', 'error');
+        return;
+      }
+      toast.push(
+        added === total ? 'Productos agregados al carrito' : `${added} de ${total} productos agregados`
+      );
+      navigate('/carrito');
+    }
+  });
+
   const cancelMutation = useMutation({
     mutationFn: () => cancelMarketplaceOrder(orderId),
     onSuccess: async () => {
@@ -200,6 +241,15 @@ export function OrderDetailPage() {
         Realizado el {formatDate(data.created_at)} · Pago:{' '}
         {data.payment_status === 'paid' ? 'confirmado' : 'pendiente'}
       </p>
+
+      {data.payment_status === 'paid' ? (
+        <div className="mb-4">
+          <Button variant="outline" disabled={buyAgain.isPending} onClick={() => buyAgain.mutate()}>
+            <Icon name="cart" className="h-4 w-4" />
+            {buyAgain.isPending ? 'Agregando…' : 'Comprar de nuevo'}
+          </Button>
+        </div>
+      ) : null}
 
       {data.payment_status !== 'paid' && data.status !== 'cancelled' ? (
         <div className="mb-4 flex flex-col gap-2">

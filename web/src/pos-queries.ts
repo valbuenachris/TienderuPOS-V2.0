@@ -41,6 +41,8 @@ import {
   fetchMarketplaceOrders,
   fetchMarketplaceSettings,
   fetchMarketplaceSummary,
+  fetchMarketplaceWhatsapp,
+  connectMarketplaceWhatsapp,
   fetchRegisterSummary,
   fetchRegisters,
   fetchReportSummary,
@@ -807,6 +809,34 @@ export function useMarketplaceCouponsQuery(token: string | null, tenantId: strin
     queryKey: ['marketplace-coupons', tenantId],
     queryFn: fetchMarketplaceCoupons,
     enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceWhatsappQuery(
+  token: string | null,
+  tenantId: string | null,
+  refetchInterval: number | false = false
+) {
+  return useQuery({
+    queryKey: ['marketplace-whatsapp', tenantId],
+    queryFn: fetchMarketplaceWhatsapp,
+    enabled: Boolean(token && tenantId),
+    refetchInterval,
+    retry: false
+  });
+}
+
+export function useMarketplaceWhatsappConnectQuery(
+  token: string | null,
+  tenantId: string | null,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: ['marketplace-whatsapp-connect', tenantId],
+    queryFn: connectMarketplaceWhatsapp,
+    enabled: Boolean(token && tenantId && enabled),
+    refetchInterval: enabled ? 20000 : false,
     retry: false
   });
 }

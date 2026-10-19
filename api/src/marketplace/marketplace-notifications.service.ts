@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 import { EvolutionClient } from '../whatsapp/evolution.client';
 import { TenantWhatsappSettingsService } from '../whatsapp/tenant-whatsapp-settings.service';
+import { MarketplaceWhatsappSettingsService } from './marketplace-whatsapp-settings.service';
 
 const MONEY = new Intl.NumberFormat('es-CO', {
   style: 'currency',
@@ -20,9 +21,10 @@ function digitsOnly(value: string | null | undefined): string | null {
 }
 
 /**
- * Notificaciones WhatsApp del marketplace (v0.11.1), best-effort y sin bloquear:
- * reutiliza la instancia Evolution del tenant. Si el tenant no tiene WhatsApp
- * conectado o no hay teléfono, se omite silenciosamente (queda en logs).
+ * Notificaciones WhatsApp del marketplace (v0.11.1, v0.12.0): prefiere la
+ * instancia de la PLATAFORMA (tienderu.com) y cae a la instancia del tenant
+ * cuando la plataforma no está conectada o el canal está desactivado.
+ * Best-effort: nunca bloquea el flujo de pago ni de despacho.
  */
 @Injectable()
 export class MarketplaceNotificationsService {
@@ -31,7 +33,8 @@ export class MarketplaceNotificationsService {
   constructor(
     private readonly database: DatabaseService,
     private readonly evolution: EvolutionClient,
-    private readonly whatsappSettings: TenantWhatsappSettingsService
+    private readonly whatsappSettings: TenantWhatsappSettingsService,
+    private readonly marketplaceWhatsapp: MarketplaceWhatsappSettingsService
   ) {}
 
   /** Avisa al vendedor que un pedido fue pagado (al teléfono de contacto de su tienda). */
@@ -44,10 +47,6 @@ export class MarketplaceNotificationsService {
     /** Contraentrega (v0.11.4): el vendedor cobra al entregar. */
     cod?: boolean;
   }): Promise<void> {
-    const instance = await this.openInstance(input.tenantId);
-    if (!instance) return;
-    const phone = await this.tenantContactPhone(input.tenantId);
-    if (!phone) return;
     const text = input.cod
       ? `🛒 Tienderu.com · Nuevo pedido contraentrega ${input.orderNumber}\n` +
         `${input.itemsCount} producto(s) de ${input.tenantName} por ${formatMoney(input.tenantTotal)}\n` +
@@ -55,7 +54,58 @@ export class MarketplaceNotificationsService {
       : `🛒 Tienderu.com · Pedido pagado ${input.orderNumber}\n` +
         `${input.itemsCount} producto(s) de ${input.tenantName} por ${formatMoney(input.tenantTotal)}\n` +
         `Recibes ${formatMoney(input.tenantTotal)}. Prepáralo en el POS → Marketplace → Pedidos.`;
+
+    const phone = await this.tenantContactPhone(input.tenantId);
+    if (!phone) return;
+
+    const platform = await this.marketplaceWhatsapp.activeInstance('tenants');
+    if (platform) {
+      await this.send(platform, phone, text);
+      return;
+    }
+
+    const instance = await this.openInstance(input.tenantId);
+    if (!instance) return;
     await this.send(instance, phone, text);
+  }
+
+  /**
+   * Mensaje ÚNICO de "pedido pagado" al comprador (v0.12.0): una compra = un
+   * mensaje aunque haya varios vendedores. Sin instancia de plataforma, cae al
+   * comportamiento v0.11.1 (un mensaje por vendedor con su instancia).
+   */
+  async notifyCustomerPaidOrder(input: {
+    phone: string | null;
+    orderNumber: string;
+    grandTotal: string;
+    sellers: Array<{ tenantId: string; tenantName: string }>;
+  }): Promise<void> {
+    const phone = digitsOnly(input.phone);
+    if (!phone) return;
+
+    const platform = await this.marketplaceWhatsapp.activeInstance('customers');
+    if (platform) {
+      const names = [...new Set(input.sellers.map((seller) => seller.tenantName).filter(Boolean))];
+      const sellersText =
+        names.length > 1 ? `${names.join(', ')} preparan` : `${names[0] ?? 'La tienda'} prepara`;
+      await this.send(
+        platform,
+        phone,
+        `✅ Tienderu.com · Tu pedido ${input.orderNumber} quedó confirmado por ${formatMoney(input.grandTotal)}.\n` +
+          `${sellersText} tu pedido. Te avisaremos cuando sea enviado.`
+      );
+      return;
+    }
+
+    for (const seller of input.sellers) {
+      await this.notifyCustomer({
+        tenantId: seller.tenantId,
+        tenantName: seller.tenantName,
+        phone,
+        orderNumber: input.orderNumber,
+        event: 'paid'
+      });
+    }
   }
 
   /** Avisa al comprador el estado de su sub-pedido (pagado/enviado/entregado). */
@@ -69,8 +119,6 @@ export class MarketplaceNotificationsService {
   }): Promise<void> {
     const phone = digitsOnly(input.phone);
     if (!phone) return;
-    const instance = await this.openInstance(input.tenantId);
-    if (!instance) return;
 
     const messages: Record<typeof input.event, string> = {
       paid:
@@ -82,6 +130,15 @@ export class MarketplaceNotificationsService {
       delivered:
         `📦 Tienderu.com · Tu pedido ${input.orderNumber} de ${input.tenantName} fue entregado. ¡Gracias por tu compra!`
     };
+
+    const platform = await this.marketplaceWhatsapp.activeInstance('customers');
+    if (platform) {
+      await this.send(platform, phone, messages[input.event]);
+      return;
+    }
+
+    const instance = await this.openInstance(input.tenantId);
+    if (!instance) return;
     await this.send(instance, phone, messages[input.event]);
   }
 

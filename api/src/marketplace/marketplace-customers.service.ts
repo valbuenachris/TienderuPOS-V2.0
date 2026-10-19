@@ -5,6 +5,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException
 } from '@nestjs/common';
@@ -82,6 +83,7 @@ export type MarketplaceAdminCustomerRow = {
  */
 @Injectable()
 export class MarketplaceCustomersService {
+  private readonly logger = new Logger(MarketplaceCustomersService.name);
   private readonly bcryptRounds: number;
   private readonly tokenTtl: number;
   private readonly maxLoginAttempts: number;
@@ -191,6 +193,83 @@ export class MarketplaceCustomersService {
     );
     if (!result.rows[0]) throw new NotFoundException('Account not found');
     return result.rows[0];
+  }
+
+  /**
+   * Comprador del chatbot del marketplace (v0.12.0): find-or-create por teléfono.
+   * Se crea con email sintético `wa-<digits>@tienderu.com` y contraseña aleatoria
+   * (compra 100% por WhatsApp; soporte puede resetearla si luego quiere cuenta web).
+   */
+  async ensureWhatsappCustomer(phone: string, name: string | null): Promise<MarketplaceCustomerRow> {
+    await this.settings.assertAvailable();
+    const digits = (phone ?? '').replace(/\D/g, '');
+    if (digits.length < 7) throw new BadRequestException('El teléfono de la conversación no es válido');
+    const email = `wa-${digits}@tienderu.com`;
+
+    const found = await this.database.query<MarketplaceCustomerRow>(
+      `SELECT id, name, email, phone, created_at
+       FROM public.tec_marketplace_customers
+       WHERE LOWER(email) = $1
+          OR regexp_replace(COALESCE(phone, ''), '[^0-9]', '', 'g') = $2
+       ORDER BY id ASC
+       LIMIT 1`,
+      [email, digits]
+    );
+    const existing = found.rows[0];
+    if (existing) {
+      if ((existing.name === null || existing.name.trim() === '') && name !== null && name.trim() !== '') {
+        const cleanName = name.trim().slice(0, 120);
+        await this.database.query(
+          `UPDATE public.tec_marketplace_customers SET name = $1, updated_at = NOW() WHERE id = $2`,
+          [cleanName, existing.id]
+        );
+        existing.name = cleanName;
+      }
+      return existing;
+    }
+
+    const hash = await hashPassword(randomBytes(24).toString('base64url'), this.bcryptRounds);
+    try {
+      const created = await this.database.query<MarketplaceCustomerRow>(
+        `INSERT INTO public.tec_marketplace_customers (name, email, phone, password)
+         VALUES ($1, $2, $3, $4)
+         RETURNING id, name, email, phone, created_at`,
+        [name?.trim().slice(0, 120) || 'Cliente WhatsApp', email, digits, hash]
+      );
+      const customer = created.rows[0];
+      this.logger.log(`Cliente del marketplace por WhatsApp creado: #${customer.id} (${digits})`);
+      return customer;
+    } catch (error: unknown) {
+      const code =
+        typeof error === 'object' && error !== null && 'code' in error
+          ? String((error as { code?: unknown }).code)
+          : '';
+      if (code === '23505') {
+        const retry = await this.database.query<MarketplaceCustomerRow>(
+          `SELECT id, name, email, phone, created_at
+           FROM public.tec_marketplace_customers
+           WHERE LOWER(email) = $1
+           LIMIT 1`,
+          [email]
+        );
+        if (retry.rows[0]) return retry.rows[0];
+      }
+      throw error;
+    }
+  }
+
+  /** Dirección predeterminada del comprador (usada por el bot cuando no pide dirección nueva). */
+  async defaultAddress(customerId: number): Promise<MarketplaceAddressRow | null> {
+    await this.settings.assertAvailable();
+    const result = await this.database.query<MarketplaceAddressRow>(
+      `SELECT ${ADDRESS_FIELDS}
+       FROM public.tec_marketplace_addresses
+       WHERE customer_id = $1
+       ORDER BY is_default DESC, id ASC
+       LIMIT 1`,
+      [customerId]
+    );
+    return result.rows[0] ?? null;
   }
 
   async listAddresses(customerId: number): Promise<MarketplaceAddressRow[]> {

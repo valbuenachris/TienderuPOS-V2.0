@@ -12,6 +12,7 @@ import { formatMoney } from '../../format';
 import { MarcaBannersTab } from './MarcaBannersTab';
 import { ClientesTab } from './ClientesTab';
 import { CuponesTab } from './CuponesTab';
+import { WhatsappTab } from './WhatsappTab';
 
 const ORDER_STATUS_LABELS: Record<string, string> = {
   pending_payment: 'Pago pendiente',
@@ -234,7 +235,7 @@ function OrdersSummaryTab() {
   );
 }
 
-type GlobalTab = 'orders' | 'brand' | 'customers' | 'coupons';
+type GlobalTab = 'orders' | 'brand' | 'customers' | 'coupons' | 'whatsapp';
 
 export default function MarketplaceGlobalPage() {
   const [tab, setTab] = useState<GlobalTab>('orders');
@@ -270,6 +271,13 @@ export default function MarketplaceGlobalPage() {
         >
           Cupones
         </button>
+        <button
+          type="button"
+          className={`tab ${tab === 'whatsapp' ? 'active' : ''}`}
+          onClick={() => setTab('whatsapp')}
+        >
+          WhatsApp
+        </button>
       </div>
       {tab === 'orders' ? (
         <OrdersSummaryTab />
@@ -277,8 +285,10 @@ export default function MarketplaceGlobalPage() {
         <MarcaBannersTab />
       ) : tab === 'customers' ? (
         <ClientesTab />
-      ) : (
+      ) : tab === 'coupons' ? (
         <CuponesTab />
+      ) : (
+        <WhatsappTab />
       )}
     </>
   );

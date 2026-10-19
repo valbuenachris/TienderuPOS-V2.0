@@ -462,7 +462,8 @@ export class MarketplaceOrdersService {
     });
 
     if (isCash) {
-      // Contraentrega (v0.11.4): sin link de pago; avisa al vendedor y al comprador.
+      // Contraentrega (v0.11.4): sin link de pago; cada vendedor recibe su aviso y
+      // el comprador UN mensaje del pedido completo (v0.12.0).
       for (const suborder of created.suborders) {
         await this.notifications.notifySellerPaidOrder({
           tenantId: suborder.tenantId,
@@ -472,14 +473,16 @@ export class MarketplaceOrdersService {
           tenantTotal: suborder.tenantTotal,
           cod: true
         });
-        await this.notifications.notifyCustomer({
-          tenantId: suborder.tenantId,
-          tenantName: suborder.tenantName,
-          phone: customer.phone,
-          orderNumber: created.order.order_number,
-          event: 'paid'
-        });
       }
+      await this.notifications.notifyCustomerPaidOrder({
+        phone: customer.phone,
+        orderNumber: created.order.order_number,
+        grandTotal: created.order.grand_total,
+        sellers: created.suborders.map((suborder) => ({
+          tenantId: suborder.tenantId,
+          tenantName: suborder.tenantName
+        }))
+      });
       return { ...created.order, payment_url: null };
     }
 

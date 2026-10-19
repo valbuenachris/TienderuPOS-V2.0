@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module';
 import { AuthModule } from '../auth/auth.module';
 import { CatalogModule } from '../catalog/catalog.module';
 import { PaymentsModule } from '../payments/payments.module';
@@ -21,15 +22,20 @@ import { MarketplaceRateLimitService } from './marketplace-rate-limit.service';
 import { MarketplaceReviewsService } from './marketplace-reviews.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 import { MarketplaceTenantController } from './marketplace-tenant.controller';
+import { MarketplaceWhatsappAgentService } from './marketplace-whatsapp-agent.service';
+import { MarketplaceWhatsappService } from './marketplace-whatsapp.service';
+import { MarketplaceWhatsappSettingsService } from './marketplace-whatsapp-settings.service';
+import { MarketplaceWhatsappWebhookController } from './marketplace-whatsapp-webhook.controller';
 
 @Module({
-  imports: [AuthModule, CatalogModule, PaymentsModule, SalesModule, WhatsappModule],
+  imports: [AiModule, AuthModule, CatalogModule, PaymentsModule, SalesModule, WhatsappModule],
   controllers: [
     MarketplacePublicController,
     MarketplaceAuthController,
     MarketplaceCustomerController,
     MarketplaceTenantController,
-    MarketplaceAdminController
+    MarketplaceAdminController,
+    MarketplaceWhatsappWebhookController
   ],
   providers: [
     MarketplaceSettingsService,
@@ -43,6 +49,9 @@ import { MarketplaceTenantController } from './marketplace-tenant.controller';
     MarketplaceReviewsService,
     MarketplaceCouponsService,
     MarketplaceRateLimitService,
+    MarketplaceWhatsappSettingsService,
+    MarketplaceWhatsappService,
+    MarketplaceWhatsappAgentService,
     MarketplaceCustomerGuard
   ],
   exports: [MarketplacePaymentsService, MarketplaceSettingsService]

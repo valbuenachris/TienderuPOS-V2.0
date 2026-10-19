@@ -232,7 +232,8 @@ export class MarketplacePaymentsService {
       }
     }
 
-    // Notificaciones (v0.11.1): solo en la PRIMERA liquidación (idempotente).
+    // Notificaciones (v0.11.1 / v0.12.0): solo en la PRIMERA liquidación (idempotente);
+    // el comprador recibe UN mensaje del pedido completo y cada vendedor el suyo.
     if (settlement.firstSettlement) {
       for (const suborder of suborders) {
         await this.notifications.notifySellerPaidOrder({
@@ -242,14 +243,16 @@ export class MarketplacePaymentsService {
           itemsCount: suborder.items_count,
           tenantTotal: suborder.tenant_total
         });
-        await this.notifications.notifyCustomer({
-          tenantId: suborder.tenant_id,
-          tenantName: suborder.tenant_name,
-          phone: order.customer_phone,
-          orderNumber: order.order_number,
-          event: 'paid'
-        });
       }
+      await this.notifications.notifyCustomerPaidOrder({
+        phone: order.customer_phone,
+        orderNumber: order.order_number,
+        grandTotal: order.grand_total,
+        sellers: suborders.map((suborder) => ({
+          tenantId: suborder.tenant_id,
+          tenantName: suborder.tenant_name
+        }))
+      });
     }
     return { handled: true };
   }

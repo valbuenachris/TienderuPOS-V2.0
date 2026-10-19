@@ -19,11 +19,12 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { parsePagination } from '../common/pagination';
-import { AdminBannerDto, AdminBrandingDto, AdminCouponDto, MarketplacePayoutMarkDto } from './marketplace.dto';
+import { AdminBannerDto, AdminBrandingDto, AdminCouponDto, AdminMarketplaceWhatsappDto, MarketplacePayoutMarkDto } from './marketplace.dto';
 import { MarketplaceBrandingService, UploadedBrandFiles } from './marketplace-branding.service';
 import { MarketplaceCouponsService } from './marketplace-coupons.service';
 import { MarketplaceCustomersService } from './marketplace-customers.service';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
+import { MarketplaceWhatsappService } from './marketplace-whatsapp.service';
 
 const FILE_LIMITS = { limits: { fileSize: 3 * 1024 * 1024 } };
 
@@ -38,7 +39,8 @@ export class MarketplaceAdminController {
     private readonly orders: MarketplaceOrdersService,
     private readonly branding: MarketplaceBrandingService,
     private readonly customers: MarketplaceCustomersService,
-    private readonly coupons: MarketplaceCouponsService
+    private readonly coupons: MarketplaceCouponsService,
+    private readonly whatsapp: MarketplaceWhatsappService
   ) {}
 
   @Get('orders')
@@ -112,6 +114,40 @@ export class MarketplaceAdminController {
   @Delete('coupons/:id')
   deleteCoupon(@Param('id', ParseIntPipe) id: number) {
     return this.coupons.adminRemove(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // WhatsApp de la plataforma / chatbot del marketplace (v0.12.0)
+  // ---------------------------------------------------------------------------
+
+  @Get('whatsapp')
+  whatsappSettings() {
+    return this.whatsapp.settingsView();
+  }
+
+  @Post('whatsapp/instance')
+  createWhatsappInstance() {
+    return this.whatsapp.createInstance();
+  }
+
+  @Post('whatsapp/connect')
+  connectWhatsapp() {
+    return this.whatsapp.connect();
+  }
+
+  @Get('whatsapp/status')
+  whatsappStatus() {
+    return this.whatsapp.status();
+  }
+
+  @Post('whatsapp/disconnect')
+  disconnectWhatsapp() {
+    return this.whatsapp.disconnect();
+  }
+
+  @Put('whatsapp')
+  updateWhatsappSettings(@Body() body: AdminMarketplaceWhatsappDto) {
+    return this.whatsapp.updateSettings(body);
   }
 
   // ---------------------------------------------------------------------------

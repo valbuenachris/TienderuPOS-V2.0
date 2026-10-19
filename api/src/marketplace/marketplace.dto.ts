@@ -367,3 +367,28 @@ export class MarketplacePasswordChangeDto {
   @MaxLength(72)
   new_password!: string;
 }
+
+/** Configuración del WhatsApp de la plataforma / chatbot del marketplace (v0.12.0). */
+export class AdminMarketplaceWhatsappDto {
+  @IsOptional()
+  @IsBoolean()
+  agent_enabled?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  agent_name?: string;
+
+  @IsOptional()
+  @IsString()
+  @IsIn(['amable', 'profesional', 'vendedor', 'cercano'])
+  agent_tone?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  notify_customers?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  notify_tenants?: boolean;
+}

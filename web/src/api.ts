@@ -1725,3 +1725,54 @@ export const updateMarketplaceCoupon = (id: number, payload: MarketplaceCouponPa
 
 export const deleteMarketplaceCoupon = (id: number) =>
   apiRequest<void>(`/marketplace/admin/coupons/${id}`, { method: 'DELETE' });
+
+// ---------------------------------------------------------------------------
+// Marketplace global · WhatsApp de la plataforma / chatbot (v0.12.0)
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceWhatsappSettings {
+  configured: boolean;
+  table_ready: boolean;
+  instance_name: string | null;
+  status: 'none' | 'open' | 'connecting' | 'close';
+  connected_at: string | null;
+  agent_enabled: boolean;
+  agent_name: string | null;
+  agent_tone: string;
+  notify_customers: boolean;
+  notify_tenants: boolean;
+  webhook_token_ready: boolean;
+}
+
+export interface MarketplaceWhatsappPayload {
+  agent_enabled?: boolean;
+  agent_name?: string;
+  agent_tone?: string;
+  notify_customers?: boolean;
+  notify_tenants?: boolean;
+}
+
+export const fetchMarketplaceWhatsapp = () =>
+  apiRequest<MarketplaceWhatsappSettings>('/marketplace/admin/whatsapp');
+
+export const updateMarketplaceWhatsapp = (payload: MarketplaceWhatsappPayload) =>
+  apiRequest<MarketplaceWhatsappSettings>('/marketplace/admin/whatsapp', {
+    method: 'PUT',
+    body: JSON.stringify(payload)
+  });
+
+export const createMarketplaceWhatsappInstance = () =>
+  apiRequest<MarketplaceWhatsappSettings & { qr: string | null }>('/marketplace/admin/whatsapp/instance', {
+    method: 'POST'
+  });
+
+export const connectMarketplaceWhatsapp = () =>
+  apiRequest<{ state: string | null; qr: string | null }>('/marketplace/admin/whatsapp/connect', {
+    method: 'POST'
+  });
+
+export const fetchMarketplaceWhatsappStatus = () =>
+  apiRequest<{ status: string }>('/marketplace/admin/whatsapp/status');
+
+export const disconnectMarketplaceWhatsapp = () =>
+  apiRequest<MarketplaceWhatsappSettings>('/marketplace/admin/whatsapp/disconnect', { method: 'POST' });

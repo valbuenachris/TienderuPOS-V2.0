@@ -40,13 +40,16 @@ const STATUS_FILTERS = [
 
 export default function MarketplacePage() {
   const [tab, setTab] = useState<Tab>('orders');
+  const { token, tenantId } = useSession();
+  const summary = useMarketplaceSummaryQuery(token, tenantId);
+  const pending = summary.data?.pending_count ?? 0;
 
   return (
     <>
       <PageHeader eyebrow="TIENDA ONLINE · TIENDERU.COM" title="Marketplace" />
       <div className="tabs">
         <button type="button" className={`tab ${tab === 'orders' ? 'active' : ''}`} onClick={() => setTab('orders')}>
-          Pedidos
+          Pedidos{pending > 0 ? ` (${pending})` : ''}
         </button>
         <button type="button" className={`tab ${tab === 'summary' ? 'active' : ''}`} onClick={() => setTab('summary')}>
           Resumen

@@ -4,6 +4,7 @@ import { DatabaseService } from '../database/database.service';
 import { SalesService } from '../sales/sales.service';
 import { TenantBoldService } from '../payments/tenant-bold.service';
 import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
+import { MarketplaceNotificationsService } from './marketplace-notifications.service';
 
 type WebhookEvent = { type?: string; data?: Record<string, unknown> };
 
@@ -13,6 +14,7 @@ type OrderPaymentRow = {
   grand_total: string;
   status: string;
   payment_status: string;
+  customer_phone: string | null;
 };
 
 type SuborderSaleRow = {
@@ -20,6 +22,9 @@ type SuborderSaleRow = {
   sale_id: number | null;
   tenant_total: string;
   status: string;
+  tenant_id: string;
+  tenant_name: string;
+  items_count: number;
 };
 
 const ORDER_REFERENCE_RE = /^MKP-(\d+)(?:-|$)/i;
@@ -54,7 +59,8 @@ export class MarketplacePaymentsService {
     private readonly sales: SalesService,
     private readonly tenantBold: TenantBoldService,
     private readonly config: ConfigService,
-    private readonly maintenance: MarketplaceMaintenanceService
+    private readonly maintenance: MarketplaceMaintenanceService,
+    private readonly notifications: MarketplaceNotificationsService
   ) {}
 
   async createPlatformLink(input: {
@@ -120,7 +126,7 @@ export class MarketplacePaymentsService {
     }
 
     const orderResult = await this.database.query<OrderPaymentRow>(
-      `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status
+      `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status, customer_phone
        FROM public.tec_marketplace_orders
        WHERE id = $1
        LIMIT 1`,
@@ -159,7 +165,8 @@ export class MarketplacePaymentsService {
       return { handled: false };
     }
 
-    const suborders = await this.settleOrder(orderId);
+    const settlement = await this.settleOrder(orderId);
+    const suborders = settlement.suborders;
     this.logger.log(
       `Bold marketplace SALE_APPROVED order=${order.order_number} suborders=${suborders.length}`
     );
@@ -175,13 +182,35 @@ export class MarketplacePaymentsService {
         );
       }
     }
+
+    // Notificaciones (v0.11.1): solo en la PRIMERA liquidación (idempotente).
+    if (settlement.firstSettlement) {
+      for (const suborder of suborders) {
+        await this.notifications.notifySellerPaidOrder({
+          tenantId: suborder.tenant_id,
+          tenantName: suborder.tenant_name,
+          orderNumber: order.order_number,
+          itemsCount: suborder.items_count,
+          tenantTotal: suborder.tenant_total
+        });
+        await this.notifications.notifyCustomer({
+          tenantId: suborder.tenant_id,
+          tenantName: suborder.tenant_name,
+          phone: order.customer_phone,
+          orderNumber: order.order_number,
+          event: 'paid'
+        });
+      }
+    }
     return { handled: true };
   }
 
-  private async settleOrder(orderId: number): Promise<SuborderSaleRow[]> {
+  private async settleOrder(
+    orderId: number
+  ): Promise<{ suborders: SuborderSaleRow[]; firstSettlement: boolean }> {
     return this.database.transaction(async (client) => {
       const current = await client.query<OrderPaymentRow>(
-        `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status
+        `SELECT id, order_number, grand_total::text AS grand_total, status, payment_status, customer_phone
          FROM public.tec_marketplace_orders
          WHERE id = $1
          LIMIT 1
@@ -189,13 +218,14 @@ export class MarketplacePaymentsService {
         [orderId]
       );
       const order = current.rows[0];
-      if (!order) return [];
+      if (!order) return { suborders: [], firstSettlement: false };
       if (order.status === 'cancelled') {
         this.logger.warn(
           `Bold marketplace: pedido ${order.order_number} cancelado; SALE_APPROVED ignorado (revisar manualmente)`
         );
-        return [];
+        return { suborders: [], firstSettlement: false };
       }
+      const firstSettlement = order.payment_status !== 'paid';
 
       // Idempotente: repite las actualizaciones sin efecto si ya estaba pagado, y
       // SIEMPRE devuelve las sub-órdenes para reintentar la liquidación de ventas.
@@ -213,12 +243,17 @@ export class MarketplacePaymentsService {
         [orderId]
       );
       const suborders = await client.query<SuborderSaleRow>(
-        `SELECT id, sale_id, tenant_total::text AS tenant_total, status
-         FROM public.tec_marketplace_suborders
-         WHERE order_id = $1`,
+        `SELECT s.id, s.sale_id, s.tenant_total::text AS tenant_total, s.status,
+                s.tenant_id::text AS tenant_id, t.name AS tenant_name,
+                (SELECT COALESCE(SUM(i.quantity), 0)::integer
+                   FROM public.tec_marketplace_order_items i
+                  WHERE i.suborder_id = s.id) AS items_count
+         FROM public.tec_marketplace_suborders s
+         JOIN public.tec_tenants t ON t.id = s.tenant_id
+         WHERE s.order_id = $1`,
         [orderId]
       );
-      return suborders.rows;
+      return { suborders: suborders.rows, firstSettlement };
     });
   }
 }

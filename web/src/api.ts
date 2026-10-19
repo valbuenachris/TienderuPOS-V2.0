@@ -1627,3 +1627,28 @@ export const updateMarketplaceBanner = (id: number, payload: MarketplaceBannerPa
 
 export const deleteMarketplaceBanner = (id: number) =>
   apiRequest<{ id: number; deleted: boolean }>(`/marketplace/admin/banners/${id}`, { method: 'DELETE' });
+
+// ---------------------------------------------------------------------------
+// Marketplace global · Clientes de tienderu.com (v0.11.1)
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceCustomerAdminRow {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: string | null;
+  has_password: boolean;
+  orders_count: number;
+}
+
+export const fetchMarketplaceCustomers = (q?: string, page = 1, limit = 20) =>
+  apiRequest<Paginated<MarketplaceCustomerAdminRow>>(
+    withQuery('/marketplace/admin/customers', { q, page, limit })
+  );
+
+export const resetMarketplaceCustomerPassword = (id: number) =>
+  apiRequest<{ id: number; email: string | null; temporary_password: string }>(
+    `/marketplace/admin/customers/${id}/reset-password`,
+    { method: 'POST' }
+  );

@@ -21,6 +21,7 @@ import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { parsePagination } from '../common/pagination';
 import { AdminBannerDto, AdminBrandingDto, MarketplacePayoutMarkDto } from './marketplace.dto';
 import { MarketplaceBrandingService, UploadedBrandFiles } from './marketplace-branding.service';
+import { MarketplaceCustomersService } from './marketplace-customers.service';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 
 const FILE_LIMITS = { limits: { fileSize: 3 * 1024 * 1024 } };
@@ -34,7 +35,8 @@ const FILE_LIMITS = { limits: { fileSize: 3 * 1024 * 1024 } };
 export class MarketplaceAdminController {
   constructor(
     private readonly orders: MarketplaceOrdersService,
-    private readonly branding: MarketplaceBrandingService
+    private readonly branding: MarketplaceBrandingService,
+    private readonly customers: MarketplaceCustomersService
   ) {}
 
   @Get('orders')
@@ -61,6 +63,24 @@ export class MarketplaceAdminController {
   @Patch('payouts/mark')
   markPayouts(@Body() body: MarketplacePayoutMarkDto) {
     return this.orders.adminMarkPayouts(body);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Clientes de tienderu.com: listado y restablecimiento de contraseña (v0.11.1)
+  // ---------------------------------------------------------------------------
+
+  @Get('customers')
+  listCustomers(
+    @Query('q') q?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string
+  ) {
+    return this.customers.adminListCustomers(q, parsePagination(page, limit, 20, 100));
+  }
+
+  @Post('customers/:id/reset-password')
+  resetCustomerPassword(@Param('id', ParseIntPipe) id: number) {
+    return this.customers.adminResetPassword(id);
   }
 
   // ---------------------------------------------------------------------------

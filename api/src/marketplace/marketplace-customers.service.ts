@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
@@ -10,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import { hashPassword, verifyPassword } from '../auth/password.util';
+import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { DatabaseService } from '../database/database.service';
 import {
   MarketplaceAccountUpdateDto,
@@ -58,6 +60,20 @@ function normalizePhone(value?: string | null): string | null {
   const digits = (value ?? '').replace(/\D/g, '');
   return digits.length > 0 ? digits : null;
 }
+
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, '\\$&');
+}
+
+export type MarketplaceAdminCustomerRow = {
+  id: number;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  created_at: string | null;
+  has_password: boolean;
+  orders_count: number;
+};
 
 /**
  * Cuenta global de tienderu.com: registro/login con email + contraseña (bcrypt)
@@ -341,6 +357,81 @@ export class MarketplaceCustomersService {
       }
       return { id: addressId, deleted: true };
     });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin de plataforma (v0.11.1): listado y restablecimiento de contraseña
+  // ---------------------------------------------------------------------------
+
+  async adminListCustomers(
+    search: string | undefined,
+    pagination: PaginationQuery
+  ): Promise<Paginated<MarketplaceAdminCustomerRow>> {
+    await this.settings.assertAvailable();
+    const values: unknown[] = [];
+    let filter = '';
+    const clean = search?.trim().slice(0, 100) ?? '';
+    if (clean !== '') {
+      values.push(`%${escapeLike(clean)}%`);
+      filter = `WHERE c.name ILIKE $1 OR c.email ILIKE $1 OR c.phone ILIKE $1`;
+    }
+    values.push(pagination.limit, pagination.offset);
+    const result = await this.database.query<MarketplaceAdminCustomerRow & { total_count: number }>(
+      `SELECT c.id, c.name, c.email, c.phone, c.created_at,
+              (c.password IS NOT NULL) AS has_password,
+              (SELECT COUNT(*)::integer FROM public.tec_marketplace_orders o
+                WHERE o.customer_id = c.id AND o.payment_status = 'paid') AS orders_count,
+              COUNT(*) OVER() AS total_count
+       FROM public.tec_marketplace_customers c
+       ${filter}
+       ORDER BY c.id DESC
+       LIMIT $${values.length - 1} OFFSET $${values.length}`,
+      values
+    );
+    const total = result.rows[0]?.total_count ?? 0;
+    const data = result.rows.map(({ total_count: _totalCount, ...row }) => row);
+    return buildPaginated(data, total, pagination);
+  }
+
+  /** Genera una contraseña temporal (se muestra UNA vez) y limpia el lockout. */
+  async adminResetPassword(customerId: number) {
+    await this.settings.assertAvailable();
+    const temporary = randomBytes(6).toString('base64url');
+    const hash = await hashPassword(temporary, this.bcryptRounds);
+    const updated = await this.database.query<{ id: number; email: string | null }>(
+      `UPDATE public.tec_marketplace_customers
+       SET password = $1, updated_at = NOW()
+       WHERE id = $2
+       RETURNING id, email`,
+      [hash, customerId]
+    );
+    const customer = updated.rows[0];
+    if (!customer) throw new NotFoundException('Account not found');
+    if (customer.email) await this.clearLoginAttempts(customer.email.toLowerCase());
+    return { id: customer.id, email: customer.email, temporary_password: temporary };
+  }
+
+  /** Cambio de contraseña desde «Mi cuenta» (requiere la actual). */
+  async changePassword(customerId: number, currentPassword: string, newPassword: string) {
+    if (Buffer.byteLength(newPassword, 'utf8') > 72) {
+      throw new BadRequestException('La contraseña no puede superar 72 bytes');
+    }
+    const result = await this.database.query<{ id: number; password: string | null }>(
+      `SELECT id, password FROM public.tec_marketplace_customers WHERE id = $1 LIMIT 1`,
+      [customerId]
+    );
+    const row = result.rows[0];
+    if (!row?.password) throw new NotFoundException('Account not found');
+    const verification = await verifyPassword(currentPassword, row.password, this.bcryptRounds);
+    if (!verification.valid) {
+      throw new UnauthorizedException('La contraseña actual no es correcta');
+    }
+    const hash = await hashPassword(newPassword, this.bcryptRounds);
+    await this.database.query(
+      `UPDATE public.tec_marketplace_customers SET password = $1, updated_at = NOW() WHERE id = $2`,
+      [hash, customerId]
+    );
+    return { ok: true };
   }
 
   private async authPayload(customer: MarketplaceCustomerRow) {

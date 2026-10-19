@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { ApiError, apiRequest, type Address, type MarketplaceCustomer } from '../api';
+import { ApiError, apiRequest, changeMarketplacePassword, type Address, type MarketplaceCustomer } from '../api';
 import { useAuth } from '../auth';
 import { AddressForm } from '../components/AddressForm';
 import { Button, buttonStyles } from '../components/ui/Button';
@@ -74,6 +74,30 @@ export function AccountPage() {
     saveProfile.mutate();
   }
 
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState<string | null>(null);
+  const changePassword = useMutation({
+    mutationFn: () => changeMarketplacePassword(currentPassword, newPassword),
+    onSuccess: () => {
+      setCurrentPassword('');
+      setNewPassword('');
+      setPasswordError(null);
+      toast.push('Contraseña actualizada');
+    },
+    onError: (caught) => {
+      setPasswordError(
+        caught instanceof ApiError ? caught.message : 'No pudimos cambiar la contraseña.'
+      );
+    }
+  });
+
+  function submitPassword(event: FormEvent) {
+    event.preventDefault();
+    setPasswordError(null);
+    changePassword.mutate();
+  }
+
   return (
     <div className="container-page py-6">
       <h1 className="mb-4 text-xl font-bold text-ink sm:text-2xl">Mi cuenta</h1>
@@ -102,6 +126,43 @@ export function AccountPage() {
               </Button>
             </div>
           </form>
+
+          <div className="mt-6 border-t border-line-soft pt-5">
+            <h3 className="mb-3 text-base font-bold text-ink">Cambiar contraseña</h3>
+            {passwordError ? (
+              <div className="mb-3 rounded-md border border-deal-600/25 bg-red-50 px-3 py-2 text-sm text-price">
+                {passwordError}
+              </div>
+            ) : null}
+            <form onSubmit={submitPassword} className="flex flex-col gap-4">
+              <Field label="Contraseña actual" required>
+                <Input
+                  type="password"
+                  value={currentPassword}
+                  onChange={(event) => setCurrentPassword(event.target.value)}
+                  required
+                  maxLength={72}
+                  autoComplete="current-password"
+                />
+              </Field>
+              <Field label="Nueva contraseña" required hint="Mínimo 8 caracteres">
+                <Input
+                  type="password"
+                  value={newPassword}
+                  onChange={(event) => setNewPassword(event.target.value)}
+                  required
+                  minLength={8}
+                  maxLength={72}
+                  autoComplete="new-password"
+                />
+              </Field>
+              <div>
+                <Button type="submit" variant="outline" disabled={changePassword.isPending}>
+                  {changePassword.isPending ? 'Actualizando…' : 'Actualizar contraseña'}
+                </Button>
+              </div>
+            </form>
+          </div>
         </section>
 
         <section className="rounded-card bg-white p-5 shadow-card sm:p-6">

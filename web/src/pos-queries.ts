@@ -36,6 +36,7 @@ import {
   fetchMarketplaceAdminSummary,
   fetchMarketplaceBanners,
   fetchMarketplaceBranding,
+  fetchMarketplaceCustomers,
   fetchMarketplaceOrders,
   fetchMarketplaceSettings,
   fetchMarketplaceSummary,
@@ -780,6 +781,21 @@ export function useMarketplaceBannersQuery(token: string | null, tenantId: strin
   return useQuery({
     queryKey: ['marketplace-banners', tenantId],
     queryFn: fetchMarketplaceBanners,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false
+  });
+}
+
+export function useMarketplaceCustomersQuery(
+  token: string | null,
+  tenantId: string | null,
+  q: string | undefined,
+  page = 1,
+  enabled = true
+) {
+  return useQuery({
+    queryKey: ['marketplace-customers', tenantId, q ?? '', page],
+    queryFn: () => fetchMarketplaceCustomers(q, page),
     enabled: Boolean(token && tenantId && enabled),
     retry: false
   });

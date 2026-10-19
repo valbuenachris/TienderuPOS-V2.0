@@ -20,7 +20,8 @@ import {
   MarketplaceAccountUpdateDto,
   MarketplaceAddressDto,
   MarketplaceAddressUpdateDto,
-  MarketplaceCheckoutDto
+  MarketplaceCheckoutDto,
+  MarketplacePasswordChangeDto
 } from './marketplace.dto';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 
@@ -40,6 +41,15 @@ export class MarketplaceCustomerController {
   @Put('account')
   updateAccount(@Req() request: PosRequest, @Body() body: MarketplaceAccountUpdateDto) {
     return this.customers.updateProfile(request.posMarketplaceCustomer!.id, body);
+  }
+
+  @Put('account/password')
+  changePassword(@Req() request: PosRequest, @Body() body: MarketplacePasswordChangeDto) {
+    return this.customers.changePassword(
+      request.posMarketplaceCustomer!.id,
+      body.current_password,
+      body.new_password
+    );
   }
 
   @Get('addresses')

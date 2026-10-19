@@ -276,6 +276,12 @@ export const payMarketplaceOrder = (orderId: number) =>
 export const cancelMarketplaceOrder = (orderId: number) =>
   apiRequest<OrderWithSuborders>(`/marketplace/orders/${orderId}/cancel`, { method: 'POST' });
 
+export const changeMarketplacePassword = (currentPassword: string, newPassword: string) =>
+  apiRequest<{ ok: boolean }>('/marketplace/account/password', {
+    method: 'PUT',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+  });
+
 export interface AuthPayload {
   access_token: string;
   token_type: string;

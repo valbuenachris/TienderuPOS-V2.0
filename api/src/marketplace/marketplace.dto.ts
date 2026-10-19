@@ -286,3 +286,16 @@ export class AdminBannerDto {
   @IsBoolean()
   active?: boolean;
 }
+
+/** Cambio de contraseña del cliente global (v0.11.1). */
+export class MarketplacePasswordChangeDto {
+  @IsString()
+  @MinLength(1)
+  @MaxLength(72)
+  current_password!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(72)
+  new_password!: string;
+}

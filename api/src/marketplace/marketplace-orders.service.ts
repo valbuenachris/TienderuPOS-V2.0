@@ -10,6 +10,7 @@ import {
   MarketplacePayoutMarkDto
 } from './marketplace.dto';
 import { MarketplaceMaintenanceService } from './marketplace-maintenance.service';
+import { MarketplaceNotificationsService } from './marketplace-notifications.service';
 import { computeParentOrderStatus } from './marketplace-order-status';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
@@ -153,7 +154,8 @@ export class MarketplaceOrdersService {
     private readonly catalog: CatalogService,
     private readonly settings: MarketplaceSettingsService,
     private readonly payments: MarketplacePaymentsService,
-    private readonly maintenance: MarketplaceMaintenanceService
+    private readonly maintenance: MarketplaceMaintenanceService,
+    private readonly notifications: MarketplaceNotificationsService
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -576,6 +578,7 @@ export class MarketplaceOrdersService {
         shipping_notes: string | null;
         order_status: string;
         paid_at: string | null;
+        tenant_name: string;
       }
     >(
       `SELECT s.id, s.order_id, s.tenant_id::text AS tenant_id, s.sale_id, s.suborder_number, s.status,
@@ -584,9 +587,11 @@ export class MarketplaceOrdersService {
               s.tracking_note, s.shipped_at, s.delivered_at, s.payout_status, s.paid_out_at, s.created_at,
               o.order_number, o.customer_name, o.customer_email, o.customer_phone,
               o.shipping_recipient, o.shipping_phone, o.shipping_address, o.shipping_neighborhood,
-              o.shipping_city, o.shipping_notes, o.status AS order_status, o.paid_at
+              o.shipping_city, o.shipping_notes, o.status AS order_status, o.paid_at,
+              t.name AS tenant_name
        FROM public.tec_marketplace_suborders s
        JOIN public.tec_marketplace_orders o ON o.id = s.order_id
+       JOIN public.tec_tenants t ON t.id = s.tenant_id
        WHERE s.tenant_id = $1 AND s.id = $2
        LIMIT 1`,
       [tenantId, suborderId]
@@ -655,7 +660,19 @@ export class MarketplaceOrdersService {
       await this.recomputeOrderStatus(client, suborder.order_id);
     });
 
-    return this.tenantOrderDetail(tenantId, suborderId);
+    const detail = await this.tenantOrderDetail(tenantId, suborderId);
+    // Notificación al comprador (v0.11.1) en enviado/entregado; best-effort.
+    if (input.status === 'shipped' || input.status === 'delivered') {
+      await this.notifications.notifyCustomer({
+        tenantId,
+        tenantName: detail.tenant_name,
+        phone: detail.customer_phone,
+        orderNumber: detail.order_number,
+        event: input.status,
+        trackingNote: detail.tracking_note
+      });
+    }
+    return detail;
   }
 
   async tenantSummary(tenantId: string) {

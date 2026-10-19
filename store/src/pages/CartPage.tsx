@@ -7,8 +7,10 @@ import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
 import { Select } from '../components/ui/Input';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function CartPage() {
+  useDocumentMeta({ title: 'Carrito — Tienderu.com' });
   const cart = useCart();
   const navigate = useNavigate();
   const { customer } = useAuth();

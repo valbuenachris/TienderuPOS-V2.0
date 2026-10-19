@@ -8,6 +8,17 @@ import { CartProvider } from './cart';
 import { ToastProvider } from './components/ui/Toast';
 import './styles.css';
 
+// Analítica self-hosted (Umami, v0.11.2): solo si el build define las dos variables.
+const umamiScriptUrl = import.meta.env.VITE_UMAMI_SCRIPT_URL as string | undefined;
+const umamiWebsiteId = import.meta.env.VITE_UMAMI_WEBSITE_ID as string | undefined;
+if (umamiScriptUrl && umamiWebsiteId) {
+  const script = document.createElement('script');
+  script.defer = true;
+  script.src = umamiScriptUrl;
+  script.setAttribute('data-website-id', umamiWebsiteId);
+  document.head.appendChild(script);
+}
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {

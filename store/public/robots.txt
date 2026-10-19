@@ -1,0 +1,10 @@
+User-agent: *
+Allow: /
+Disallow: /checkout
+Disallow: /cuenta
+Disallow: /pedidos
+Disallow: /carrito
+Disallow: /ingresar
+Disallow: /registro
+
+Sitemap: https://tienderu.com/sitemap.xml

@@ -285,8 +285,47 @@ export class MarketplaceCatalogService {
     };
   }
 
-  async getHome() {
-    const [newest, topRated, categories, banners] = await Promise.all([
+  /** XML del sitemap público (v0.11.2): home, búsqueda, productos, vendedores y categorías. */
+  async buildSitemap(baseUrl: string): Promise<string> {
+    const escapeXml = (value: string): string =>
+      value
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&apos;');
+    const urls: string[] = [`${baseUrl}/`, `${baseUrl}/buscar`];
+    if (await this.settings.tableExists()) {
+      const [products, sellers, categories] = await Promise.all([
+        this.database.query<{ id: number }>(
+          `SELECT p.id FROM public.tec_products p
+           JOIN public.tec_tenants t ON t.id = p.tenant_id AND t.status = 'active'
+           JOIN public.tec_marketplace_settings mk ON mk.tenant_id = p.tenant_id AND mk.enabled = true
+           WHERE p.quantity > 0 AND p.price IS NOT NULL AND p.price > 0
+             AND COALESCE(p.type, 'standard') <> 'combo'
+           ORDER BY p.id DESC
+           LIMIT 5000`
+        ),
+        this.database.query<{ id: string }>(
+          `SELECT t.id::text AS id FROM public.tec_tenants t
+           JOIN public.tec_marketplace_settings mk ON mk.tenant_id = t.id AND mk.enabled = true
+           WHERE t.status = 'active'
+           ORDER BY t.id
+           LIMIT 500`
+        ),
+        this.listCategories()
+      ]);
+      for (const product of products.rows) urls.push(`${baseUrl}/producto/${product.id}`);
+      for (const seller of sellers.rows) urls.push(`${baseUrl}/vendedor/${seller.id}`);
+      for (const category of categories) {
+        urls.push(`${baseUrl}/buscar?category=${encodeURIComponent(category.name)}`);
+      }
+    }
+    const body = urls.map((url) => `  <url><loc>${escapeXml(url)}</loc></url>`).join('\n');
+    return `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${body}\n</urlset>`;
+  }
+
+  async getHome() {    const [newest, topRated, categories, banners] = await Promise.all([
       this.listProducts({ sort: 'newest' }, { page: 1, limit: 12, offset: 0 }),
       this.listProducts({ sort: 'rating' }, { page: 1, limit: 12, offset: 0 }),
       this.listCategories(),

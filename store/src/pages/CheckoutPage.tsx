@@ -16,8 +16,10 @@ import { Button, buttonStyles } from '../components/ui/Button';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
 import { useToast } from '../components/ui/Toast';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function CheckoutPage() {
+  useDocumentMeta({ title: 'Finalizar compra — Tienderu.com' });
   const { customer } = useAuth();
   const cart = useCart();
   const navigate = useNavigate();

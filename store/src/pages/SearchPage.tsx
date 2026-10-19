@@ -10,6 +10,7 @@ import { Icon } from '../components/ui/Icon';
 import { Input, Select } from '../components/ui/Input';
 import { Pagination } from '../components/ui/Pagination';
 import { ProductGridSkeleton } from '../components/ui/Skeleton';
+import { useDocumentMeta } from '../use-document-meta';
 
 const SORT_OPTIONS = [
   { value: 'relevance', label: 'Relevancia' },
@@ -85,6 +86,13 @@ export function SearchPage() {
     });
 
   const title = q ? `Resultados para «${q}»` : category ? category : 'Todo el catálogo';
+  useDocumentMeta({
+    title: q
+      ? `«${q}» — Buscar en Tienderu.com`
+      : category
+        ? `${category} — Tienderu.com`
+        : 'Todo el catálogo — Tienderu.com'
+  });
 
   const filtersPanel = (
     <div className="flex flex-col gap-6">

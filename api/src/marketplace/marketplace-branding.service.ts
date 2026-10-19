@@ -51,6 +51,7 @@ export type MarketplaceBannerRow = {
   sort_order: number;
   active: boolean;
   created_at: string | null;
+  clicks: number;
 };
 
 export type UploadedBrandFiles = {
@@ -89,6 +90,7 @@ export class MarketplaceBrandingService {
   private readonly publicBase: string;
   private brandingProbe: { exists: boolean; at: number } | null = null;
   private bannersProbe: { exists: boolean; at: number } | null = null;
+  private bannerEventsProbe: { exists: boolean; at: number } | null = null;
 
   constructor(
     private readonly database: DatabaseService,
@@ -219,12 +221,43 @@ export class MarketplaceBrandingService {
 
   async adminListBanners(): Promise<MarketplaceBannerRow[]> {
     await this.assertBannersAvailable();
+    const withClicks = await this.bannerEventsExist();
     const result = await this.database.query<MarketplaceBannerRow>(
-      `SELECT ${BANNER_FIELDS} FROM public.tec_marketplace_banners
-       WHERE slot = 'home_strip'
-       ORDER BY sort_order ASC, id ASC`
+      withClicks
+        ? `SELECT s.id, s.slot, s.title, s.image_url, s.target_url, s.sort_order, s.active, s.created_at,
+                  COALESCE(e.clicks, 0)::integer AS clicks
+           FROM public.tec_marketplace_banners s
+           LEFT JOIN (
+             SELECT banner_id, COUNT(*)::integer AS clicks
+             FROM public.tec_marketplace_banner_events
+             GROUP BY banner_id
+           ) e ON e.banner_id = s.id
+           WHERE s.slot = 'home_strip'
+           ORDER BY s.sort_order ASC, s.id ASC`
+        : `SELECT ${BANNER_FIELDS}, 0::integer AS clicks FROM public.tec_marketplace_banners
+           WHERE slot = 'home_strip'
+           ORDER BY sort_order ASC, id ASC`
     );
     return result.rows;
+  }
+
+  /** Registra un clic de banner (v0.11.2); best-effort y solo si el banner existe. */
+  async recordBannerClick(bannerId: number): Promise<void> {
+    try {
+      if (!(await this.bannersExist())) return;
+      if (!(await this.bannerEventsExist())) return;
+      const banner = await this.database.query<{ id: number }>(
+        `SELECT id FROM public.tec_marketplace_banners WHERE id = $1 LIMIT 1`,
+        [bannerId]
+      );
+      if (banner.rowCount !== 1) return;
+      await this.database.query(
+        `INSERT INTO public.tec_marketplace_banner_events (banner_id) VALUES ($1)`,
+        [bannerId]
+      );
+    } catch (_error: unknown) {
+      // Métrica best-effort: nunca rompe la navegación del cliente.
+    }
   }
 
   async adminCreateBanner(input: AdminBannerDto, file?: Express.Multer.File): Promise<MarketplaceBannerRow> {
@@ -370,6 +403,10 @@ export class MarketplaceBrandingService {
     return this.tableExists('tec_marketplace_banners', 'banners');
   }
 
+  private async bannerEventsExist(): Promise<boolean> {
+    return this.tableExists('tec_marketplace_banner_events', 'banner_events');
+  }
+
   private async assertBrandingAvailable(): Promise<void> {
     if (!(await this.brandingExists())) throw new ServiceUnavailableException(MIGRATION_HINT);
   }
@@ -378,16 +415,25 @@ export class MarketplaceBrandingService {
     if (!(await this.bannersExist())) throw new ServiceUnavailableException(MIGRATION_HINT);
   }
 
-  private async tableExists(table: string, cache: 'branding' | 'banners'): Promise<boolean> {
+  private async tableExists(
+    table: string,
+    cache: 'branding' | 'banners' | 'banner_events'
+  ): Promise<boolean> {
     const now = Date.now();
-    const current = cache === 'branding' ? this.brandingProbe : this.bannersProbe;
+    const current =
+      cache === 'branding'
+        ? this.brandingProbe
+        : cache === 'banners'
+          ? this.bannersProbe
+          : this.bannerEventsProbe;
     if (current && now - current.at < PROBE_CACHE_MS) return current.exists;
     const result = await this.database.query<{ table_name: string | null }>(
       `SELECT to_regclass('public.${table}')::text AS table_name`
     );
     const exists = Boolean(result.rows[0]?.table_name);
     if (cache === 'branding') this.brandingProbe = { exists, at: now };
-    else this.bannersProbe = { exists, at: now };
+    else if (cache === 'banners') this.bannersProbe = { exists, at: now };
+    else this.bannerEventsProbe = { exists, at: now };
     return exists;
   }
 }

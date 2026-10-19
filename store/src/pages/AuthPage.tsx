@@ -5,8 +5,10 @@ import { useAuth } from '../auth';
 import { Button } from '../components/ui/Button';
 import { Field, Input } from '../components/ui/Input';
 import { Icon } from '../components/ui/Icon';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function AuthPage({ mode }: { mode: 'login' | 'register' }) {
+  useDocumentMeta({ title: mode === 'login' ? 'Iniciar sesión — Tienderu.com' : 'Crear cuenta — Tienderu.com' });
   const { login, register } = useAuth();
   const navigate = useNavigate();
   const [params] = useSearchParams();

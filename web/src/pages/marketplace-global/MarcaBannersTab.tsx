@@ -400,6 +400,7 @@ export function MarcaBannersTab() {
                 <th>Enlace</th>
                 <th>Orden</th>
                 <th>Estado</th>
+                <th>Clics</th>
                 <th />
               </tr>
             </thead>
@@ -419,6 +420,7 @@ export function MarcaBannersTab() {
                       {banner.active ? 'Activo' : 'Inactivo'}
                     </span>
                   </td>
+                  <td>{banner.clicks ?? 0}</td>
                   <td className="row-actions">
                     <button
                       type="button"
@@ -460,7 +462,7 @@ export function MarcaBannersTab() {
               ))}
               {(smallBanners.data ?? []).length === 0 && !smallBanners.isPending ? (
                 <tr>
-                  <td colSpan={6} className="empty">
+                  <td colSpan={7} className="empty">
                     Aún no hay banners pequeños.
                   </td>
                 </tr>

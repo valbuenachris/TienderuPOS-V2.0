@@ -1550,6 +1550,7 @@ export interface MarketplaceBannerAdminRow {
   sort_order: number;
   active: boolean;
   created_at: string | null;
+  clicks?: number;
 }
 
 export interface MarketplaceBrandingPayload {

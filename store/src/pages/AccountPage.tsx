@@ -9,8 +9,10 @@ import { Dialog } from '../components/ui/Dialog';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Field, Input } from '../components/ui/Input';
 import { useToast } from '../components/ui/Toast';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function AccountPage() {
+  useDocumentMeta({ title: 'Mi cuenta — Tienderu.com' });
   const { customer } = useAuth();
   const queryClient = useQueryClient();
   const toast = useToast();

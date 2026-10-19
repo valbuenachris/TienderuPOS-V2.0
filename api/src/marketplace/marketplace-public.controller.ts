@@ -1,4 +1,15 @@
-import { BadRequestException, Controller, Get, Param, ParseIntPipe, Query } from '@nestjs/common';
+import {
+  BadRequestException,
+  Controller,
+  Get,
+  Header,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Post,
+  Query
+} from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { parsePagination } from '../common/pagination';
 import { MarketplaceBrandingService } from './marketplace-branding.service';
 import { MarketplaceCatalogService } from './marketplace-catalog.service';
@@ -19,7 +30,8 @@ export class MarketplacePublicController {
   constructor(
     private readonly catalog: MarketplaceCatalogService,
     private readonly settings: MarketplaceSettingsService,
-    private readonly branding: MarketplaceBrandingService
+    private readonly branding: MarketplaceBrandingService,
+    private readonly configService: ConfigService
   ) {}
 
   @Get('config')
@@ -40,6 +52,22 @@ export class MarketplacePublicController {
       this.branding.getActiveBanners()
     ]);
     return { ...home, promos };
+  }
+
+  @Get('sitemap.xml')
+  @Header('Content-Type', 'application/xml; charset=utf-8')
+  sitemap() {
+    const base = (
+      this.configService.get<string>('MARKETPLACE_BASE_URL') ?? 'https://tienderu.com'
+    ).replace(/\/+$/, '');
+    return this.catalog.buildSitemap(base);
+  }
+
+  /** Métrica de clics de banners (v0.11.2); best-effort, sin datos del cliente. */
+  @Post('banners/:id/click')
+  @HttpCode(204)
+  async bannerClick(@Param('id', ParseIntPipe) id: number) {
+    await this.branding.recordBannerClick(id);
   }
 
   @Get('categories')

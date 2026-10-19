@@ -1,6 +1,6 @@
 # Plan: Auditoría del Marketplace Tienderu.com — Hallazgos y Mejoras (v0.11.x)
 
-Estado: **Fase 1 ejecutada** (v0.11.0, commit `f40b829`); Fases 2–6 pendientes. Fecha: 2026-10-19.
+Estado: **Fases 1–3 ejecutadas** (v0.11.0 `f40b829`, v0.11.1 `f4fbcb4`, v0.11.2); Fases 4–6 pendientes. Fecha: 2026-10-19.
 
 ## Decisiones confirmadas por el usuario
 - **Arranque por la Fase 1** (higiene operativa: expiración de pedidos impagos, reposición de stock, cancelaciones).
@@ -39,10 +39,10 @@ Estado: **Fase 1 ejecutada** (v0.11.0, commit `f40b829`); Fases 2–6 pendientes
 5. **Anti-abuso de checkout**: máx. 5 pedidos `pending_payment` por cliente + dedupe en memoria de 60 s por fingerprint de items.
 6. **Tests y verificación**: `computeParentOrderStatus` (función pura, 10 casos; `cancelled` terminal y excluido del total activo) → 29 tests API en verde; builds api/web/store; verificación en navegador (nota de expiración en checkout, botón cancelar, toast, llamada API). `GET /api/marketplace/config` expone `payment_ttl_minutes`; `.env.example` documenta la variable.
 
-### Fase 2 — Notificaciones y cuenta (v0.11.1) — PENDIENTE
+### Fase 2 — Notificaciones y cuenta (v0.11.1) ✅ EJECUTADA (commit `f4fbcb4`)
 WhatsApp al vendedor (pedido pagado) y al cliente (pagado/despachado/entregado) con la instancia Evolution del tenant; badge/contador de pedidos pendientes en el POS (`/marketplace`); recuperación de contraseña (reset desde el panel global estilo Clientes App + OTP por WhatsApp opcional).
 
-### Fase 3 — SEO, social y analítica (v0.11.2) — PENDIENTE
+### Fase 3 — SEO, social y analítica (v0.11.2) ✅ EJECUTADA
 Títulos/meta/OG dinámicos por página y producto; `robots.txt` + `sitemap.xml`; JSON-LD (Product/Offer/Breadcrumb); Umami/Plausible self-hosted en el VPS (contenedor propio) + eventos de clic de banners (DDL `tec_marketplace_banner_events`).
 
 ### Fase 4 — Conversión/UX (v0.11.3) — PENDIENTE

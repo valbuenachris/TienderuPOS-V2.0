@@ -282,6 +282,18 @@ export const changeMarketplacePassword = (currentPassword: string, newPassword: 
     body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
   });
 
+/** Métrica de clic de banner (v0.11.2): best-effort, nunca bloquea la navegación. */
+export function trackBannerClick(bannerId: number): void {
+  try {
+    void fetch(`${API_BASE}/marketplace/banners/${bannerId}/click`, {
+      method: 'POST',
+      keepalive: true
+    }).catch(() => {});
+  } catch {
+    // métrica best-effort
+  }
+}
+
 export interface AuthPayload {
   access_token: string;
   token_type: string;

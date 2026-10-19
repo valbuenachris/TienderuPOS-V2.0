@@ -11,6 +11,7 @@ import { Rating } from '../components/ui/Rating';
 import { Select } from '../components/ui/Input';
 import { ProductGridSkeleton, Skeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function ProductPage() {
   const { id } = useParams<{ id: string }>();
@@ -42,6 +43,12 @@ export function ProductPage() {
       (value): value is string => typeof value === 'string'
     );
   }, [product.data]);
+
+  useDocumentMeta({
+    title: product.data ? `${product.data.name} — Tienderu.com` : 'Tienderu.com',
+    description: product.data?.details ? product.data.details.slice(0, 160) : null,
+    image: product.data?.image_url ?? product.data?.image_2_url ?? null
+  });
 
   if (product.isLoading) {
     return (
@@ -100,6 +107,35 @@ export function ProductPage() {
 
   return (
     <div className="container-page py-6">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{
+          __html: JSON.stringify({
+            '@context': 'https://schema.org',
+            '@type': 'Product',
+            name: data.name,
+            description: data.details ?? undefined,
+            image: images.length > 0 ? images : undefined,
+            sku: data.code ?? undefined,
+            offers: {
+              '@type': 'Offer',
+              url: window.location.href,
+              priceCurrency: 'COP',
+              price: data.price,
+              availability: inStock ? 'https://schema.org/InStock' : 'https://schema.org/OutOfStock'
+            },
+            ...(data.average_rating !== null
+              ? {
+                  aggregateRating: {
+                    '@type': 'AggregateRating',
+                    ratingValue: data.average_rating,
+                    reviewCount: data.reviews_count
+                  }
+                }
+              : {})
+          })
+        }}
+      />
       <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-ink-soft" aria-label="Ruta de navegación">
         <Link to="/" className="hover:text-link-600 hover:underline">
           Inicio

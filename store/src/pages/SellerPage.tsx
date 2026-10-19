@@ -5,6 +5,7 @@ import { ProductCard } from '../components/ProductCard';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Pagination } from '../components/ui/Pagination';
 import { ProductGridSkeleton, Skeleton } from '../components/ui/Skeleton';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function SellerPage() {
   const { tenantId } = useParams<{ tenantId: string }>();
@@ -15,6 +16,11 @@ export function SellerPage() {
     queryKey: ['store-seller', tenantId, page],
     queryFn: () => apiRequest<SellerPagePayload>(`/marketplace/sellers/${tenantId}?page=${page}&limit=24`),
     enabled: Boolean(tenantId)
+  });
+
+  useDocumentMeta({
+    title: data ? `${data.seller.name} — Tienderu.com` : 'Tienda — Tienderu.com',
+    image: data?.seller.logo_url ?? undefined
   });
 
   if (isLoading) {

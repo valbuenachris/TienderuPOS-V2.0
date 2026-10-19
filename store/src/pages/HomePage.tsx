@@ -1,13 +1,19 @@
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { apiRequest, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
+import { apiRequest, trackBannerClick, type Banner, type Product, type PromoBanner, type StoreHome } from '../api';
+import { useDocumentMeta } from '../use-document-meta';
 import { ProductCard } from '../components/ProductCard';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { Icon } from '../components/ui/Icon';
 
 export function HomePage() {
+  useDocumentMeta({
+    title: 'Tienderu.com — Todo lo que buscas de las tiendas de tu ciudad',
+    description:
+      'Compra en línea a las tiendas de tu ciudad: tecnología, hogar, mercado y más. Pago seguro y envío a domicilio.'
+  });
   const { data, isLoading, isError } = useQuery({
     queryKey: ['store-home'],
     queryFn: () => apiRequest<StoreHome>('/marketplace/home')
@@ -138,7 +144,11 @@ function PromoStrip({ promos }: { promos: PromoBanner[] }) {
     }
     if (target.startsWith('/')) {
       return (
-        <Link to={target} className="group block overflow-hidden rounded-card">
+        <Link
+          to={target}
+          onClick={() => trackBannerClick(promo.id)}
+          className="group block overflow-hidden rounded-card"
+        >
           {image}
         </Link>
       );
@@ -148,6 +158,7 @@ function PromoStrip({ promos }: { promos: PromoBanner[] }) {
         href={target}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => trackBannerClick(promo.id)}
         className="group block overflow-hidden rounded-card"
       >
         {image}

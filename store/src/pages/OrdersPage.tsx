@@ -19,8 +19,10 @@ import { Icon } from '../components/ui/Icon';
 import { Pagination } from '../components/ui/Pagination';
 import { PageSkeleton } from '../components/ui/Skeleton';
 import { useToast } from '../components/ui/Toast';
+import { useDocumentMeta } from '../use-document-meta';
 
 export function OrdersPage() {
+  useDocumentMeta({ title: 'Mis pedidos — Tienderu.com' });
   const [params, setParams] = useSearchParams();
   const page = Math.max(1, Number(params.get('page') ?? '1') || 1);
 

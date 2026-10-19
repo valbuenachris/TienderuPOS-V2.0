@@ -4,6 +4,7 @@ import {
   Get,
   Header,
   HttpCode,
+  Ip,
   Param,
   ParseIntPipe,
   Post,
@@ -13,6 +14,7 @@ import { ConfigService } from '@nestjs/config';
 import { parsePagination } from '../common/pagination';
 import { MarketplaceBrandingService } from './marketplace-branding.service';
 import { MarketplaceCatalogService } from './marketplace-catalog.service';
+import { BANNER_CLICK_RATE_RULE, MarketplaceRateLimitService } from './marketplace-rate-limit.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 
 function readQueryString(value: unknown): string | undefined {
@@ -31,6 +33,7 @@ export class MarketplacePublicController {
     private readonly catalog: MarketplaceCatalogService,
     private readonly settings: MarketplaceSettingsService,
     private readonly branding: MarketplaceBrandingService,
+    private readonly rateLimit: MarketplaceRateLimitService,
     private readonly configService: ConfigService
   ) {}
 
@@ -66,7 +69,8 @@ export class MarketplacePublicController {
   /** Métrica de clics de banners (v0.11.2); best-effort, sin datos del cliente. */
   @Post('banners/:id/click')
   @HttpCode(204)
-  async bannerClick(@Param('id', ParseIntPipe) id: number) {
+  async bannerClick(@Param('id', ParseIntPipe) id: number, @Ip() ip: string) {
+    this.rateLimit.assertWithin(`mp-banner:${ip || 'unknown'}`, BANNER_CLICK_RATE_RULE);
     await this.branding.recordBannerClick(id);
   }
 

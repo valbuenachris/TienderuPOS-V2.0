@@ -21,6 +21,7 @@ import {
   MarketplaceRegisterDto
 } from './marketplace.dto';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
+import { MarketplaceRateLimitService, REGISTER_RATE_RULE } from './marketplace-rate-limit.service';
 
 export type MarketplaceCustomerRow = {
   id: number;
@@ -90,6 +91,7 @@ export class MarketplaceCustomersService {
     private readonly database: DatabaseService,
     private readonly jwt: JwtService,
     private readonly settings: MarketplaceSettingsService,
+    private readonly rateLimit: MarketplaceRateLimitService,
     config: ConfigService
   ) {
     this.bcryptRounds = Number(config.get('BCRYPT_ROUNDS') ?? 12);
@@ -100,6 +102,7 @@ export class MarketplaceCustomersService {
 
   async register(input: MarketplaceRegisterDto, ipAddress: string) {
     await this.settings.assertAvailable();
+    this.rateLimit.assertWithin(`mp-register:${ipAddress || 'unknown'}`, REGISTER_RATE_RULE);
     const email = input.email.trim().toLowerCase();
     if (Buffer.byteLength(input.password, 'utf8') > 72) {
       throw new BadRequestException('La contraseña no puede superar 72 bytes');

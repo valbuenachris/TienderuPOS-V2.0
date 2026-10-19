@@ -17,6 +17,17 @@ type OrderPaymentRow = {
   customer_phone: string | null;
 };
 
+export type MarketplaceWebhookStats = {
+  approved: number;
+  rejected: number;
+  ignored: number;
+  amount_mismatch: number;
+  signature_invalid: number;
+  unknown_order: number;
+  last_event_at: string | null;
+  last_error: string | null;
+};
+
 type SuborderSaleRow = {
   id: number;
   sale_id: number | null;
@@ -53,6 +64,17 @@ function readAmount(value: unknown): string | null {
 @Injectable()
 export class MarketplacePaymentsService {
   private readonly logger = new Logger(MarketplacePaymentsService.name);
+  /** Métricas en memoria de webhooks Bold del marketplace (v0.11.5). */
+  private readonly webhookStatsData: MarketplaceWebhookStats = {
+    approved: 0,
+    rejected: 0,
+    ignored: 0,
+    amount_mismatch: 0,
+    signature_invalid: 0,
+    unknown_order: 0,
+    last_event_at: null,
+    last_error: null
+  };
 
   constructor(
     private readonly database: DatabaseService,
@@ -62,6 +84,21 @@ export class MarketplacePaymentsService {
     private readonly maintenance: MarketplaceMaintenanceService,
     private readonly notifications: MarketplaceNotificationsService
   ) {}
+
+  webhookStats(): MarketplaceWebhookStats {
+    return { ...this.webhookStatsData };
+  }
+
+  private recordWebhookEvent(
+    outcome: 'approved' | 'rejected' | 'ignored' | 'amount_mismatch' | 'signature_invalid' | 'unknown_order',
+    detail?: string
+  ): void {
+    this.webhookStatsData[outcome] += 1;
+    this.webhookStatsData.last_event_at = new Date().toISOString();
+    if (outcome === 'amount_mismatch' || outcome === 'signature_invalid') {
+      this.webhookStatsData.last_error = `${outcome}${detail ? `: ${detail}` : ''}`;
+    }
+  }
 
   async createPlatformLink(input: {
     orderId: number;
@@ -120,8 +157,12 @@ export class MarketplacePaymentsService {
       ?? this.config.get<string>('MARKETPLACE_BOLD_API_KEY')
       ?? ''
     ).trim();
-    if (secret === '') throw new BadRequestException('Invalid Bold signature');
+    if (secret === '') {
+      this.recordWebhookEvent('signature_invalid', 'webhook secret vacío');
+      throw new BadRequestException('Invalid Bold signature');
+    }
     if (!this.tenantBold.verifySignature(rawBody, signature, secret)) {
+      this.recordWebhookEvent('signature_invalid', `order ${orderId}`);
       throw new BadRequestException('Invalid Bold signature');
     }
 
@@ -134,6 +175,7 @@ export class MarketplacePaymentsService {
     );
     const order = orderResult.rows[0];
     if (!order) {
+      this.recordWebhookEvent('unknown_order', String(orderId));
       this.logger.warn(`Bold marketplace: pedido desconocido ${orderId}`);
       return { handled: false };
     }
@@ -145,10 +187,12 @@ export class MarketplacePaymentsService {
         reason: 'bold_rejected',
         paymentStatus: 'failed'
       });
+      this.recordWebhookEvent('rejected', order.order_number);
       this.logger.log(`Bold marketplace SALE_REJECTED order=${order.order_number} cancelado=${cancelled}`);
       return { handled: cancelled };
     }
     if (eventType !== 'SALE_APPROVED') {
+      this.recordWebhookEvent('ignored', `${eventType || 'UNKNOWN'} ${order.order_number}`);
       this.logger.log(`Bold marketplace webhook ${eventType || 'UNKNOWN'} order=${order.order_number} ignorado`);
       return { handled: false };
     }
@@ -159,6 +203,10 @@ export class MarketplacePaymentsService {
     const paidAmount = readAmount(amountData?.total);
     const expected = Math.round(Number(order.grand_total));
     if (paidAmount === null || Math.abs(Number(paidAmount) - expected) >= 0.01) {
+      this.recordWebhookEvent(
+        'amount_mismatch',
+        `${order.order_number} esperado=${expected} recibido=${paidAmount ?? 'n/d'}`
+      );
       this.logger.error(
         `Bold marketplace: monto no coincide order=${order.order_number} esperado=${expected} recibido=${paidAmount ?? 'n/d'}`
       );
@@ -167,6 +215,7 @@ export class MarketplacePaymentsService {
 
     const settlement = await this.settleOrder(orderId);
     const suborders = settlement.suborders;
+    this.recordWebhookEvent('approved', order.order_number);
     this.logger.log(
       `Bold marketplace SALE_APPROVED order=${order.order_number} suborders=${suborders.length}`
     );

@@ -36,8 +36,31 @@ export class MarketplaceMaintenanceService {
           `Marketplace: expiración de pedidos falló: ${error instanceof Error ? error.message : 'unknown'}`
         );
       });
+      void this.logStuckOrders().catch((error: unknown) => {
+        this.logger.warn(
+          `Marketplace: no se pudo revisar pedidos estancados: ${error instanceof Error ? error.message : 'unknown'}`
+        );
+      });
     }, EXPIRY_INTERVAL_MS);
     this.timer.unref();
+  }
+
+  /** Alerta (log) cuando hay pedidos impagos que superan 4×TTL sin poder cancelarse. */
+  private async logStuckOrders(): Promise<void> {
+    if (!(await this.settings.tableExists())) return;
+    const ttl = this.settings.paymentTtlMinutes();
+    const result = await this.database.query<{ count: number }>(
+      `SELECT COUNT(*)::integer AS count FROM public.tec_marketplace_orders
+       WHERE status = 'pending_payment' AND payment_status = 'pending'
+         AND created_at < NOW() - ($1::int * 4 * INTERVAL '1 minute')`,
+      [ttl]
+    );
+    const count = result.rows[0]?.count ?? 0;
+    if (count > 0) {
+      this.logger.warn(
+        `Marketplace: ${count} pedido(s) impagos superan 4×TTL (${ttl} min) y no pudieron cancelarse; revisar manualmente`
+      );
+    }
   }
 
   /** Expira pedidos `pending_payment` más antiguos que el TTL. Devuelve cuántos canceló. */

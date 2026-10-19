@@ -15,6 +15,10 @@ build/
 *.log
 npm-debug.log*
 
+# Playwright
+test-results/
+playwright-report/
+
 # Sistema operativo
 .DS_Store
 Thumbs.db

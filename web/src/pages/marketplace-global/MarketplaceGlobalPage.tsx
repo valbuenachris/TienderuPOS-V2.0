@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Pagination, Panel } from '../../components/ui';
 import { useSession } from '../../app/session';
 import {
@@ -7,7 +7,7 @@ import {
   useMarketplaceAdminOrdersQuery,
   useMarketplaceAdminSummaryQuery
 } from '../../pos-queries';
-import { markMarketplacePayouts } from '../../api';
+import { fetchMarketplaceMonitor, markMarketplacePayouts } from '../../api';
 import { formatMoney } from '../../format';
 import { MarcaBannersTab } from './MarcaBannersTab';
 import { ClientesTab } from './ClientesTab';
@@ -41,6 +41,13 @@ function OrdersSummaryTab() {
 
   const summary = useMarketplaceAdminSummaryQuery(token, tenantId);
   const orders = useMarketplaceAdminOrdersQuery(token, tenantId, status, undefined, page);
+  const monitor = useQuery({
+    queryKey: ['marketplace-monitor'],
+    queryFn: fetchMarketplaceMonitor,
+    enabled: Boolean(token && tenantId),
+    refetchInterval: 60_000,
+    retry: false
+  });
 
   const payoutMutation = useApiMutation((input: { tenant_id: string; suborder_ids?: number[] }) =>
     markMarketplacePayouts(input)
@@ -82,6 +89,50 @@ function OrdersSummaryTab() {
             <div className="stat-card"><span >Por pagar a vendedores</span><strong>{formatMoney(data.pending_payout, currency)}</strong></div>
             <div className="stat-card"><span >Pagos pendientes</span><strong>{data.pending_payment}</strong></div>
           </div>
+        ) : null}
+      </Panel>
+
+      <Panel className="stack full-width">
+        <h2>Salud del marketplace</h2>
+        <p className="muted">
+          Alertas operativas: pedidos impagos estancados, pagos fallidos, contraentrega sin cobro y actividad
+          de los webhooks de Bold. Los avisos también quedan en los logs del API.
+        </p>
+        {monitor.isError ? <Notice tone="error">No fue posible cargar el monitor del marketplace.</Notice> : null}
+        {monitor.data ? (
+          <div className="stat-grid">
+            <div className="stat-card">
+              <span>Impagos estancados (2×TTL)</span>
+              <strong>{monitor.data.stuck_pending_payment}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Pagos fallidos</span>
+              <strong>{monitor.data.failed_payments}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Sin preparar +72 h</span>
+              <strong>{monitor.data.paid_unprepared}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Contraentrega entregada sin cobro</span>
+              <strong>{monitor.data.cod_delivered_unpaid}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Webhooks aprobados</span>
+              <strong>{monitor.data.webhook.approved}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Webhooks rechazados/ignorados</span>
+              <strong>{monitor.data.webhook.rejected + monitor.data.webhook.ignored}</strong>
+            </div>
+            <div className="stat-card">
+              <span>Firma inválida / monto no coincide</span>
+              <strong>{monitor.data.webhook.signature_invalid + monitor.data.webhook.amount_mismatch}</strong>
+            </div>
+          </div>
+        ) : null}
+        {monitor.data?.webhook.last_error ? (
+          <Notice tone="error">Último error de webhook: {monitor.data.webhook.last_error}</Notice>
         ) : null}
       </Panel>
 

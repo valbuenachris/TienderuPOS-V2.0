@@ -56,6 +56,11 @@ export class MarketplaceAdminController {
     return this.orders.adminSummary();
   }
 
+  @Get('monitor')
+  monitor() {
+    return this.orders.adminMonitor();
+  }
+
   @Get('payouts')
   async payouts() {
     const summary = await this.orders.adminSummary();

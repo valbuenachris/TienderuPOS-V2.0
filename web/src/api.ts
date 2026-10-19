@@ -1519,6 +1519,31 @@ export const fetchMarketplaceAdminOrders = (status?: string, tenantId?: string, 
 export const fetchMarketplaceAdminSummary = () =>
   apiRequest<MarketplaceAdminSummary>('/marketplace/admin/summary');
 
+// ---------------------------------------------------------------------------
+// Marketplace global · Salud operativa (v0.11.5)
+// ---------------------------------------------------------------------------
+
+export interface MarketplaceMonitor {
+  ttl_minutes: number;
+  stuck_pending_payment: number;
+  failed_payments: number;
+  paid_unprepared: number;
+  cod_delivered_unpaid: number;
+  webhook: {
+    approved: number;
+    rejected: number;
+    ignored: number;
+    amount_mismatch: number;
+    signature_invalid: number;
+    unknown_order: number;
+    last_event_at: string | null;
+    last_error: string | null;
+  };
+}
+
+export const fetchMarketplaceMonitor = () =>
+  apiRequest<MarketplaceMonitor>('/marketplace/admin/monitor');
+
 export const markMarketplacePayouts = (payload: { tenant_id: string; suborder_ids?: number[] }) =>
   apiRequest<{ tenant_id: string; marked: number; total: string }>('/marketplace/admin/payouts/mark', {
     method: 'PATCH',

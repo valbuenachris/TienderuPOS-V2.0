@@ -183,7 +183,7 @@ export function ProductPage() {
                   }
                 }
               : {})
-          })
+          }).replace(/</g, '\\u003c')
         }}
       />
       <nav className="mb-4 flex flex-wrap items-center gap-1 text-xs text-ink-soft" aria-label="Ruta de navegación">

@@ -15,6 +15,11 @@ import { MarketplaceMaintenanceService } from './marketplace-maintenance.service
 import { MarketplaceNotificationsService } from './marketplace-notifications.service';
 import { computeParentOrderStatus } from './marketplace-order-status';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
+import {
+  CHECKOUT_RATE_RULE,
+  MarketplaceRateLimitService,
+  PAY_RATE_RULE
+} from './marketplace-rate-limit.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 
 const MONEY_ROUNDING = Decimal.ROUND_HALF_UP;
@@ -161,7 +166,8 @@ export class MarketplaceOrdersService {
     private readonly maintenance: MarketplaceMaintenanceService,
     private readonly notifications: MarketplaceNotificationsService,
     private readonly coupons: MarketplaceCouponsService,
-    private readonly sales: SalesService
+    private readonly sales: SalesService,
+    private readonly rateLimit: MarketplaceRateLimitService
   ) {}
 
   // ---------------------------------------------------------------------------
@@ -170,6 +176,7 @@ export class MarketplaceOrdersService {
 
   async checkout(customer: PosMarketplaceCustomer, input: MarketplaceCheckoutDto) {
     await this.settings.assertAvailable();
+    this.rateLimit.assertWithin(`mp-checkout:${customer.id}`, CHECKOUT_RATE_RULE);
 
     const quantities = new Map<number, number>();
     for (const item of input.items) {
@@ -496,6 +503,7 @@ export class MarketplaceOrdersService {
 
   async payOrder(customerId: number, orderId: number) {
     await this.settings.assertAvailable();
+    this.rateLimit.assertWithin(`mp-pay:${customerId}`, PAY_RATE_RULE);
     const order = await this.getCustomerOrder(customerId, orderId);
     if (order.payment_status === 'paid') {
       throw new BadRequestException('Este pedido ya está pagado');
@@ -518,6 +526,7 @@ export class MarketplaceOrdersService {
   /** Cancelación del cliente (v0.11.0): solo pedidos impagos; repone stock y elimina la venta POS. */
   async cancelCustomerOrder(customerId: number, orderId: number) {
     await this.settings.assertAvailable();
+    this.rateLimit.assertWithin(`mp-cancel:${customerId}`, PAY_RATE_RULE);
     const order = await this.getCustomerOrder(customerId, orderId);
     if (order.payment_status === 'paid') {
       throw new BadRequestException('Este pedido ya está pagado; solicita la cancelación al vendedor.');
@@ -897,6 +906,41 @@ export class MarketplaceOrdersService {
         pending_payout: '0.00'
       }),
       tenants: byTenant.rows
+    };
+  }
+
+  /** Salud operativa (v0.11.5): pedidos estancados, pagos fallidos y webhooks Bold. */
+  async adminMonitor() {
+    await this.settings.assertAvailable();
+    const ttl = this.settings.paymentTtlMinutes();
+    const result = await this.database.query<{
+      stuck_pending_payment: number;
+      failed_payments: number;
+      paid_unprepared: number;
+      cod_delivered_unpaid: number;
+    }>(
+      `SELECT
+         (SELECT COUNT(*)::integer FROM public.tec_marketplace_orders
+           WHERE status = 'pending_payment' AND payment_status = 'pending'
+             AND created_at < NOW() - ($1::int * 2 * INTERVAL '1 minute')) AS stuck_pending_payment,
+         (SELECT COUNT(*)::integer FROM public.tec_marketplace_orders
+           WHERE payment_status = 'failed') AS failed_payments,
+         (SELECT COUNT(*)::integer FROM public.tec_marketplace_suborders
+           WHERE status = 'paid' AND created_at < NOW() - INTERVAL '72 hours') AS paid_unprepared,
+         (SELECT COUNT(*)::integer FROM public.tec_marketplace_orders
+           WHERE payment_method = 'cash' AND payment_status = 'pending'
+             AND status = 'delivered') AS cod_delivered_unpaid`,
+      [ttl]
+    );
+    return {
+      ttl_minutes: ttl,
+      ...(result.rows[0] ?? {
+        stuck_pending_payment: 0,
+        failed_payments: 0,
+        paid_unprepared: 0,
+        cod_delivered_unpaid: 0
+      }),
+      webhook: this.payments.webhookStats()
     };
   }
 

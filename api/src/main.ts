@@ -8,6 +8,9 @@ import { ApiExceptionFilter } from './common/api-exception.filter';
 async function bootstrap(): Promise<void> {
   const app = await NestFactory.create(AppModule, { bufferLogs: true, rawBody: true });
   const config = app.get(ConfigService);
+  // La API solo se alcanza vía nginx (contenedor no publicado); confiar en los
+  // dos saltos (nginx web/store + NPM) para resolver la IP real del cliente.
+  app.getHttpAdapter().getInstance().set('trust proxy', 2);
   app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({
     whitelist: true,

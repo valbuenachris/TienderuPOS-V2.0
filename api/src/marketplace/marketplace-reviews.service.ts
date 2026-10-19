@@ -6,6 +6,7 @@ import {
   ServiceUnavailableException
 } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
+import { MarketplaceRateLimitService, REVIEW_RATE_RULE } from './marketplace-rate-limit.service';
 
 const PROBE_CACHE_MS = 60_000;
 export const REVIEWS_MIGRATION_HINT =
@@ -29,7 +30,10 @@ export class MarketplaceReviewsService {
   private readonly logger = new Logger(MarketplaceReviewsService.name);
   private probe: { exists: boolean; at: number } | null = null;
 
-  constructor(private readonly database: DatabaseService) {}
+  constructor(
+    private readonly database: DatabaseService,
+    private readonly rateLimit: MarketplaceRateLimitService
+  ) {}
 
   async tableExists(): Promise<boolean> {
     const now = Date.now();
@@ -44,6 +48,7 @@ export class MarketplaceReviewsService {
 
   async create(customerId: number, productId: number, rating: number, commentInput?: string) {
     if (!(await this.tableExists())) throw new ServiceUnavailableException(REVIEWS_MIGRATION_HINT);
+    this.rateLimit.assertWithin(`mp-review:${customerId}`, REVIEW_RATE_RULE);
 
     const product = await this.database.query<{ id: number }>(
       `SELECT p.id FROM public.tec_products p

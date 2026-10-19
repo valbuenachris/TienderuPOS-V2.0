@@ -17,6 +17,7 @@ import { MarketplaceNotificationsService } from './marketplace-notifications.ser
 import { MarketplaceOrdersService } from './marketplace-orders.service';
 import { MarketplacePaymentsService } from './marketplace-payments.service';
 import { MarketplacePublicController } from './marketplace-public.controller';
+import { MarketplaceRateLimitService } from './marketplace-rate-limit.service';
 import { MarketplaceReviewsService } from './marketplace-reviews.service';
 import { MarketplaceSettingsService } from './marketplace-settings.service';
 import { MarketplaceTenantController } from './marketplace-tenant.controller';
@@ -41,6 +42,7 @@ import { MarketplaceTenantController } from './marketplace-tenant.controller';
     MarketplaceNotificationsService,
     MarketplaceReviewsService,
     MarketplaceCouponsService,
+    MarketplaceRateLimitService,
     MarketplaceCustomerGuard
   ],
   exports: [MarketplacePaymentsService, MarketplaceSettingsService]

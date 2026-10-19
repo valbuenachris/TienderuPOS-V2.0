@@ -206,7 +206,7 @@ export function ProductPage() {
       </nav>
 
       <div className="grid gap-8 rounded-card bg-white p-5 shadow-card sm:p-6 lg:grid-cols-[minmax(0,44%)_1fr]">
-        <div className="flex flex-col-reverse gap-3 sm:flex-row lg:sticky lg:top-32 lg:self-start">
+        <div className="flex flex-col-reverse gap-3 sm:flex-row">
           {images.length > 1 ? (
             <div className="flex gap-2 sm:flex-col" role="list" aria-label="Miniaturas del producto">
               {images.map((image, index) => (
@@ -225,15 +225,15 @@ export function ProductPage() {
               ))}
             </div>
           ) : null}
-          <div className="flex flex-1 items-center justify-center rounded-card">
+          <div className="flex min-h-[280px] flex-1 overflow-hidden rounded-card">
             {currentImage ? (
               <img
                 src={currentImage}
                 alt={data.name ?? 'Producto'}
-                className="max-h-[440px] w-full object-contain"
+                className="h-full w-full object-cover"
               />
             ) : (
-              <span className="flex aspect-square w-full items-center justify-center text-7xl text-line" aria-hidden="true">
+              <span className="flex h-full w-full items-center justify-center text-7xl text-line" aria-hidden="true">
                 🛍️
               </span>
             )}

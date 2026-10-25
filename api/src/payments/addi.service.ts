@@ -13,18 +13,43 @@ const ORDER_REFERENCE_RE = /^ORDER-(\d+)(?:-|$)/i;
 const SANDBOX_AUTH_URL = 'https://auth.addi-staging.com/oauth/token';
 const SANDBOX_AUDIENCE = 'https://api.staging.addi.com';
 const SANDBOX_API_BASE = 'https://api.staging.addi.com';
-// TODO: CAMPO_REAL_DE_ADDI — confirmar el path real de creación de solicitud online.
 const DEFAULT_APPLICATIONS_PATH = '/v1/online-applications';
 const DEFAULT_CALLBACK_URL = 'https://pos.tienderu.com/api/webhooks/addi';
-// Addi exige `redirection_url` siempre presente (fallback si el tenant no define return_url).
+// Addi exige `redirectionUrl` siempre presente (fallback si el tenant no define return_url).
 const DEFAULT_REDIRECTION_URL = 'https://pos.tienderu.com/config?payment=return';
 // CC de prueba para sandbox; env ADDI_TEST_DOCUMENT_NUMBER lo sobreescribe.
 const DEFAULT_TEST_DOCUMENT_NUMBER = '1001234567';
-// Shipping de prueba mientras el checkout de la app no envíe dirección (ver customer_addresses).
+// Dirección de respaldo si el cliente no tiene ninguna en customer_addresses.
 const DEFAULT_SHIPPING_ADDRESS = 'Calle Falsa 123';
 const DEFAULT_SHIPPING_CITY = 'Bogotá';
-const TOKEN_SAFETY_SECONDS = 300;
 const REQUEST_TIMEOUT_MS = 12000;
+
+export type AddiAddress = { lineOne: string; city: string; country: string };
+
+export type AddiItemInput = {
+  sku: string;
+  name: string;
+  quantity: number;
+  unitPrice: number;
+  tax: number;
+};
+
+export type AddiPayloadInput = {
+  orderId: string;
+  amount: number;
+  taxAmount: number;
+  firstName: string;
+  lastName: string;
+  email: string;
+  cellphone: string;
+  documentType: string;
+  documentNumber: string;
+  callbackUrl: string;
+  redirectionUrl: string;
+  items: AddiItemInput[];
+  address: AddiAddress;
+  includeShipping: boolean;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -97,18 +122,72 @@ export function maskPhone(value: string): string {
   return digits.length <= 4 ? '***' : `***${digits.slice(-4)}`;
 }
 
-/** Normaliza teléfonos colombianos al formato que espera Addi: 57XXXXXXXXXX (sin signo +). */
-export function normalizePhoneForAddi(value: string): string {
-  const digits = value.replace(/\D/g, '');
-  if (digits === '') return '';
-  if (digits.length > 10) return digits;
-  return `57${digits}`;
+/**
+ * v0.3.96 (schema oficial): montos y cantidades viajan como STRING con punto
+ * decimal ("45000.0", "2"). Los ejemplos del spec usan un decimal.
+ */
+export function toAddiAmount(value: number): string {
+  return Number.isInteger(value) ? `${value}.0` : value.toFixed(2);
+}
+
+/**
+ * v0.3.96 (schema oficial): `client.cellphone` es el número de 10 dígitos SIN
+ * indicativo; el `+57` va aparte en `client.cellphoneCountryCode`.
+ */
+export function normalizeAddiCellphone(value: string): string {
+  let digits = value.replace(/\D/g, '');
+  if (digits.startsWith('57') && digits.length > 10) digits = digits.slice(2);
+  return digits;
+}
+
+/**
+ * Construye el body EXACTO del contrato oficial (ADDI API · E-commerce CO,
+ * POST /v1/online-applications → 301 + Location):
+ *  · Requeridos: orderId, totalAmount, shippingAmount, currency, client, allyUrlRedirection, items.
+ *  · client.address es OBLIGATORIA (lineOne/city/country).
+ *  · Montos/cantidades como strings; ítems con sku/name/quantity/unitPrice (+tax informativo).
+ *  · callbackUrl/redirectionUrl van anidados en allyUrlRedirection (camelCase).
+ */
+export function buildAddiPayload(input: AddiPayloadInput): Record<string, unknown> {
+  const body: Record<string, unknown> = {
+    orderId: input.orderId,
+    totalAmount: toAddiAmount(input.amount),
+    shippingAmount: toAddiAmount(0),
+    totalTaxesAmount: toAddiAmount(input.taxAmount),
+    currency: 'COP',
+    items: input.items.map((item) => ({
+      sku: item.sku,
+      name: item.name,
+      quantity: String(item.quantity),
+      unitPrice: toAddiAmount(item.unitPrice),
+      tax: toAddiAmount(item.tax)
+    })),
+    client: {
+      idType: input.documentType,
+      idNumber: input.documentNumber,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      cellphone: normalizeAddiCellphone(input.cellphone),
+      cellphoneCountryCode: '+57',
+      address: input.address
+    },
+    allyUrlRedirection: {
+      callbackUrl: input.callbackUrl,
+      redirectionUrl: input.redirectionUrl
+    }
+  };
+  if (input.includeShipping) {
+    body.shippingAddress = input.address;
+    body.billingAddress = input.address;
+  }
+  return body;
 }
 
 /** Extrae el saleId de la referencia `ORDER-<saleId>[-<ts>]` ecoada por Addi. */
 export function extractSaleIdFromWebhook(payload: Record<string, unknown>): number | null {
-  // TODO: CAMPO_REAL_DE_ADDI — confirmar el campo exacto del callback; se aceptan
-  // variantes conocidas y objetos anidados (order/application/data) por robustez.
+  // El callback oficial (OnlineLoanApplicationCallbackRequest) trae `orderId`.
+  // Se aceptan variantes y objetos anidados (order/application/data) por robustez.
   const keys = ['orderId', 'order_id', 'external_id', 'externalId', 'reference', 'merchant_order_id'];
   const scan = (record: Record<string, unknown>): number | null => {
     for (const key of keys) {
@@ -118,6 +197,11 @@ export function extractSaleIdFromWebhook(payload: Record<string, unknown>): numb
       const match = ORDER_REFERENCE_RE.exec(text);
       if (match) {
         const saleId = Number(match[1]);
+        if (Number.isSafeInteger(saleId) && saleId > 0) return saleId;
+      }
+      // Robustez: un orderId puramente numérico se interpreta como saleId.
+      if (/^\d+$/.test(text)) {
+        const saleId = Number(text);
         if (Number.isSafeInteger(saleId) && saleId > 0) return saleId;
       }
     }
@@ -135,12 +219,11 @@ export function extractSaleIdFromWebhook(payload: Record<string, unknown>): numb
   return null;
 }
 
-type CachedToken = { token: string; expiresAt: number };
-
 /**
  * Addi "Custom Integrations" para la tienda virtual de cada tenant (v0.3.79).
  * OAuth2 client-credentials: client_id = addi_api_key, client_secret = addi_webhook_secret
- * (ambos del tenant en tec_tenant_payment_settings). El JWT se cachea por tenant.
+ * (ambos del tenant en tec_tenant_payment_settings). v0.3.96: token nuevo por
+ * transacción (recomendación oficial; evita expiraciones cruzadas).
  */
 @Injectable()
 export class AddiService {
@@ -152,7 +235,7 @@ export class AddiService {
   private readonly callbackUrl: string;
   private readonly testDocumentNumber: string;
   private readonly sendShipping: boolean;
-  private readonly tokens = new Map<string, CachedToken>();
+  private readonly debugPayload: boolean;
 
   constructor(
     config: ConfigService,
@@ -171,6 +254,7 @@ export class AddiService {
     this.callbackUrl = config.get<string>('ADDI_CALLBACK_URL') ?? DEFAULT_CALLBACK_URL;
     this.testDocumentNumber = config.get<string>('ADDI_TEST_DOCUMENT_NUMBER') ?? DEFAULT_TEST_DOCUMENT_NUMBER;
     this.sendShipping = (config.get<string>('ADDI_SEND_SHIPPING') ?? 'true').trim().toLowerCase() !== 'false';
+    this.debugPayload = (config.get<string>('ADDI_DEBUG_PAYLOAD') ?? 'false').trim().toLowerCase() === 'true';
     if (!config.get('ADDI_AUTH_URL') || !config.get('ADDI_API_BASE_URL')) {
       this.logger.warn(
         'Addi usando URLs de SANDBOX por defecto (auth.addi-staging.com / api.staging.addi.com). ' +
@@ -180,12 +264,8 @@ export class AddiService {
   }
 
   async getAccessToken(tenantId: string): Promise<string> {
-    const cached = this.tokens.get(tenantId);
-    if (cached && cached.expiresAt > Date.now()) return cached.token;
     const credentials = await this.requireCredentials(tenantId);
     const issued = await this.requestToken(credentials.apiKey, credentials.webhookSecret);
-    const ttl = Math.max(issued.expiresIn - TOKEN_SAFETY_SECONDS, 60);
-    this.tokens.set(tenantId, { token: issued.token, expiresAt: Date.now() + ttl * 1000 });
     return issued.token;
   }
 
@@ -197,71 +277,63 @@ export class AddiService {
     redirectionUrl: string | null;
   }): Promise<string> {
     const accessToken = await this.getAccessToken(input.tenantId);
-    // Referencia única por intento; el webhook la resuelve con ORDER_REFERENCE_RE.
+    // El orderId acepta cualquier formato pero debe ser único por intento.
     const orderId = `ORDER-${input.saleId}-${Date.now().toString(36)}`;
     const nameParts = (input.customer.name ?? '').trim().split(/\s+/).filter(Boolean);
     const firstName = nameParts[0] ?? '';
     const lastName = nameParts.slice(1).join(' ');
     const email = input.customer.email ?? '';
-    // v0.3.84: Addi espera el teléfono como 57XXXXXXXXXX (indicativo, sin signo +).
-    // Fuente: input.customer.phone (PosCustomer del token, digits-only desde v0.3.59).
-    const phone = normalizePhoneForAddi(input.customer.phone ?? '');
     const items = await this.loadSaleItems(input.saleId, input.tenantId);
-    // TODO: CAMPO_REAL_DE_ADDI — estructura snake_case con `customer`/`shipping`/`items`
-    // (v0.3.82: Addi exige `redirection_url` SIEMPRE y algunas integraciones requieren
-    // `shipping`); verificar nombres finales contra la doc.
-    // TODO: CAMPO_REAL_DE_ADDI — tec_customers no guarda documento: se envía el CC de
-    // prueba (env ADDI_TEST_DOCUMENT_NUMBER); mapear el campo real cuando exista.
-    // TODO: CAMPO_REAL_DE_ADDI — shipping con dirección de prueba; cuando el checkout
-    // de la app envíe dirección, tomarla de customer_addresses.
-    // TODO: opcional minAmount/maxAmount vía GET /allies/{ally_slug}/config
-    // (requiere ally_slug, hoy no está en tec_tenant_payment_settings).
-    const body: Record<string, unknown> = {
-      // Tipos estrictos: amount/quantity/price siempre enteros (Math.round), nunca strings.
-      order_id: orderId,
-      amount: Math.round(input.amount),
-      currency: 'COP',
-      customer: {
-        first_name: firstName,
-        last_name: lastName,
-        email,
-        phone,
-        document_type: 'CC',
-        document_number: this.testDocumentNumber
-      },
-      callback_url: this.callbackUrl,
-      redirection_url: input.redirectionUrl ?? DEFAULT_REDIRECTION_URL,
-      items
+    const taxAmount = await this.loadSaleTax(input.saleId, input.tenantId);
+    const address = await this.loadCustomerAddress(input.customer.id);
+    const clientAddress: AddiAddress = address ?? {
+      lineOne: DEFAULT_SHIPPING_ADDRESS,
+      city: DEFAULT_SHIPPING_CITY,
+      country: 'CO'
     };
-    // v0.3.84: `shipping` con `country: 'CO'`. Desactivable con ADDI_SEND_SHIPPING=false
-    // para aislar si Addi lo rechaza (fallback de depuración).
-    if (this.sendShipping) {
-      body.shipping = {
-        first_name: firstName,
-        last_name: lastName,
-        phone,
-        address: DEFAULT_SHIPPING_ADDRESS,
-        city: DEFAULT_SHIPPING_CITY,
-        country: 'CO'
-      };
-    }
+    const body = buildAddiPayload({
+      orderId,
+      amount: input.amount,
+      taxAmount,
+      firstName,
+      lastName,
+      email,
+      cellphone: input.customer.phone ?? '',
+      documentType: 'CC',
+      documentNumber: this.testDocumentNumber,
+      callbackUrl: this.callbackUrl,
+      redirectionUrl: input.redirectionUrl ?? DEFAULT_REDIRECTION_URL,
+      items,
+      address: clientAddress,
+      // shipping/billing solo con dirección real (son opcionales en el contrato).
+      includeShipping: this.sendShipping && address !== null
+    });
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      // v0.3.83: el request REAL viaja sin máscara (JSON.stringify(body) en el fetch);
-      // esta copia es SOLO para el log y enmascara AMBAS ocurrencias (customer y shipping).
+      // El request REAL viaja sin máscara (JSON.stringify(body) en el fetch);
+      // esta copia es SOLO para el log y enmascara email/celular del client.
+      const client = body.client as Record<string, unknown>;
       const debugBody: Record<string, unknown> = {
         ...body,
-        customer: { ...(body.customer as Record<string, unknown>), email: maskEmail(email), phone: maskPhone(phone) },
-        ...(body.shipping
-          ? { shipping: { ...(body.shipping as Record<string, unknown>), phone: maskPhone(phone) } }
-          : {})
+        client: {
+          ...client,
+          email: maskEmail(String(client.email ?? '')),
+          cellphone: maskPhone(String(client.cellphone ?? ''))
+        }
       };
-      this.logger.debug(
-        `Addi create request: POST ${this.apiBase}${this.applicationsPath} ` +
-        `body(debug; PII enmascarada solo aquí, el request real va sin máscara)=${JSON.stringify(debugBody)}`
-      );
+      const debugLine =
+        `Addi create request (schema v0.3.96): POST ${this.apiBase}${this.applicationsPath} ` +
+        `body(debug; PII enmascarada solo aquí, el request real va sin máscara)=${JSON.stringify(debugBody)}`;
+      if (this.debugPayload) {
+        this.logger.warn(
+          `${debugLine} | headers: Authorization=Bearer <redacted len=${accessToken.length}>, ` +
+          'Accept=application/json, Content-Type=application/json'
+        );
+      } else {
+        this.logger.debug(debugLine);
+      }
       const response = await fetch(`${this.apiBase}${this.applicationsPath}`, {
         method: 'POST',
         redirect: 'manual',
@@ -274,7 +346,7 @@ export class AddiService {
         signal: controller.signal
       });
 
-      // Contrato confirmado: 301 con `Location` = URL de checkout (sin seguir el redirect).
+      // Contrato oficial: 301 con `Location` = URL de checkout (sin seguir el redirect).
       const location = response.headers.get('location');
       if (response.status >= 300 && response.status < 400 && location) {
         return new URL(location, this.apiBase).toString();
@@ -304,9 +376,7 @@ export class AddiService {
         if (nested) return nested;
       }
 
-      if (response.status === 401) this.tokens.delete(input.tenantId);
-
-      // v0.3.84: cuerpo COMPLETO + `errors[]` + `x-trace-id` (para soporte de Addi).
+      // Cuerpo COMPLETO + `errors[]` + `x-trace-id` (para soporte de Addi).
       const traceId = response.headers.get('x-trace-id') ?? response.headers.get('trace-id');
       const traceSuffix = traceId ? ` [trace-id ${traceId}]` : '';
       this.logger.error(`Addi POST ${this.apiBase}${this.applicationsPath} -> ${response.status}${traceSuffix}: ${text}`);
@@ -329,31 +399,76 @@ export class AddiService {
     }
   }
 
-  /** Ítems de la venta para el payload de Addi (sku desde `code`, precio unitario entero). */
-  private async loadSaleItems(
-    saleId: number,
-    tenantId: string
-  ): Promise<Array<{ sku: string; name: string; quantity: number; price: number }>> {
+  /** Ítems de la venta para el payload de Addi (sku desde `code`; tax informativo). */
+  private async loadSaleItems(saleId: number, tenantId: string): Promise<AddiItemInput[]> {
     const result = await this.database.query<{
       product_id: number | null;
       code: string | null;
       name: string | null;
       quantity: string | number;
       unit_price: string;
+      subtotal: string | null;
+      tax_rate: string | null;
     }>(
-      `SELECT si.product_id, p.code, p.name, si.quantity, si.unit_price::text AS unit_price
+      `SELECT si.product_id, p.code, p.name, si.quantity, si.unit_price::text AS unit_price,
+              si.subtotal::text AS subtotal, p.tax::text AS tax_rate
        FROM public.tec_sale_items si
        LEFT JOIN public.tec_products p ON p.id = si.product_id
        WHERE si.sale_id = $1 AND si.tenant_id = $2
        ORDER BY si.id ASC`,
       [saleId, tenantId]
     );
-    return result.rows.map((row) => ({
-      sku: readString(row.code) ?? `PROD-${row.product_id ?? 0}`,
-      name: readString(row.name) ?? 'Producto',
-      quantity: Math.max(1, Math.round(Number(row.quantity) || 1)),
-      price: Math.round(Number(row.unit_price) || 0)
-    }));
+    return result.rows.map((row) => {
+      const quantity = Math.max(1, Math.round(Number(row.quantity) || 1));
+      const unitPrice = Math.round(Number(row.unit_price) || 0);
+      const subtotal = Math.round(Number(row.subtotal) || unitPrice * quantity);
+      const taxRate = Number(row.tax_rate ?? 0);
+      return {
+        sku: readString(row.code) ?? `PROD-${row.product_id ?? 0}`,
+        name: readString(row.name) ?? 'Producto',
+        quantity,
+        unitPrice,
+        tax: Number.isFinite(taxRate) && taxRate > 0 ? Math.round((subtotal * taxRate) / 100) : 0
+      };
+    });
+  }
+
+  /** IVA total de la venta (informativo en el payload: `totalTaxesAmount`). */
+  private async loadSaleTax(saleId: number, tenantId: string): Promise<number> {
+    const result = await this.database.query<{ tax: string | null }>(
+      `SELECT COALESCE(total_tax, 0)::text AS tax
+       FROM public.tec_sales
+       WHERE id = $1 AND tenant_id = $2
+       LIMIT 1`,
+      [saleId, tenantId]
+    );
+    const tax = Number(result.rows[0]?.tax ?? 0);
+    return Number.isFinite(tax) ? tax : 0;
+  }
+
+  /** Dirección por defecto del cliente (customer_addresses) para `client.address`. */
+  private async loadCustomerAddress(customerId: number): Promise<AddiAddress | null> {
+    try {
+      const result = await this.database.query<{ street_address: string | null; city: string | null }>(
+        `SELECT street_address, city
+         FROM public.customer_addresses
+         WHERE customer_id = $1
+         ORDER BY is_default DESC, id ASC
+         LIMIT 1`,
+        [customerId]
+      );
+      const row = result.rows[0];
+      const lineOne = readString(row?.street_address);
+      if (row === undefined || lineOne === null) return null;
+      return {
+        lineOne,
+        city: readString(row.city) ?? DEFAULT_SHIPPING_CITY,
+        country: 'CO'
+      };
+    } catch (_error: unknown) {
+      // La tabla puede no existir en entornos viejos: fallback a la dirección por defecto.
+      return null;
+    }
   }
 
   private async requireCredentials(tenantId: string): Promise<{ apiKey: string; webhookSecret: string }> {
@@ -369,7 +484,7 @@ export class AddiService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      // v0.3.80: Auth0 espera form-urlencoded en /oauth/token. El debug registra la
+      // Auth0 espera form-urlencoded en /oauth/token. El debug registra la
       // URL final EXACTA y los headers; nunca imprime client_secret (solo su largo).
       const form = new URLSearchParams({
         grant_type: 'client_credentials',

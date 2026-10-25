@@ -5,6 +5,7 @@ import { CustomerCheckoutWithPaymentDto } from '../customer/customer.dto';
 import { DatabaseService } from '../database/database.service';
 import { SalesService } from '../sales/sales.service';
 import { AddiService, extractSaleIdFromWebhook, parseBasicAuthHeader, readAmount, secureCompare } from './addi.service';
+import { SistecreditoService } from './sistecredito.service';
 import { TenantBoldService } from './tenant-bold.service';
 import { TenantPaymentSettingsService, providerCredentials } from './tenant-payment-settings.service';
 
@@ -30,7 +31,8 @@ export class PaymentsService {
     private readonly config: ConfigService,
     private readonly paymentSettings: TenantPaymentSettingsService,
     private readonly tenantBold: TenantBoldService,
-    private readonly addi: AddiService
+    private readonly addi: AddiService,
+    private readonly sistecredito: SistecreditoService
   ) {}
 
   async checkoutWithPayment(tenantId: string, customer: PosCustomer, input: CustomerCheckoutWithPaymentDto) {
@@ -99,10 +101,17 @@ export class PaymentsService {
       };
     }
 
+    // sistecredito: stub de checkout (link sandbox) hasta confirmar el contrato real (v0.3.85).
+    const sistecreditoUrl = await this.sistecredito.createCheckoutLink({
+      tenantId,
+      saleId: sale.id,
+      amount,
+      redirectionUrl: callbackUrl
+    });
     return {
       order_id: sale.id,
       status: sale.status,
-      payment_url: this.createSistecreditoLink(sale.id, amount, settings.tenantId, callbackUrl),
+      payment_url: sistecreditoUrl,
       payment_method: method
     };
   }
@@ -169,14 +178,15 @@ export class PaymentsService {
       throw new UnauthorizedException('Invalid Addi webhook credentials');
     }
 
-    // TODO: CAMPO_REAL_DE_ADDI — confirmar el nombre del campo de estado (hoy status/state).
+    // Callback oficial: { orderId, applicationId, approvedAmount, currency, status, statusTimestamp }
+    // con status UPPERCASE (APPROVED|PENDING|REJECTED|ABANDONED|DECLINED|INTERNAL_ERROR).
     const status = (readString(payload.status) ?? readString(payload.state) ?? '').toLowerCase();
     if (status !== 'approved') {
       this.logger.log(`Addi webhook ${status === '' ? 'sin estado' : status} tenant=${sale.tenantId} order=${saleId} ignorado`);
       return { handled: false };
     }
 
-    const amount = readAmount(payload.amount);
+    const amount = readAmount(payload.approvedAmount) ?? readAmount(payload.amount);
     const result = await this.sales.registerGatewayPayment(saleId, 'ADI', amount ?? undefined);
     this.logger.log(`Addi webhook pagado tenant=${sale.tenantId} order=${saleId} handled=${result.handled}`);
     return { handled: result.handled };
@@ -199,13 +209,14 @@ export class PaymentsService {
       this.logger.warn(`[sistecredito webhook] deshabilitado para tenant ${sale.tenantId}; ignorado`);
       return { received: true, handled: false };
     }
+    // v0.3.85 fail-closed (igual que Addi): habilitado y sin secreto ⇒ se rechaza.
     const secret = credentials.webhookSecret;
-    if (secret !== null) {
-      if (secretHeader === undefined || !secureCompare(secretHeader, secret)) {
-        throw new UnauthorizedException('Invalid webhook secret');
-      }
-    } else {
-      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin secreto configurado; modo sandbox (stub)`);
+    if (secret === null || secret === '') {
+      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin secreto configurado; rechazado (fail-closed)`);
+      throw new UnauthorizedException('Invalid webhook secret');
+    }
+    if (secretHeader === undefined || !secureCompare(secretHeader, secret)) {
+      throw new UnauthorizedException('Invalid webhook secret');
     }
 
     const status = (readString(payload.status) ?? '').toLowerCase();
@@ -270,22 +281,6 @@ export class PaymentsService {
     );
     const row = result.rows[0];
     return row ? { saleId: row.id, tenantId: row.tenant_id } : null;
-  }
-
-  private createSistecreditoLink(saleId: number, amount: number, tenantId: string, callbackUrl: string | null): string {
-    const payload = {
-      merchant_order_id: `ORDER-${saleId}`,
-      reference: `ORDER-${saleId}`,
-      amount,
-      currency: 'COP',
-      callback_url: callbackUrl ?? 'https://pos.tienderu.com',
-      tenant_id: tenantId
-    };
-    this.logger.log(`[SISTECREDITO STUB] tenant=${tenantId} checkout payload: ${JSON.stringify(payload)}`);
-    // TODO: integrar la API real de Sistecrédito cuando se confirme el contrato;
-    // AddiService (v0.3.79) es la implementación de referencia.
-    const base = this.config.get<string>('SISTECREDITO_CHECKOUT_BASE_URL') ?? 'https://sandbox.sistecredito.com/checkout';
-    return `${base}?order=ORDER-${saleId}`;
   }
 
   private readOrderId(payload: Record<string, unknown>): number | null {

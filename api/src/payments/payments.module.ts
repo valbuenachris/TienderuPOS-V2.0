@@ -5,13 +5,14 @@ import { AddiService } from './addi.service';
 import { PaymentMethodsController } from './payment-methods.controller';
 import { PaymentsWebhookController } from './payments.controller';
 import { PaymentsService } from './payments.service';
+import { SistecreditoService } from './sistecredito.service';
 import { TenantBoldService } from './tenant-bold.service';
 import { TenantPaymentSettingsService } from './tenant-payment-settings.service';
 
 @Module({
   imports: [AuthModule, SalesModule],
   controllers: [PaymentsWebhookController, PaymentMethodsController],
-  providers: [PaymentsService, TenantPaymentSettingsService, TenantBoldService, AddiService],
+  providers: [PaymentsService, TenantPaymentSettingsService, TenantBoldService, AddiService, SistecreditoService],
   exports: [PaymentsService, TenantBoldService]
 })
 export class PaymentsModule {}

@@ -6,7 +6,7 @@
     "build": "nest build",
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",
-    "test": "tsx --test src/auth/password.util.spec.ts src/payments/addi.service.spec.ts src/marketplace/marketplace-order-status.spec.ts src/marketplace/marketplace-rate-limit.service.spec.ts src/marketplace/marketplace-whatsapp-draft.spec.ts src/whatsapp/evolution-webhook.util.spec.ts"
+    "test": "tsx --test src/auth/password.util.spec.ts src/payments/addi.service.spec.ts src/payments/sistecredito.service.spec.ts src/marketplace/marketplace-order-status.spec.ts src/marketplace/marketplace-rate-limit.service.spec.ts src/marketplace/marketplace-whatsapp-draft.spec.ts src/whatsapp/evolution-webhook.util.spec.ts"
   },
   "engines": { "node": ">=22" },
   "dependencies": {

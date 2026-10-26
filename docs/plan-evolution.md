@@ -1,6 +1,7 @@
 # Plan · Migración de Evolution API al VPS propio
 
-Estado: **Fase 1 completada y verificada** · Fase 2 (contenedor de pruebas) **omitida por decisión** — se valida en el VPS de despliegue tras el pull · Fase 3 en curso (push a GitHub).
+Estado: **Completada** — fix desplegado en producción (`v0.12.4`), instancia del tenant de prueba
+reconectada (`open`) y bot respondiendo. Marketplace sin configurar (opcional; no había fila previa).
 
 ## Contexto
 
@@ -101,10 +102,13 @@ alineó a los mismos valores. Ver Fase 3.
       `EVOLUTION_API_KEY` y un `EVOLUTION_WEBHOOK_TOKEN` propio → solo cambia `EVOLUTION_API_URL`.
       Estado DB: **1** tenant con instancia (`pos-prueba-pos-33a557f2`, `agent_enabled=t`, status
       `open` obsoleto) y **0** filas de marketplace.
-- [ ] Build `v0.12.4` en el VPS (`IMAGE_TAG=v0.12.4 docker compose -f docker-compose.build.yml build --pull`)
+- [x] Build `v0.12.4` en el VPS (`IMAGE_TAG=v0.12.4 docker compose -f docker-compose.build.yml build --pull`)
       y `IMAGE_TAG=v0.12.4 docker compose up -d`.
-- [ ] Tenant de prueba: `/whatsapp` → "Conectar" (recrea la instancia y muestra QR) → escanear →
-      estado `open` → guardar la config del bot para re-registrar el webhook en el Evolution nuevo.
+- [x] Tenant de prueba: `/whatsapp` → "Conectar" recreó la instancia y mostró el QR (antes: 404) →
+      escaneado (número `573114357068`) → estado `open` → bot guardado: webhook registrado y
+      **el bot está respondiendo**. Verificación final desde el workspace contra la API de Evolution:
+      `connectionState` = `open`; `webhook/find` = habilitado con `MESSAGES_UPSERT` +
+      `CONNECTION_UPDATE` y la URL `https://pos.tienderu.com/api/webhooks/evolution/<instancia>?token=…`.
 - [ ] Marketplace (opcional): no hay fila previa; al activar su WhatsApp la pestaña del super admin
       crea la instancia `tienderu-marketplace` normalmente.
 

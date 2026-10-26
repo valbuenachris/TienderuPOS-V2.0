@@ -241,7 +241,7 @@ Chat **solo para administradores** conectado a **OpenRouter** que responde con *
 
 ## WhatsApp (Evolution API) (v0.5.0–v0.5.1)
 
-Cada tienda puede vincular su propio WhatsApp desde el POS (sección **WhatsApp**, solo admin). Botones: **Crear instancia** (una por tenant, nombre derivado `pos-<slug>-<id8>`), **Conectar** (modal con **QR** que se refresca solo; la página detecta automáticamente cuando queda conectado) y **Desconectar** (cierra la sesión de WhatsApp pero **conserva la instancia** para reconectar con un QR nuevo). Usa el **mismo servidor Evolution API** que educol con credenciales globales de la plataforma (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY` en el `.env` del API; la key nunca se expone al navegador ni se guarda por tienda). Requiere la migración `docs/migrations/v0.5.0-tenant-whatsapp.sql`.
+Cada tienda puede vincular su propio WhatsApp desde el POS (sección **WhatsApp**, solo admin). Botones: **Crear instancia** (una por tenant, nombre derivado `pos-<slug>-<id8>`), **Conectar** (modal con **QR** que se refresca solo; la página detecta automáticamente cuando queda conectado) y **Desconectar** (cierra la sesión de WhatsApp pero **conserva la instancia** para reconectar con un QR nuevo). Desde **v0.12.2**, si la instancia ya no existe en el servidor Evolution (p. ej. tras migrar de servidor), **Conectar** la recrea automáticamente antes de mostrar el QR (misma lógica en el WhatsApp del marketplace). Usa el **mismo servidor Evolution API** que educol con credenciales globales de la plataforma (`EVOLUTION_API_URL`, `EVOLUTION_API_KEY` en el `.env` del API; la key nunca se expone al navegador ni se guarda por tienda). Requiere la migración `docs/migrations/v0.5.0-tenant-whatsapp.sql`.
 
 ### Bot de ventas (v0.6.0–v0.6.6)
 

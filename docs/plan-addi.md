@@ -1,6 +1,6 @@
 # Plan: Fix definitivo Addi — 400 "La solicitud no tiene el formato correcto" (v0.3.96)
 
-Estado: **ejecutado en código (v0.3.96)** — `tsc` OK, 25/25 specs y dry-run del script OK; pendiente build/push + deploy en VPS (sin DDL). Causa raíz confirmada contra el OpenAPI spec oficial (2026-10-19). Imagen a desplegar: `v0.12.3` (continúa la línea de producción; el fix de feature es v0.3.96). Fecha: 2026-10-19.
+Estado: **listo para producción (v0.12.5)** — spec oficial confirmada (2026-10-26, `api-docs.addi-staging.com`); el código v0.3.96 cumple el `OnlineLoanApplicationRequest`. v0.12.5 agrega la cédula real del cliente: DDL `docs/migrations/v0.12.5-customer-document.sql` (`tec_customers.document_type/document_number`), captura en el perfil de la app (`PUT /api/customer/profile`), validaciones estrictas de producción en `AddiService` (cédula/CC, celular 10 dígitos, dirección real) y mensaje claro para el 409 (cliente con crédito activo). Pendiente de operación: env productivo (`ADDI_AUTH_URL`/`ADDI_AUDIENCE`/`ADDI_API_BASE_URL`, sin `ADDI_TEST_DOCUMENT_NUMBER`) + claves de producción del tenant. Fecha: 2026-10-26.
 
 ## 1. Causa raíz (evidencia oficial)
 
@@ -65,8 +65,8 @@ Script `tsx` para validar el payload antes de la app:
 3. App: checkout Addi → abre Addi → webhook `APPROVED` → `paid` + `tec_payments.paid_by='ADI'` y `approvedAmount` cuadrado.
 4. Regresión cash/Bold/Sistecrédito; `tsc --noEmit` + specs.
 
-## 5. ⚠️ Bloqueante de PRODUCCIÓN (decisión del usuario)
-**Documento del cliente**: hoy todo checkout envía la CC de prueba `1001234567` (sandbox). En producción es inválido (KYC) y Addi responde **409** si la CC ya tiene crédito. Opciones: (a) DDL aprobada `tec_customers.document_type/document_number` + captura en la app; (b) reutilizar `cf1`/`cf2` legacy; (c) pedirlo en cada checkout. **Recomendado (a)**.
+## 5. ✅ RESUELTO (v0.12.5) — Documento del cliente
+Hoy todo checkout enviaba la CC de prueba `1001234567` (solo sandbox). Desde v0.12.5: DDL aprobada (`tec_customers.document_type/document_number`), captura **solo en el perfil de la app** (`PUT /api/customer/profile`, opción **a**), y en producción (sin `ADDI_TEST_DOCUMENT_NUMBER`) el `AddiService` exige cédula real + celular de 10 dígitos + dirección real con mensajes claros; el 409 (cliente con crédito activo) también responde un mensaje específico.
 
 ## 6. Preguntas abiertas
 1. ¿Credenciales de **staging** de Addi? (soporte_aliados@addi.com / WhatsApp +57 1 580 6869) — para validar el 301 sin tocar producción.

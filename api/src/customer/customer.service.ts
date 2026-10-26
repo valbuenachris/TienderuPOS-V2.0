@@ -78,6 +78,8 @@ type CustomerProfileRow = {
   email: string | null;
   phone: string | null;
   points_balance: number;
+  document_type: string | null;
+  document_number: string | null;
 };
 
 @Injectable()
@@ -139,25 +141,54 @@ export class CustomerService {
     const name = input.name?.trim();
     const email = input.email?.trim() ?? null;
     const phone = input.phone === undefined ? null : input.phone.replace(/\D/g, '');
+    const documentType = input.document_type?.trim().toUpperCase();
+    const documentNumber = input.document_number?.trim();
+    if ((documentType === undefined) !== (documentNumber === undefined)) {
+      throw new BadRequestException('document_type y document_number deben enviarse juntos');
+    }
     const result = await this.database.query<CustomerProfileRow>(
       `UPDATE public.tec_customers
        SET name = COALESCE($3, name),
            email = COALESCE($4, email),
-           phone = COALESCE($5, phone)
+           phone = COALESCE($5, phone),
+           document_type = COALESCE($6, document_type),
+           document_number = COALESCE($7, document_number)
        WHERE tenant_id = $1 AND id = $2
        RETURNING id, tenant_id::text AS tenant_id, name, email, phone,
-                 COALESCE(points_balance, 0)::integer AS points_balance`,
+                 COALESCE(points_balance, 0)::integer AS points_balance,
+                 document_type, document_number`,
       [
         tenantId,
         customerId,
         name !== undefined && name.length > 0 ? name : null,
         email !== null && email.length > 0 ? email : null,
-        phone !== null && phone.length > 0 ? phone : null
+        phone !== null && phone.length > 0 ? phone : null,
+        documentType !== undefined && documentType.length > 0 ? documentType : null,
+        documentNumber !== undefined && documentNumber.length > 0 ? documentNumber : null
       ]
     );
     const row = result.rows[0];
     if (!row) throw new NotFoundException('Customer not found');
     return row;
+  }
+
+  private async customerDocument(
+    tenantId: string,
+    customerId: number
+  ): Promise<{ document_type: string | null; document_number: string | null }> {
+    try {
+      const result = await this.database.query<{ document_type: string | null; document_number: string | null }>(
+        `SELECT document_type, document_number
+         FROM public.tec_customers
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1`,
+        [tenantId, customerId]
+      );
+      return result.rows[0] ?? { document_type: null, document_number: null };
+    } catch (_error: unknown) {
+      // Columnas pueden no existir antes de la migración v0.12.5.
+      return { document_type: null, document_number: null };
+    }
   }
 
   async profile(tenantId: string, customer: PosCustomer) {
@@ -172,13 +203,16 @@ export class CustomerService {
       [tenantId, customer.id]
     );
     const tenant = await this.tenantBranding(tenantId);
+    const document = await this.customerDocument(tenantId, customer.id);
     return {
       customer: {
         id: customer.id,
         name: customer.name,
         email: customer.email,
         phone: customer.phone,
-        points_balance: customer.points_balance
+        points_balance: customer.points_balance,
+        document_type: document.document_type,
+        document_number: document.document_number
       },
       tenant,
       recent_points: activity.rows

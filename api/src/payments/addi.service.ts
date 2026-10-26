@@ -17,12 +17,19 @@ const DEFAULT_APPLICATIONS_PATH = '/v1/online-applications';
 const DEFAULT_CALLBACK_URL = 'https://pos.tienderu.com/api/webhooks/addi';
 // Addi exige `redirectionUrl` siempre presente (fallback si el tenant no define return_url).
 const DEFAULT_REDIRECTION_URL = 'https://pos.tienderu.com/config?payment=return';
-// CC de prueba para sandbox; env ADDI_TEST_DOCUMENT_NUMBER lo sobreescribe.
-const DEFAULT_TEST_DOCUMENT_NUMBER = '1001234567';
-// Dirección de respaldo si el cliente no tiene ninguna en customer_addresses.
+// Dirección de respaldo SOLO en modo sandbox (con ADDI_TEST_DOCUMENT_NUMBER definido).
 const DEFAULT_SHIPPING_ADDRESS = 'Calle Falsa 123';
 const DEFAULT_SHIPPING_CITY = 'Bogotá';
 const REQUEST_TIMEOUT_MS = 12000;
+
+export const ADDI_DOCUMENT_REQUIRED_MESSAGE =
+  'Agrega tu cédula (CC) en tu perfil para pagar con Addi.';
+export const ADDI_PHONE_REQUIRED_MESSAGE =
+  'Agrega un celular de 10 dígitos en tu perfil para pagar con Addi.';
+export const ADDI_ADDRESS_REQUIRED_MESSAGE =
+  'Agrega una dirección en tu perfil para pagar con Addi.';
+export const ADDI_ACTIVE_LOAN_MESSAGE =
+  'El cliente ya tiene un crédito activo con Addi. Elige otro medio de pago.';
 
 export type AddiAddress = { lineOne: string; city: string; country: string };
 
@@ -184,6 +191,47 @@ export function buildAddiPayload(input: AddiPayloadInput): Record<string, unknow
   return body;
 }
 
+/**
+ * Política de datos del cliente para Addi (v0.12.5):
+ *  · Sandbox (`ADDI_TEST_DOCUMENT_NUMBER` definido): cédula de prueba y dirección de
+ *    relleno como fallback (comportamiento histórico).
+ *  · Producción (sin la variable): exige cédula real, celular de 10 dígitos y
+ *    dirección real del cliente, con mensajes claros para la app.
+ */
+export type AddiCustomerDataResolution =
+  | { ok: true; documentNumber: string; address: AddiAddress; includeShipping: boolean }
+  | { ok: false; message: string };
+
+export function resolveAddiCustomerData(input: {
+  testDocumentNumber: string;
+  documentNumber: string | null;
+  cellphone: string;
+  address: AddiAddress | null;
+  sendShipping: boolean;
+}): AddiCustomerDataResolution {
+  const sandbox = input.testDocumentNumber.trim() !== '';
+  if (input.documentNumber === null && !sandbox) {
+    return { ok: false, message: ADDI_DOCUMENT_REQUIRED_MESSAGE };
+  }
+  if (!sandbox && normalizeAddiCellphone(input.cellphone).length !== 10) {
+    return { ok: false, message: ADDI_PHONE_REQUIRED_MESSAGE };
+  }
+  if (input.address === null && !sandbox) {
+    return { ok: false, message: ADDI_ADDRESS_REQUIRED_MESSAGE };
+  }
+  const address: AddiAddress = input.address ?? {
+    lineOne: DEFAULT_SHIPPING_ADDRESS,
+    city: DEFAULT_SHIPPING_CITY,
+    country: 'CO'
+  };
+  return {
+    ok: true,
+    documentNumber: input.documentNumber ?? input.testDocumentNumber,
+    address,
+    includeShipping: input.sendShipping && input.address !== null
+  };
+}
+
 /** Extrae el saleId de la referencia `ORDER-<saleId>[-<ts>]` ecoada por Addi. */
 export function extractSaleIdFromWebhook(payload: Record<string, unknown>): number | null {
   // El callback oficial (OnlineLoanApplicationCallbackRequest) trae `orderId`.
@@ -252,7 +300,13 @@ export class AddiService {
     const rawPath = (config.get<string>('ADDI_APPLICATIONS_PATH') ?? DEFAULT_APPLICATIONS_PATH).trim().replace(/\/+$/, '');
     this.applicationsPath = rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
     this.callbackUrl = config.get<string>('ADDI_CALLBACK_URL') ?? DEFAULT_CALLBACK_URL;
-    this.testDocumentNumber = config.get<string>('ADDI_TEST_DOCUMENT_NUMBER') ?? DEFAULT_TEST_DOCUMENT_NUMBER;
+    this.testDocumentNumber = (config.get<string>('ADDI_TEST_DOCUMENT_NUMBER') ?? '').trim();
+    if (this.testDocumentNumber !== '') {
+      this.logger.warn(
+        'ADDI_TEST_DOCUMENT_NUMBER configurado: modo SANDBOX (cédula de prueba y dirección de relleno como ' +
+        'fallback). Quita esa variable en producción para exigir la cédula real del cliente.'
+      );
+    }
     this.sendShipping = (config.get<string>('ADDI_SEND_SHIPPING') ?? 'true').trim().toLowerCase() !== 'false';
     this.debugPayload = (config.get<string>('ADDI_DEBUG_PAYLOAD') ?? 'false').trim().toLowerCase() === 'true';
     if (!config.get('ADDI_AUTH_URL') || !config.get('ADDI_API_BASE_URL')) {
@@ -285,12 +339,16 @@ export class AddiService {
     const email = input.customer.email ?? '';
     const items = await this.loadSaleItems(input.saleId, input.tenantId);
     const taxAmount = await this.loadSaleTax(input.saleId, input.tenantId);
+    const customerDocument = await this.loadCustomerDocument(input.customer.id);
     const address = await this.loadCustomerAddress(input.customer.id);
-    const clientAddress: AddiAddress = address ?? {
-      lineOne: DEFAULT_SHIPPING_ADDRESS,
-      city: DEFAULT_SHIPPING_CITY,
-      country: 'CO'
-    };
+    const resolved = resolveAddiCustomerData({
+      testDocumentNumber: this.testDocumentNumber,
+      documentNumber: customerDocument,
+      cellphone: input.customer.phone ?? '',
+      address,
+      sendShipping: this.sendShipping
+    });
+    if (!resolved.ok) throw new BadRequestException(resolved.message);
     const body = buildAddiPayload({
       orderId,
       amount: input.amount,
@@ -300,13 +358,13 @@ export class AddiService {
       email,
       cellphone: input.customer.phone ?? '',
       documentType: 'CC',
-      documentNumber: this.testDocumentNumber,
+      documentNumber: resolved.documentNumber,
       callbackUrl: this.callbackUrl,
       redirectionUrl: input.redirectionUrl ?? DEFAULT_REDIRECTION_URL,
       items,
-      address: clientAddress,
+      address: resolved.address,
       // shipping/billing solo con dirección real (son opcionales en el contrato).
-      includeShipping: this.sendShipping && address !== null
+      includeShipping: resolved.includeShipping
     });
 
     const controller = new AbortController();
@@ -389,6 +447,10 @@ export class AddiService {
         this.logger.error(`Addi errors${traceSuffix}: ${errors}`);
         detail = errors.slice(0, 300);
       }
+      if (response.status === 409) {
+        // Spec oficial: el cliente ya cuenta con crédito en Addi.
+        throw new BadRequestException(ADDI_ACTIVE_LOAN_MESSAGE);
+      }
       throw new BadRequestException(`Addi no pudo crear la solicitud (status ${response.status}${traceSuffix}): ${detail}`);
     } catch (error: unknown) {
       if (error instanceof BadRequestException) throw error;
@@ -444,6 +506,23 @@ export class AddiService {
     );
     const tax = Number(result.rows[0]?.tax ?? 0);
     return Number.isFinite(tax) ? tax : 0;
+  }
+
+  /** Cédula real del cliente (tec_customers.document_number, v0.12.5). */
+  private async loadCustomerDocument(customerId: number): Promise<string | null> {
+    try {
+      const result = await this.database.query<{ document_number: string | null }>(
+        `SELECT document_number
+         FROM public.tec_customers
+         WHERE id = $1
+         LIMIT 1`,
+        [customerId]
+      );
+      return readString(result.rows[0]?.document_number);
+    } catch (_error: unknown) {
+      // La columna puede no existir antes de la migración v0.12.5.
+      return null;
+    }
   }
 
   /** Dirección por defecto del cliente (customer_addresses) para `client.address`. */

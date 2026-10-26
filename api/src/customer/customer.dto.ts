@@ -63,6 +63,17 @@ export class UpdateCustomerProfileDto {
   @IsString()
   @MaxLength(30)
   phone?: string;
+
+  // Documento para pagos con Addi en producción (v0.12.5): Addi solo acepta CC.
+  @IsOptional()
+  @IsString()
+  @IsIn(['CC'])
+  document_type?: string;
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^\d{5,15}$/)
+  document_number?: string;
 }
 
 export class RedeemProductDto {

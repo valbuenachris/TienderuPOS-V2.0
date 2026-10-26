@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
+  ADDI_ADDRESS_REQUIRED_MESSAGE,
+  ADDI_DOCUMENT_REQUIRED_MESSAGE,
+  ADDI_PHONE_REQUIRED_MESSAGE,
   buildAddiPayload,
   extractSaleIdFromWebhook,
   maskEmail,
@@ -10,6 +13,7 @@ import {
   normalizeAuthUrl,
   parseBasicAuthHeader,
   readAmount,
+  resolveAddiCustomerData,
   secureCompare,
   toAddiAmount
 } from './addi.service';
@@ -197,5 +201,92 @@ describe('buildAddiPayload', () => {
     assert.equal('shippingAddress' in body, false);
     assert.equal('billingAddress' in body, false);
     assert.deepEqual((body.client as Record<string, unknown>).address, SAMPLE_INPUT.address);
+  });
+});
+
+// ── v0.12.5 · documento real del cliente para producción ─────────────────────
+
+const REAL_ADDRESS = { lineOne: 'Cra 7 # 12-34', city: 'Bogotá', country: 'CO' };
+
+describe('resolveAddiCustomerData', () => {
+  it('sandbox: usa la cédula de prueba y la dirección de relleno como fallback', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '1001234567',
+      documentNumber: null,
+      cellphone: '',
+      address: null,
+      sendShipping: true
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.documentNumber, '1001234567');
+      assert.deepEqual(result.address, { lineOne: 'Calle Falsa 123', city: 'Bogotá', country: 'CO' });
+      assert.equal(result.includeShipping, false);
+    }
+  });
+
+  it('sandbox: prefiere los datos reales del cliente cuando existen', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '1001234567',
+      documentNumber: '52849618',
+      cellphone: '3009998888',
+      address: REAL_ADDRESS,
+      sendShipping: true
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.documentNumber, '52849618');
+      assert.deepEqual(result.address, REAL_ADDRESS);
+      assert.equal(result.includeShipping, true);
+    }
+  });
+
+  it('producción: exige la cédula real del cliente', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '',
+      documentNumber: null,
+      cellphone: '3009998888',
+      address: REAL_ADDRESS,
+      sendShipping: true
+    });
+    assert.deepEqual(result, { ok: false, message: ADDI_DOCUMENT_REQUIRED_MESSAGE });
+  });
+
+  it('producción: exige un celular colombiano de 10 dígitos', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '',
+      documentNumber: '52849618',
+      cellphone: '30099988',
+      address: REAL_ADDRESS,
+      sendShipping: true
+    });
+    assert.deepEqual(result, { ok: false, message: ADDI_PHONE_REQUIRED_MESSAGE });
+  });
+
+  it('producción: exige una dirección real del cliente', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '',
+      documentNumber: '52849618',
+      cellphone: '3009998888',
+      address: null,
+      sendShipping: true
+    });
+    assert.deepEqual(result, { ok: false, message: ADDI_ADDRESS_REQUIRED_MESSAGE });
+  });
+
+  it('producción: con datos reales resuelve el payload y el bloque de envío', () => {
+    const result = resolveAddiCustomerData({
+      testDocumentNumber: '',
+      documentNumber: '52849618',
+      cellphone: '+57 300 999 8888',
+      address: REAL_ADDRESS,
+      sendShipping: true
+    });
+    assert.equal(result.ok, true);
+    if (result.ok) {
+      assert.equal(result.documentNumber, '52849618');
+      assert.deepEqual(result.address, REAL_ADDRESS);
+      assert.equal(result.includeShipping, true);
+    }
   });
 });

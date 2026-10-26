@@ -47,8 +47,9 @@ Smoke test EN VIVO contra `https://evolution.tienderu.com` (v2.3.7) con la key r
 - `connect` → QR real (`data:image/png;base64,…`) y estado `connecting` ✔
 - Limpieza: `DELETE /instance/delete/<prueba>` → 200 ✔
 
-Credenciales: `EVOLUTION_API_KEY` y `EVOLUTION_WEBHOOK_TOKEN` quedaron escritas en el `.env` local
-(untracked, gitignored). El `.env` de producción deberá usar **los mismos valores** (ver Fase 3).
+Credenciales: el `.env` de producción ya traía la **misma** `EVOLUTION_API_KEY` (coincide con el
+Evolution nuevo) y su propio `EVOLUTION_WEBHOOK_TOKEN`; el `.env` local (untracked, gitignored) se
+alineó a los mismos valores. Ver Fase 3.
 
 ## Fase 2 — Contenedor de pruebas en este VPS (opcional, omitida)
 
@@ -90,19 +91,27 @@ Credenciales: `EVOLUTION_API_KEY` y `EVOLUTION_WEBHOOK_TOKEN` quedaron escritas 
      (requiere que Evolution alcance `PUBLIC_API_URL`; si se quiere aislar, crear antes un proxy NPM
      de prueba, p. ej. `test-pos.tienderu.com`, y usarlo como `PUBLIC_API_URL`).
 
-## Fase 3 — Publicar
+## Fase 3 — Publicar y desplegar
 
-- [x] Commit + push a GitHub de este cambio (aprobado): el VPS de despliegue lo baja con `git pull`.
-- En el VPS de producción: actualizar su `.env` con las 4 variables (mismos valores) y
-  `docker compose up -d --force-recreate api` (el cambio de `env_file` no recrea solo).
-- Cada tenant: entrar a `/whatsapp` → "Conectar" → escanear QR. Si el bot estaba activo,
-  re-guardar la config del agente para re-registrar el webhook en el servidor nuevo
-  (`POST /webhook/set/<instancia>` con `PUBLIC_API_URL`).
+- [x] Commit + push a GitHub (`b68cd68`); el VPS de despliegue lo bajó con `git pull`.
+- [x] Reconocimiento del VPS de despliegue (`vps-64dab15e`, Supabase local en `supabase-db`):
+      producción corría `v0.12.3` (imagen del 19-oct, **sin** el fix — las etiquetas `v0.12.2`/`v0.12.3`
+      de Docker Hub son viejas); migraciones ya aplicadas (`tec_tenant_whatsapp_settings`,
+      `tec_whatsapp_conversations`, `tec_marketplace_whatsapp`); el `.env` ya tenía la misma
+      `EVOLUTION_API_KEY` y un `EVOLUTION_WEBHOOK_TOKEN` propio → solo cambia `EVOLUTION_API_URL`.
+      Estado DB: **1** tenant con instancia (`pos-prueba-pos-33a557f2`, `agent_enabled=t`, status
+      `open` obsoleto) y **0** filas de marketplace.
+- [ ] Build `v0.12.4` en el VPS (`IMAGE_TAG=v0.12.4 docker compose -f docker-compose.build.yml build --pull`)
+      y `IMAGE_TAG=v0.12.4 docker compose up -d`.
+- [ ] Tenant de prueba: `/whatsapp` → "Conectar" (recrea la instancia y muestra QR) → escanear →
+      estado `open` → guardar la config del bot para re-registrar el webhook en el Evolution nuevo.
+- [ ] Marketplace (opcional): no hay fila previa; al activar su WhatsApp la pestaña del super admin
+      crea la instancia `tienderu-marketplace` normalmente.
 
 ## Riesgos / notas
 
 - **No rotar `AUTHENTICATION_API_KEY`**: el servidor Evolution lo comparte educol.
 - Las sesiones de WhatsApp del VPS muerto no se migran: cada tenant escanea QR una vez.
 - Sin DDL: solo configuración, creación/reconexión de instancias y `status` de filas existentes.
-- El token de webhook se generó nuevo (no existía en producción); cuando se active el bot en
-  producción deberá usarse exactamente el mismo.
+- El `EVOLUTION_WEBHOOK_TOKEN` de producción ya existía y se conserva (el `.env` local se alineó al
+  mismo valor); los webhooks se re-registran al reconectar/guardar el bot.

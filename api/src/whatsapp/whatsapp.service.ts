@@ -43,6 +43,11 @@ export class WhatsappService {
           status = live;
           connectedAt = live === 'open' ? new Date().toISOString() : null;
           await this.settings.updateStatus(tenantId, live, live === 'open' ? connectedAt : null);
+        } else if (live === null && row.status !== 'close') {
+          // La instancia ya no existe en Evolution (p. ej. servidor recreado): reflejar el estado real.
+          status = 'close';
+          connectedAt = null;
+          await this.settings.updateStatus(tenantId, 'close', null);
         }
       } catch (error: unknown) {
         // Si Evolution no responde, devolvemos el último estado persistido.
@@ -139,6 +144,9 @@ export class WhatsappService {
 
   async connect(tenantId: string) {
     const row = await this.requireInstance(tenantId);
+    if (await this.client.ensureInstance(row.instanceName)) {
+      this.logger.log(`Instancia WhatsApp recreada en Evolution: ${row.instanceName} (tenant ${tenantId})`);
+    }
     const result = await this.client.connect(row.instanceName);
 
     const status = result.state === 'open' ? 'open' : result.state === 'connecting' ? 'connecting' : 'close';

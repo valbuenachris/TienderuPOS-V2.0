@@ -106,6 +106,15 @@ export class EvolutionClient {
     };
   }
 
+  /** Garantiza que la instancia exista en Evolution (la recrea si el servidor cambió). */
+  async ensureInstance(instanceName: string): Promise<boolean> {
+    const live = await this.connectionState(instanceName);
+    if (live !== null) return false;
+    this.logger.warn(`Instancia ${instanceName} ausente en Evolution; recreándola.`);
+    await this.createInstance(instanceName);
+    return true;
+  }
+
   async connect(instanceName: string): Promise<{ state: string | null; qr: string | null }> {
     const { key } = this.requireConfig();
     const result = await this.request(key, 'GET', `/instance/connect/${encodeURIComponent(instanceName)}`);

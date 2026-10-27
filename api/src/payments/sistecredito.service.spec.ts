@@ -9,6 +9,7 @@ import {
   buildSistecreditoToken,
   formatSistecreditoDate,
   mapSistecreditoError,
+  mapSistecreditoErrorDetail,
   normalizeSistecreditoDocumentNumber,
   normalizeSistecreditoDocumentType,
   toCents,
@@ -139,6 +140,26 @@ describe('mapSistecreditoError', () => {
     assert.match(mapSistecreditoError('802'), /mínimo permitido/);
     assert.equal(mapSistecreditoError('999'), SISTECREDITO_GENERIC_ERROR_MESSAGE);
     assert.equal(mapSistecreditoError(null), SISTECREDITO_GENERIC_ERROR_MESSAGE);
+  });
+});
+
+describe('mapSistecreditoErrorDetail (v0.12.7)', () => {
+  it('traduce el mínimo real de producción (NotValidTransactionValue)', () => {
+    assert.equal(
+      mapSistecreditoErrorDetail('400', 'NotValidTransactionValue Value cannot be less than 10000'),
+      'El mínimo para financiar con Sistecrédito es $10.000.'
+    );
+    assert.equal(
+      mapSistecreditoErrorDetail('400', 'NotValidTransactionValue Value cannot be less than 150000'),
+      'El mínimo para financiar con Sistecrédito es $150.000.'
+    );
+  });
+
+  it('prioriza el catálogo público y cae al genérico cuando no hay detalle', () => {
+    assert.equal(mapSistecreditoErrorDetail('801', 'cualquier mensaje'), SISTECREDITO_CREDIT_IN_PROGRESS_MESSAGE);
+    assert.equal(mapSistecreditoErrorDetail('400', 'otro rechazo distinto'), SISTECREDITO_GENERIC_ERROR_MESSAGE);
+    assert.equal(mapSistecreditoErrorDetail('400', 'NotValidTransactionValue sin monto'), SISTECREDITO_GENERIC_ERROR_MESSAGE);
+    assert.equal(mapSistecreditoErrorDetail(null, null), SISTECREDITO_GENERIC_ERROR_MESSAGE);
   });
 });
 

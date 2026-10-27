@@ -59,6 +59,32 @@ export function mapSistecreditoError(errorCode: string | null): string {
   return SISTECREDITO_GENERIC_ERROR_MESSAGE;
 }
 
+function formatThousands(value: number): string {
+  return String(value).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+}
+
+/**
+ * Mensaje público detallado (v0.12.7, certificación productiva): además del catálogo
+ * 800–827 traduce el rechazo real de producción `NotValidTransactionValue`
+ * ("Value cannot be less than <monto>") al mínimo vigente de la pasarela.
+ */
+export function mapSistecreditoErrorDetail(errorCode: string | null, apiMessage: string | null): string {
+  if (errorCode !== null && Object.prototype.hasOwnProperty.call(SISTECREDITO_PUBLIC_ERRORS, errorCode)) {
+    return SISTECREDITO_PUBLIC_ERRORS[errorCode];
+  }
+  const detail = (apiMessage ?? '').trim();
+  if (/NotValidTransactionValue/i.test(detail)) {
+    const match = /cannot be less than\s+(\d+(?:\.\d+)?)/i.exec(detail);
+    if (match) {
+      const minimum = Number(match[1]);
+      if (Number.isFinite(minimum) && minimum > 0) {
+        return `El mínimo para financiar con Sistecrédito es $${formatThousands(Math.round(minimum))}.`;
+      }
+    }
+  }
+  return SISTECREDITO_GENERIC_ERROR_MESSAGE;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -363,8 +389,11 @@ export class SistecreditoService {
         `Sistecrédito POST create-transaction -> ${response.status} sale=${input.saleId} ` +
         `errorCode=${errorCode ?? 'n/a'}: ${text.slice(0, 600)}`
       );
-      const publicMessage = mapSistecreditoError(errorCode);
-      const codeSuffix = errorCode !== null ? ` (código ${errorCode})` : '';
+      const publicMessage = mapSistecreditoErrorDetail(errorCode, apiMessage);
+      // El código se anexa solo cuando el mensaje es genérico (ayuda a soporte);
+      // los mensajes traducidos del catálogo/mínimo ya son claros para el comprador.
+      const codeSuffix =
+        publicMessage === SISTECREDITO_GENERIC_ERROR_MESSAGE && errorCode !== null ? ` (código ${errorCode})` : '';
       throw new BadRequestException(`${publicMessage}${codeSuffix}`);
     } catch (error: unknown) {
       if (error instanceof BadRequestException) throw error;

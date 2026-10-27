@@ -1,6 +1,10 @@
-# Sistecrédito — Estado de la integración (2026-10-26)
+# Sistecrédito — Estado de la integración (2026-10-27)
 
-Estado: **IMPLEMENTACIÓN REAL v0.12.6 — pendiente certificación y activación**.
+Estado: **CERTIFICADO EN PRODUCCIÓN (v0.12.7)** — pago real aprobado end-to-end en la
+tienda Princess Skin (venta `paid` con `paid_by='Sistecredito'`). Regla de negocio
+confirmada: monto mínimo **$10.000** por transacción (v0.12.7 lo traduce a un mensaje
+claro). `sistecredito_enabled=true`; producción corre v0.12.6 y v0.12.7 (solo mensajes)
+queda listo para el próximo deploy.
 
 El contrato real se capturó del **plugin oficial de WooCommerce** (`sistecredito` v1.13.0)
 instalado en la tienda Princess Skin (wp-admin, solo lectura), y la implementación replica
@@ -71,28 +75,34 @@ Requiere la migración `docs/migrations/v0.12.6-sistecredito-ids.sql` (columnas
   `api/src/scripts/test-sistecredito-integration.ts`.
 - Specs: `api/src/payments/sistecredito.service.spec.ts` (token/JWT/payload/errores/acuse).
 
-## 4. Certificación (pasos)
+## 4. Certificación — HECHA en producción (2026-10-27)
 
-1. Pedir al asesor de Sistecrédito: **credenciales de Qa/Staging**, política de
-   reintentos del webhook y proceso de reembolsos/cancelaciones (el plugin no trae API
-   de reembolso).
-2. Certificar en Staging (override de env: `SISTECREDITO_API_BASE_URL` +
-   `SISTECREDITO_ORIGIN=Staging` y credenciales del ambiente):
-   - venta de prueba → redirect → confirmación `Terminado` → `paid` + `paid_by='Sistecredito'` + puntos;
-   - negativos: JWT inválido (825), monto no coincide (826), abandonada (827), sin documento (400 claro).
-3. Operador: correr DDL v0.12.6 → cargar credenciales (`enabled=false`) → deploy API.
-4. E2E en producción con monto mínimo controlado → `UPDATE ... SET sistecredito_enabled=true`
-   para Princess Skin (reversible en segundos durante la ventana).
+Se certificó directo en producción con una venta mínima controlada (decisión del
+2026-10-27; no se usó Sandbox). Resultado: **pago real aprobado end-to-end** (checkout →
+portal Sistecrédito → webhook `Terminado`/retorno GET → venta `paid` con
+`paid_by='Sistecredito'` + puntos). Incidentes/reglas descubiertos:
 
-## 5. Mitigación vigente
+- **Monto mínimo $10.000**: la pasarela rechaza montos menores con
+  `{"errorCode":400,"message":"NotValidTransactionValue Value cannot be less than 10000"}`
+  (HTTP 200). Desde **v0.12.7** el API lo traduce a mensaje claro en la app
+  (`mapSistecreditoErrorDetail`).
+- La Subscription Key debe cargarse **real** (32 hex, prefijo `feb4d6c0`): un placeholder
+  produce un `400` genérico en el checkout. Verificar tras cada carga:
+  `length(sistecredito_api_key)`.
+- El documento (CC) del comprador es obligatorio (mismo guard que Addi v0.12.5).
+- El mensaje genérico sin detalle en la app implica revisar
+  `docker compose logs api | grep -i create-transaction` (el log trae el body completo).
 
-`sistecredito_enabled=false` para Princess Skin (desde 2026-10-26): la app muestra el
-mensaje limpio "no configurado para esta tienda" hasta terminar la certificación.
+## 5. Activación
+
+`sistecredito_enabled=true` para Princess Skin desde el 2026-10-27 (pasarela en vivo).
+El correo al asesor (Sandbox/reintentos/reembolsos) quedó descartado por decisión del
+2026-10-27; dudas de reembolsos se resolverán con el asesor si aparece un caso real.
 
 ## 6. Notas
 
 - El token JWT determinista replica el mecanismo del plugin (token propio por intento);
-  se confirma end-to-end en la certificación de Staging.
+  **confirmado end-to-end** en la certificación productiva del 2026-10-27.
 - Ante errores de confirmación la venta **no** se marca fallida (a diferencia del plugin
   WooCommerce): queda `due` y el staff la gestiona en el POS.
 - Hallazgo ajeno a la integración: la pantalla de edición de pedidos del wp-admin de la

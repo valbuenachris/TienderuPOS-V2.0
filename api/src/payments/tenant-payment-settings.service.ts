@@ -8,6 +8,7 @@ export interface TenantPaymentSettings {
   boldEnabled: boolean; boldApiKey: string | null; boldWebhookSecret: string | null;
   addiEnabled: boolean; addiApiKey: string | null; addiWebhookSecret: string | null;
   sistecreditoEnabled: boolean; sistecreditoApiKey: string | null; sistecreditoWebhookSecret: string | null;
+  sistecreditoVendorId: string | null; sistecreditoStoreId: string | null;
   returnUrl: string | null;
 }
 
@@ -25,6 +26,7 @@ type SettingsRow = {
   bold_enabled: boolean | null; bold_api_key: string | null; bold_webhook_secret: string | null;
   addi_enabled: boolean | null; addi_api_key: string | null; addi_webhook_secret: string | null;
   sistecredito_enabled: boolean | null; sistecredito_api_key: string | null; sistecredito_webhook_secret: string | null;
+  sistecredito_vendor_id: string | null; sistecredito_store_id: string | null;
   return_url: string | null;
 };
 
@@ -82,6 +84,7 @@ export class TenantPaymentSettingsService implements OnModuleInit {
                 bold_enabled, bold_api_key, bold_webhook_secret,
                 addi_enabled, addi_api_key, addi_webhook_secret,
                 sistecredito_enabled, sistecredito_api_key, sistecredito_webhook_secret,
+                sistecredito_vendor_id, sistecredito_store_id,
                 return_url
          FROM public.tec_tenant_payment_settings
          WHERE tenant_id = $1
@@ -101,12 +104,15 @@ export class TenantPaymentSettingsService implements OnModuleInit {
           sistecreditoEnabled: row.sistecredito_enabled === true,
           sistecreditoApiKey: trimOrNull(row.sistecredito_api_key),
           sistecreditoWebhookSecret: trimOrNull(row.sistecredito_webhook_secret),
+          sistecreditoVendorId: trimOrNull(row.sistecredito_vendor_id),
+          sistecreditoStoreId: trimOrNull(row.sistecredito_store_id),
           returnUrl: trimOrNull(row.return_url)
         };
       }
     } catch (error: unknown) {
       this.logger.warn(
-        `No se pudo leer tec_tenant_payment_settings: ${error instanceof Error ? error.message : 'unknown'}`
+        `No se pudo leer tec_tenant_payment_settings: ${error instanceof Error ? error.message : 'unknown'} ` +
+        '(¿falta la migración docs/migrations/v0.12.6-sistecredito-ids.sql?)'
       );
       settings = null;
     }

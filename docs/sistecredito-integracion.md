@@ -1,55 +1,99 @@
-# Sistecrédito — Checklist para la integración real
+# Sistecrédito — Estado de la integración (2026-10-26)
 
-Estado (2026-10-26): **plumbing listo; credenciales recibidas; pasarela REAL pendiente de documentación**.
+Estado: **IMPLEMENTACIÓN REAL v0.12.6 — pendiente certificación y activación**.
 
-## Actualización 2026-10-26
-- Credenciales de producción recibidas del asesor: **Vendor ID**, **Store ID** y **Subscription Key** (la key se guarda solo en BD/`.env`, nunca en este doc). Mapeo previsto: Subscription Key → `sistecredito_api_key` (header probable `Ocp-Apim-Subscription-Key`), y Vendor/Store → columnas nuevas `sistecredito_vendor_id`/`sistecredito_store_id` (DDL a ejecutar junto con la implementación real).
-- **Mitigación aplicada**: `sistecredito_enabled=false` para Princess Skin (2026-10-26) — nadie recibe el link sandbox ficticio; el checkout responde el mensaje limpio "no configurado para esta tienda".
-- Sondeo externo: `api.sistecredito.com` existe (gateway) pero **no expone Swagger ni rutas públicas**; sin la documentación de endpoints/payload/webhook **no se implementa** (lección de Addi: no inventar el contrato).
-- **Bloqueante**: pedir al asesor el paquete de integración (checklist de abajo; en especial: endpoint de creación del link, método de auth real, formato/autenticación del webhook y ambiente de PRUEBAS).
+El contrato real se capturó del **plugin oficial de WooCommerce** (`sistecredito` v1.13.0)
+instalado en la tienda Princess Skin (wp-admin, solo lectura), y la implementación replica
+su flujo al pie de la letra. Plan aprobado y detalle técnico: `docs/plan-sistecredito.md`.
 
-## Qué YA quedó (desplegado v0.12.2/v0.12.3)
-- Gate por tenant implementado en `tec_tenant_payment_settings` (histórico: Princess Skin llegó a tener `enabled=true`; **desde 2026-10-26 está `enabled=false` como mitigación**, ver arriba).
-- Webhook `POST /api/webhooks/sistecredito` **fail-closed** (`x-webhook-secret` con comparación en tiempo constante) que liquida el pedido (`registerGatewayPayment 'Sistecredito'`, idempotente, acredita puntos).
-- `api/src/payments/sistecredito.service.ts` con la estructura definitiva (credenciales del tenant, logging, TODOs).
+## 1. Credenciales del comercio (obtenidas del wp-admin)
 
-## Qué NO funciona todavía (por esto no se puede cobrar de verdad)
-- `createCheckoutLink` devuelve un **link sandbox ficticio** (`SISTECREDITO_CHECKOUT_BASE_URL?order=ORDER-<id>`, default `https://sandbox.sistecredito.com/checkout`): no existe un flujo de pago real; el pedido quedaría `due` para siempre y jamás llega webhook.
-- **No conocemos el contrato real** (auth, endpoint, payload, webhook). No se implementa a ciegas — con Addi inventar el payload costó un 400 durante días.
+| Campo | Valor |
+|---|---|
+| Vendor ID | `68000298a417fd2b05dcf776` |
+| Store ID | `68b5fc677d52358a31ab842b` |
+| Subscription Key | En el wp-admin → WooCommerce → Ajustes → Pagos → Sistecrédito; **NO** se versiona aquí. Destino: `tec_tenant_payment_settings.sistecredito_api_key` |
 
-## Mitigación (APLICADA el 2026-10-26)
-El método quedó deshabilitado para que la app muestre el mensaje limpio ("no está configurado para esta tienda…") en vez de abrir un link falso. Reversible en segundos cuando la pasarela real esté validada:
+Entorno configurado en la tienda: **Production** · modo **Redirect** (sin widget "On Same
+Site") · simulador de cuotas activo · URL de retorno propia vacía.
+
+Carga (DML del operador, mantener `enabled=false` hasta certificar):
 
 ```sql
 UPDATE public.tec_tenant_payment_settings
-SET sistecredito_enabled = false, updated_at = now()
+SET sistecredito_vendor_id = '68000298a417fd2b05dcf776',
+    sistecredito_store_id = '68b5fc677d52358a31ab842b',
+    sistecredito_api_key = '<SUBSCRIPTION_KEY>',
+    updated_at = now()
 WHERE tenant_id = 'ac344fcc-d3bf-4c0d-b8ab-135c985ce8df';
--- Caché de 60 s; para efecto inmediato: docker compose restart api (o up -d api)
+-- Caché de 60 s; para efecto inmediato: docker compose restart api
 ```
 
-## Checklist para Sistecrédito (solicitar al asesor comercial / portal de aliados)
+Requiere la migración `docs/migrations/v0.12.6-sistecredito-ids.sql` (columnas
+`sistecredito_vendor_id`/`sistecredito_store_id`).
 
-1. **Producto contratado**: ¿Botón de pago web / Link de pago / API de crédito / otro? (define el endpoint y el flujo de retorno).
-2. **Documentación/Postman de integración** (request y response exactos).
-3. **Credenciales de producción**: usuario/clave o API key + **código de comercio** (merchant id) + cualquier id adicional requerido en el payload.
-4. **Credenciales/env de PRUEBAS** (sandbox) para validar sin afectar métricas — igual que hicimos con Addi.
-5. **Endpoints**: autenticación (si es por token: URL y método), creación de la transacción/link, consulta de estado.
-6. **Request schema**: campos y tipos exactos (¿montos string o entero? ¿ítems? ¿documento del cliente? ¿código de comercio?).
-7. **Response**: ¿devuelve una URL de redirección lista para abrir en el navegador (como el 301 de Addi)? ¿la envía por SMS/WhatsApp? (define qué muestra la app).
-8. **Webhook/notificación**:
-   - URL a registrar (nosotros damos `https://pos.tienderu.com/api/webhooks/sistecredito`).
-   - Formato exacto del payload (campos de referencia/estado/approvedAmount).
-   - **Método de autenticación** (¿`x-webhook-secret`? ¿Basic Auth? ¿firma HMAC? ¿otra?).
-   - Estados posibles (approved/rejected/…) y si reintenta ante fallos.
-9. **URLs de retorno/redirect** requeridas y si hay que registrarlas por comercio.
-10. Límites: expiración de la transacción, montos mín/máx, cancelaciones/reembolsos por API.
+## 2. Contrato real (del plugin v1.13.0)
 
-## Plan de implementación (en cuanto llegue el paquete anterior)
-1. DDL `docs/migrations/…-sistecredito-ids.sql`: columnas `sistecredito_vendor_id`/`sistecredito_store_id` en `tec_tenant_payment_settings`; cargar las credenciales del tenant (Subscription Key → `sistecredito_api_key`) manteniendo `enabled=false` hasta validar el flujo.
-2. `createCheckoutLink` real en `sistecredito.service.ts` (espejo de `AddiService`: auth → POST → parseo de la URL → logging con trace).
-3. Ajustar el webhook al formato/autenticación reales (hoy `x-webhook-secret`).
-4. Script `api/src/scripts/test-sistecredito-integration.ts` (como `test-addi-integration.ts`).
-5. Specs + build/tests, deploy con el `IMAGE_TAG` de turno y luego habilitar `sistecredito_enabled=true` para el tenant.
+| Entorno | API | SCOrigen |
+|---|---|---|
+| Production | `https://api.sistecredito.com` | `Production` |
+| Staging | `https://api-co-stg.sistecreditocloud.com` | `Staging` |
+| Qa | `https://api-co-nop-internal.sistecreditocloud.com` | `Qa` |
 
-## Cómo pedirlo
-Usa el canal de tu asesor comercial de Sistecrédito (o el portal de aliados donde se generaron las credenciales). Sin el paquete (endpoints/auth/webhook/sandbox) el código no puede enviar nada a la pasarela — hoy el método está deshabilitado a propósito.
+- **Crear transacción**: `POST /Spay/PasCheckout/checkout/create/transaction/sistecredito`
+  con `Ocp-Apim-Subscription-Key`, `SCLocation: 0,0`, `country: co`, `SCOrigen`,
+  `Authentication: <JWT HS256>`; body `{typeDocument, idDocument, transactionDate,
+  valueToPaid, vendorId, storeId, orderId, responseUrl}` → 200 `data.urlToRedirect` +
+  `data.transactionId`. Errores 800–827 (catálogo en el plugin; públicos mapeados en
+  `sistecredito.service.ts`).
+- **Confirmación (webhook)**: `POST` JSON con `TypeDocument/IdDocument/ValueToPay/OrderId/
+  CreditNumber/Authentication/TransactionStatus/TransactionId`; JWT verificado contra el
+  token de la venta + `aud`; monto comparado con el total; acuse JSON
+  `{function,errorCode,message,country,data{orderId,transactionId,status,errors}}` con
+  HTTP 200. Estados: `Terminado` → pagado · `Abandonada` → 827 (sigue pendiente) · resto 823.
+- **getInfoCredit**: `GET /Spay/PasCheckout/checkout/getInfoCredit?transactionId=`
+  (`data.transactionStatus === 3` = aprobada; `data.credit.creditNumber`,
+  `data.valueToPaid`) — usado en el retorno del usuario como respaldo del webhook.
+- **Visor "On Same Site"** (no implementado; usamos Redirect): web-component `<app-visor>`
+  + `visor.js` de Azure Blob por entorno.
+
+## 3. Implementado en pos-gres-v2 (v0.12.6)
+
+- `api/src/payments/sistecredito.service.ts` — cliente real + builders puros (token
+  determinista `HMAC(secreto, "ORDER-<saleId>")`, JWT HS256, payload, fecha con offset,
+  normalización de documento, mapeo de errores, acuse) + `verifyTransaction`.
+- Webhook `POST /api/webhooks/sistecredito` (acuse oficial, fail-closed por JWT/monto) y
+  retorno `GET /api/webhooks/sistecredito` (getInfoCredit + liquidación idempotente +
+  redirect al `return_url`). Se retiró el esquema provisional `x-webhook-secret`.
+- Migración `docs/migrations/v0.12.6-sistecredito-ids.sql`, env nuevas
+  (`SISTECREDITO_API_BASE_URL`, `SISTECREDITO_ORIGIN`, `SISTECREDITO_JWT_SECRET`,
+  `SISTECREDITO_AUDIENCE_URL`, `SISTECREDITO_CALLBACK_URL`) y script manual
+  `api/src/scripts/test-sistecredito-integration.ts`.
+- Specs: `api/src/payments/sistecredito.service.spec.ts` (token/JWT/payload/errores/acuse).
+
+## 4. Certificación (pasos)
+
+1. Pedir al asesor de Sistecrédito: **credenciales de Qa/Staging**, política de
+   reintentos del webhook y proceso de reembolsos/cancelaciones (el plugin no trae API
+   de reembolso).
+2. Certificar en Staging (override de env: `SISTECREDITO_API_BASE_URL` +
+   `SISTECREDITO_ORIGIN=Staging` y credenciales del ambiente):
+   - venta de prueba → redirect → confirmación `Terminado` → `paid` + `paid_by='Sistecredito'` + puntos;
+   - negativos: JWT inválido (825), monto no coincide (826), abandonada (827), sin documento (400 claro).
+3. Operador: correr DDL v0.12.6 → cargar credenciales (`enabled=false`) → deploy API.
+4. E2E en producción con monto mínimo controlado → `UPDATE ... SET sistecredito_enabled=true`
+   para Princess Skin (reversible en segundos durante la ventana).
+
+## 5. Mitigación vigente
+
+`sistecredito_enabled=false` para Princess Skin (desde 2026-10-26): la app muestra el
+mensaje limpio "no configurado para esta tienda" hasta terminar la certificación.
+
+## 6. Notas
+
+- El token JWT determinista replica el mecanismo del plugin (token propio por intento);
+  se confirma end-to-end en la certificación de Staging.
+- Ante errores de confirmación la venta **no** se marca fallida (a diferencia del plugin
+  WooCommerce): queda `due` y el staff la gestiona en el POS.
+- Hallazgo ajeno a la integración: la pantalla de edición de pedidos del wp-admin de la
+  tienda devuelve HTTP 500 (avisar al administrador de la tienda).

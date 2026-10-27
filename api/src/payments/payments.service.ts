@@ -5,6 +5,13 @@ import { CustomerCheckoutWithPaymentDto } from '../customer/customer.dto';
 import { DatabaseService } from '../database/database.service';
 import { SalesService } from '../sales/sales.service';
 import { AddiService, extractSaleIdFromWebhook, parseBasicAuthHeader, readAmount, secureCompare } from './addi.service';
+import {
+  buildSistecreditoAck,
+  normalizeSistecreditoDocumentNumber,
+  normalizeSistecreditoDocumentType,
+  toCents
+} from './sistecredito.service';
+import type { SistecreditoAck } from './sistecredito.service';
 import { SistecreditoService } from './sistecredito.service';
 import { TenantBoldService } from './tenant-bold.service';
 import { TenantPaymentSettingsService, providerCredentials } from './tenant-payment-settings.service';
@@ -101,12 +108,12 @@ export class PaymentsService {
       };
     }
 
-    // sistecredito: stub de checkout (link sandbox) hasta confirmar el contrato real (v0.3.85).
+    // sistecredito: cliente REAL (v0.12.6, contrato del plugin WooCommerce v1.13.0).
     const sistecreditoUrl = await this.sistecredito.createCheckoutLink({
       tenantId,
       saleId: sale.id,
       amount,
-      redirectionUrl: callbackUrl
+      customer
     });
     return {
       order_id: sale.id,
@@ -192,40 +199,129 @@ export class PaymentsService {
     return { handled: result.handled };
   }
 
-  async handleSistecreditoWebhook(payload: unknown, secretHeader?: string): Promise<{ received: true; handled: boolean }> {
-    if (!isRecord(payload)) throw new BadRequestException('Invalid payload');
-    const orderId = this.readOrderId(payload);
-    if (orderId === null) return { received: true, handled: false };
+  /**
+   * Webhook de Sistecrédito (v0.12.6, contrato real del plugin WooCommerce v1.13.0):
+   * POST server-to-server con `OrderId / TransactionId / TypeDocument / IdDocument /
+   * ValueToPay / CreditNumber / Authentication (JWT) / TransactionStatus
+   * ("Terminado"|"Error"|"Abandonada")`. Valida el JWT contra el token determinista de
+   * la venta + `aud`, y el monto contra `grand_total` (comparación en centavos).
+   * Responde SIEMPRE HTTP 200 con el acuse JSON `{function,errorCode,message,country,
+   * data{...}}` (espejo de `confirm_payment()`); solo `Terminado` liquida vía
+   * `registerGatewayPayment` (idempotente, acredita puntos). Fail-closed: sin tenant
+   * habilitado o JWT inválido NO liquida.
+   */
+  async handleSistecreditoWebhook(payload: unknown): Promise<SistecreditoAck> {
+    const errorAck = (
+      errorCode: number,
+      message: string,
+      orderId: string | number | null = null,
+      transactionId: string | null = null,
+      errors: string[] = []
+    ): SistecreditoAck =>
+      buildSistecreditoAck({ errorCode, message, orderId, transactionId, status: 'ERROR', errors });
+
+    if (!isRecord(payload)) {
+      return errorAck(822, 'ConfirmationsParamsInvalid', null, null, ['Invalid payload']);
+    }
+
+    const orderId = this.readSistecreditoOrderId(payload);
+    const transactionId = readString(payload.TransactionId) ?? readString(payload.transactionId);
+    const status = readString(payload.TransactionStatus) ?? readString(payload.transactionStatus);
+    const authentication = readString(payload.Authentication) ?? readString(payload.authentication);
+    const documentType = normalizeSistecreditoDocumentType(
+      readString(payload.TypeDocument) ?? readString(payload.typeDocument)
+    );
+    const documentNumber = normalizeSistecreditoDocumentNumber(
+      readString(payload.IdDocument) ?? readString(payload.idDocument)
+    );
+    const amount = readAmount(payload.ValueToPay ?? payload.valueToPay);
+
+    if (orderId === null) {
+      return errorAck(822, 'ConfirmationsParamsInvalid', null, transactionId, ['OrderId inválido']);
+    }
+    if (status === null || authentication === null || documentType === null || documentNumber === null || amount === null) {
+      return errorAck(822, 'ConfirmationsParamsInvalid', orderId, transactionId, ['Parámetros de confirmación inválidos']);
+    }
 
     const sale = await this.resolveSaleTenant(orderId);
-    if (!sale) return { received: true, handled: false };
+    if (!sale) {
+      this.logger.warn(`[sistecredito webhook] pedido desconocido ${orderId}`);
+      return errorAck(822, 'ConfirmationsParamsInvalid', orderId, transactionId, ['No se encontró el pedido']);
+    }
     const settings = await this.paymentSettings.getForTenant(sale.tenantId);
-    if (!settings) {
-      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin configuración de pagos; ignorado`);
-      return { received: true, handled: false };
+    const credentials = settings ? providerCredentials(settings, 'sistecredito') : null;
+    if (!credentials || !credentials.enabled || !credentials.apiKey) {
+      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin Sistecrédito habilitado; rechazado`);
+      return errorAck(825, 'ConfirmationJwtCatch', orderId, transactionId, ['La tienda no tiene Sistecrédito habilitado']);
     }
-    const credentials = providerCredentials(settings, 'sistecredito');
-    if (!credentials.enabled) {
-      this.logger.warn(`[sistecredito webhook] deshabilitado para tenant ${sale.tenantId}; ignorado`);
-      return { received: true, handled: false };
-    }
-    // v0.3.85 fail-closed (igual que Addi): habilitado y sin secreto ⇒ se rechaza.
-    const secret = credentials.webhookSecret;
-    if (secret === null || secret === '') {
-      this.logger.warn(`[sistecredito webhook] tenant ${sale.tenantId} sin secreto configurado; rechazado (fail-closed)`);
-      throw new UnauthorizedException('Invalid webhook secret');
-    }
-    if (secretHeader === undefined || !secureCompare(secretHeader, secret)) {
-      throw new UnauthorizedException('Invalid webhook secret');
+    if (!this.sistecredito.verifyConfirmationJwt(orderId, authentication)) {
+      this.logger.warn(`[sistecredito webhook] JWT inválido tenant=${sale.tenantId} order=${orderId}`);
+      return errorAck(825, 'ConfirmationJwtCatch', orderId, transactionId, ['No se pudo validar la autenticación']);
     }
 
-    const status = (readString(payload.status) ?? '').toLowerCase();
-    if (status !== 'approved' && status !== 'paid' && status !== 'completed') {
-      return { received: true, handled: false };
+    const expectedCents = toCents(sale.grandTotal);
+    const receivedCents = toCents(amount);
+    if (expectedCents === null || receivedCents === null || expectedCents !== receivedCents) {
+      this.logger.error(
+        `[sistecredito webhook] monto no coincide order=${orderId} ValueToPay=${amount} grand_total=${sale.grandTotal}`
+      );
+      return errorAck(826, 'ConfirmationValueNotMatch', orderId, transactionId, [
+        `ValueToPay:${amount} Pedido:${sale.grandTotal}`
+      ]);
     }
-    const amount = readAmount(payload.amount);
-    const result = await this.sales.registerGatewayPayment(orderId, 'Sistecredito', amount ?? undefined);
-    return { received: true, handled: result.handled };
+
+    const normalized = status.toLowerCase();
+    if (normalized === 'terminado') {
+      const result = await this.sales.registerGatewayPayment(orderId, 'Sistecredito', amount);
+      this.logger.log(`Sistecrédito webhook aprobado tenant=${sale.tenantId} order=${orderId} handled=${result.handled}`);
+      return buildSistecreditoAck({
+        errorCode: 0,
+        message: '',
+        orderId,
+        transactionId,
+        status: 'VALID',
+        errors: []
+      });
+    }
+    if (normalized === 'abandonada' && sale.status === 'due') {
+      this.logger.log(`Sistecrédito webhook abandonada tenant=${sale.tenantId} order=${orderId}`);
+      return errorAck(827, 'Abandonada', orderId, transactionId, ['El usuario abandonó el proceso de pago con Sistecrédito']);
+    }
+    this.logger.log(`Sistecrédito webhook estado ${status} tenant=${sale.tenantId} order=${orderId} ignorado`);
+    return errorAck(823, 'ConfirmationsTransactionStatusInvalid', orderId, transactionId, [`Estado ${status}`]);
+  }
+
+  /**
+   * Retorno del usuario desde el checkout de Sistecrédito (GET a la misma URL con
+   * `?transactionId=&orderId=`): verifica la transacción con `getInfoCredit` y liquida
+   * idempotente si está aprobada (respaldo del webhook). Devuelve la URL de redirección
+   * (`return_url` del tenant o el global `CUSTOMER_PAYMENT_RETURN_URL`).
+   */
+  async verifySistecreditoReturn(orderIdRaw: string | undefined, transactionIdRaw: string | undefined): Promise<string> {
+    const fallback = this.config.get<string>('CUSTOMER_PAYMENT_RETURN_URL') ?? 'https://pos.tienderu.com';
+    const orderId = orderIdRaw !== undefined && /^\d+$/.test(orderIdRaw.trim()) ? Number(orderIdRaw.trim()) : null;
+    const transactionId = readString(transactionIdRaw ?? null);
+    if (orderId === null || !Number.isSafeInteger(orderId) || orderId <= 0 || transactionId === null) {
+      return fallback;
+    }
+    const sale = await this.resolveSaleTenant(orderId);
+    if (!sale) return fallback;
+    const settings = await this.paymentSettings.getForTenant(sale.tenantId);
+    const returnUrl = settings?.returnUrl ?? fallback;
+    try {
+      const info = await this.sistecredito.verifyTransaction(sale.tenantId, transactionId);
+      if (info?.approved === true) {
+        await this.sales.registerGatewayPayment(orderId, 'Sistecredito', info.valueToPaid ?? undefined);
+        this.logger.log(`Sistecrédito retorno verificado order=${orderId} transaction=${transactionId} aprobada`);
+      } else {
+        this.logger.log(`Sistecrédito retorno order=${orderId} transaction=${transactionId} sin aprobación`);
+      }
+    } catch (error: unknown) {
+      this.logger.warn(
+        `Sistecrédito retorno no verificable order=${orderId}: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+    }
+    return returnUrl;
   }
 
   /**
@@ -274,25 +370,29 @@ export class PaymentsService {
     return { handled: result.handled };
   }
 
-  private async resolveSaleTenant(saleId: number): Promise<{ saleId: number; tenantId: string } | null> {
-    const result = await this.database.query<{ id: number; tenant_id: string }>(
-      'SELECT id, tenant_id::text AS tenant_id FROM public.tec_sales WHERE id = $1 LIMIT 1',
+  private async resolveSaleTenant(
+    saleId: number
+  ): Promise<{ saleId: number; tenantId: string; grandTotal: string | null; status: string } | null> {
+    const result = await this.database.query<{
+      id: number;
+      tenant_id: string;
+      grand_total: string | null;
+      status: string;
+    }>(
+      `SELECT id, tenant_id::text AS tenant_id, grand_total::text AS grand_total, status
+       FROM public.tec_sales WHERE id = $1 LIMIT 1`,
       [saleId]
     );
     const row = result.rows[0];
-    return row ? { saleId: row.id, tenantId: row.tenant_id } : null;
+    return row
+      ? { saleId: row.id, tenantId: row.tenant_id, grandTotal: row.grand_total, status: row.status }
+      : null;
   }
 
-  private readOrderId(payload: Record<string, unknown>): number | null {
-    const direct = payload.order_id ?? payload.sale_id;
+  private readSistecreditoOrderId(payload: Record<string, unknown>): number | null {
+    const direct = payload.OrderId ?? payload.orderId;
     if (typeof direct === 'number' && Number.isSafeInteger(direct) && direct > 0) return direct;
     if (typeof direct === 'string' && /^\d+$/.test(direct.trim())) return Number(direct.trim());
-    const reference = readString(payload.reference) ?? readString(payload.merchant_order_id);
-    const match = reference?.match(ORDER_REFERENCE_RE) ?? null;
-    if (match) {
-      const candidate = Number(match[1]);
-      if (Number.isSafeInteger(candidate) && candidate > 0) return candidate;
-    }
     return null;
   }
 }

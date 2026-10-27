@@ -1,4 +1,4 @@
-import { Body, Controller, Headers, HttpCode, Post, RawBodyRequest, Req, Res } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, Post, Query, RawBodyRequest, Req, Res } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { PaymentsService } from './payments.service';
 
@@ -24,9 +24,29 @@ export class PaymentsWebhookController {
     }
   }
 
+  /**
+   * Webhook de Sistecrédito (v0.12.6): confirmación server-to-server con JWT.
+   * Responde SIEMPRE 200 con el acuse JSON que espera la pasarela
+   * (`{function,errorCode,message,country,data{...}}`); solo `Terminado` liquida.
+   */
   @Post('sistecredito')
   @HttpCode(200)
-  handleSistecredito(@Body() payload: unknown, @Headers('x-webhook-secret') secret?: string) {
-    return this.payments.handleSistecreditoWebhook(payload, secret);
+  handleSistecredito(@Body() payload: unknown) {
+    return this.payments.handleSistecreditoWebhook(payload);
+  }
+
+  /**
+   * Retorno del usuario desde el checkout de Sistecrédito (misma URL, GET con
+   * `?transactionId=&orderId=`): verifica con `getInfoCredit` (liquida si está
+   * aprobada, idempotente) y redirige al `return_url` del tenant (o al global).
+   */
+  @Get('sistecredito')
+  async verifySistecreditoReturn(
+    @Res() response: Response,
+    @Query('transactionId') transactionId?: string,
+    @Query('orderId') orderId?: string
+  ): Promise<void> {
+    const redirectUrl = await this.payments.verifySistecreditoReturn(orderId, transactionId);
+    response.redirect(302, redirectUrl);
   }
 }

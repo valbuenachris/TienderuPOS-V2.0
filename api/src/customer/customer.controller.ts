@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import { CustomerContextGuard } from '../auth/customer-context.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
@@ -44,6 +44,11 @@ export class CustomerController {
   @Put('profile')
   updateProfile(@Req() request: PosRequest, @Body() body: UpdateCustomerProfileDto) {
     return this.customer.updateProfile(request.tenantId!, request.posCustomer!.id, body);
+  }
+
+  @Delete('account')
+  deleteAccount(@Req() request: PosRequest) {
+    return this.customer.deleteAccount(request.tenantId!, request.posCustomer!);
   }
 
   @Get('stores')

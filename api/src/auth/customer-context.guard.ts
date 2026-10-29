@@ -31,6 +31,7 @@ export class CustomerContextGuard implements CanActivate {
        FROM public.tec_customers c
        JOIN public.tec_tenants t ON t.id = c.tenant_id
        WHERE c.id = $1 AND c.tenant_id = $2 AND t.status = 'active'
+         AND c.password IS NOT NULL
        LIMIT 1`,
       [customerId, tenantId]
     );

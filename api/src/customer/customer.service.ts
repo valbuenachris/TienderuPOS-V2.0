@@ -86,6 +86,7 @@ type CustomerProfileRow = {
 export class CustomerService {
   private readonly logger = new Logger(CustomerService.name);
   private readonly recentRedemptions = new Map<string, number>();
+  private readonly tableProbes = new Map<string, { exists: boolean; at: number }>();
   private categoriesProbe: { exists: boolean; at: number } | null = null;
 
   constructor(
@@ -170,6 +171,78 @@ export class CustomerService {
     const row = result.rows[0];
     if (!row) throw new NotFoundException('Customer not found');
     return row;
+  }
+
+  async deleteAccount(tenantId: string, customer: PosCustomer): Promise<{ success: true }> {
+    const identities: string[] = [];
+    const emailIdentity = (customer.email ?? '').trim().toLowerCase();
+    if (emailIdentity !== '') identities.push(emailIdentity);
+    const phoneIdentity = (customer.phone ?? '').replace(/\D/g, '');
+    if (phoneIdentity !== '') identities.push(phoneIdentity);
+
+    const [addressesExist, reviewsExist] = await Promise.all([
+      this.tableExists('public.customer_addresses'),
+      this.tableExists('public.product_reviews')
+    ]);
+
+    await this.database.transaction(async (client) => {
+      const locked = await client.query<{ id: number }>(
+        `SELECT id
+         FROM public.tec_customers
+         WHERE tenant_id = $1 AND id = $2
+         LIMIT 1
+         FOR UPDATE`,
+        [tenantId, customer.id]
+      );
+      if (!locked.rows[0]) throw new NotFoundException('Customer not found');
+
+      if (addressesExist) {
+        await client.query('DELETE FROM public.customer_addresses WHERE customer_id = $1', [customer.id]);
+      }
+      if (reviewsExist) {
+        await client.query('DELETE FROM public.product_reviews WHERE customer_id = $1', [customer.id]);
+      }
+
+      // password = NULL lo desactiva (set-password no re-clama por email/teléfono
+      // borrados) y CustomerContextGuard rechaza sus tokens desde ya.
+      await client.query(
+        `UPDATE public.tec_customers
+         SET name = 'Cuenta eliminada',
+             email = NULL,
+             phone = NULL,
+             password = NULL,
+             points_balance = 0,
+             document_type = NULL,
+             document_number = NULL,
+             cf1 = NULL,
+             cf2 = NULL
+         WHERE tenant_id = $1 AND id = $2`,
+        [tenantId, customer.id]
+      );
+
+      if (identities.length > 0) {
+        await client.query(
+          'DELETE FROM public.tec_login_attempts WHERE tenant_id = $1 AND login = ANY($2::text[])',
+          [tenantId, identities]
+        );
+      }
+    });
+
+    this.logger.log(`Customer account deleted tenant=${tenantId} customer=${customer.id}`);
+    await this.tenantManagement.logActivity(tenantId, 'customer_account_deleted', { customer_id: customer.id }, null);
+    return { success: true };
+  }
+
+  private async tableExists(table: string): Promise<boolean> {
+    const cached = this.tableProbes.get(table);
+    if (cached && Date.now() - cached.at < PROBE_CACHE_MS) return cached.exists;
+    const result = await this.database.query<{ table_name: string | null }>(
+      'SELECT to_regclass($1)::text AS table_name',
+      [table]
+    );
+    const exists = Boolean(result.rows[0]?.table_name);
+    this.tableProbes.set(table, { exists, at: Date.now() });
+    return exists;
   }
 
   private async customerDocument(

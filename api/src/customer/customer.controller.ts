@@ -32,8 +32,8 @@ export class CustomerController {
   ) {}
 
   @Get('banners')
-  listBanners() {
-    return this.banners.list();
+  listBanners(@Req() request: PosRequest) {
+    return this.banners.list(request.tenantId!);
   }
 
   @Get('profile')

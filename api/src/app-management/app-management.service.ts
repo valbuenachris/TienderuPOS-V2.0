@@ -42,6 +42,10 @@ export type AdminReviewRow = {
 export type AdminBannerRow = {
   id: string;
   image_url: string;
+  title: string | null;
+  target_url: string | null;
+  sort_order: number;
+  active: boolean;
   created_at: string | null;
 };
 
@@ -232,34 +236,35 @@ export class AppManagementService {
     await this.tenantManagement.logActivity(tenantId, 'review_deleted', { review_id: reviewId }, null);
   }
 
-  async listBanners(): Promise<AdminBannerRow[]> {
+  async listBanners(tenantId: string): Promise<AdminBannerRow[]> {
     const result = await this.database.query<AdminBannerRow>(
-      `SELECT id::text AS id, image_url, created_at
-       FROM public.banners
-       WHERE image_url IS NOT NULL AND btrim(image_url) <> ''
-       ORDER BY created_at DESC NULLS LAST, id DESC
-       LIMIT 50`
+      `SELECT id::text AS id, image_url, title, target_url, sort_order, active, created_at
+       FROM public.tec_tenant_banners
+       WHERE tenant_id = $1
+       ORDER BY sort_order, id DESC
+       LIMIT 50`,
+      [tenantId]
     );
     return result.rows;
   }
 
-  async createBanner(input: CreateBannerDto): Promise<AdminBannerRow> {
+  async createBanner(tenantId: string, input: CreateBannerDto): Promise<AdminBannerRow> {
     const imageUrl = input.image_url.trim();
     if (imageUrl === '') throw new BadRequestException('image_url is required');
     const result = await this.database.query<AdminBannerRow>(
-      `INSERT INTO public.banners (image_url)
-       VALUES ($1)
-       RETURNING id::text AS id, image_url, created_at`,
-      [imageUrl]
+      `INSERT INTO public.tec_tenant_banners (tenant_id, image_url, title, target_url)
+       VALUES ($1, $2, NULLIF(TRIM($3), ''), NULLIF(TRIM($4), ''))
+       RETURNING id::text AS id, image_url, title, target_url, sort_order, active, created_at`,
+      [tenantId, imageUrl, input.title ?? '', input.target_url ?? '']
     );
     return result.rows[0];
   }
 
-  async deleteBanner(bannerId: string): Promise<void> {
+  async deleteBanner(tenantId: string, bannerId: string): Promise<void> {
     const result = await this.database.query<{ id: string }>(
-      'DELETE FROM public.banners WHERE id = $1::bigint RETURNING id::text AS id',
-      [bannerId]
+      'DELETE FROM public.tec_tenant_banners WHERE tenant_id = $1 AND id = $2::bigint RETURNING id::text AS id',
+      [tenantId, bannerId]
     );
-    if (result.rowCount !== 1) throw new NotFoundException('Banner not found');
+    if (result.rowCount !== 1) throw new NotFoundException('Banner not found in this tenant');
   }
 }

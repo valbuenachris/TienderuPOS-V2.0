@@ -89,17 +89,17 @@ export class AppManagementController {
   }
 
   @Get('banners')
-  listBanners() {
-    return this.appManagement.listBanners();
+  listBanners(@Req() request: PosRequest) {
+    return this.appManagement.listBanners(request.tenantId!);
   }
 
   @Post('banners')
-  createBanner(@Body() body: CreateBannerDto) {
-    return this.appManagement.createBanner(body);
+  createBanner(@Req() request: PosRequest, @Body() body: CreateBannerDto) {
+    return this.appManagement.createBanner(request.tenantId!, body);
   }
 
   @Delete('banners/:id')
-  deleteBanner(@Param('id') id: string) {
-    return this.appManagement.deleteBanner(parseBannerId(id));
+  deleteBanner(@Req() request: PosRequest, @Param('id') id: string) {
+    return this.appManagement.deleteBanner(request.tenantId!, parseBannerId(id));
   }
 }

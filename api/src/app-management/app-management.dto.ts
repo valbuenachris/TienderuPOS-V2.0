@@ -1,4 +1,4 @@
-import { IsInt, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 
 export class AdjustPointsDto {
   @IsInt()
@@ -21,4 +21,14 @@ export class CreateBannerDto {
   @MinLength(4)
   @MaxLength(1000)
   image_url!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  target_url?: string;
 }

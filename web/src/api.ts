@@ -633,6 +633,10 @@ export interface ProductReviewRow {
 export interface BannerRecord {
   id: string;
   image_url: string;
+  title: string | null;
+  target_url: string | null;
+  sort_order: number;
+  active: boolean;
   created_at: string | null;
 }
 

@@ -1,16 +1,18 @@
 import { Injectable } from '@nestjs/common';
 import { DatabaseService } from '../database/database.service';
 
-type BannerRow = {
+type TenantBannerRow = {
   id: unknown;
-  image_url: unknown;
+  image_url: string;
+  title: string | null;
+  target_url: string | null;
 };
 
 export type CustomerBanner = {
   id: unknown;
-  title: null;
+  title: string | null;
   image_url: string;
-  target_url: null;
+  target_url: string | null;
 };
 
 const TABLE_CACHE_MS = 60_000;
@@ -21,33 +23,34 @@ export class BannersService {
 
   constructor(private readonly database: DatabaseService) {}
 
-  async list(): Promise<CustomerBanner[]> {
-    if (!(await this.bannersTableExists())) return [];
+  async list(tenantId: string): Promise<CustomerBanner[]> {
+    if (!(await this.tenantBannersTableExists())) return [];
 
-    const result = await this.database.query<BannerRow>(
-      `SELECT id, image_url
-       FROM public.banners
-       WHERE image_url IS NOT NULL AND btrim(image_url) <> ''
-       ORDER BY created_at DESC, id DESC
-       LIMIT 20`
+    const result = await this.database.query<TenantBannerRow>(
+      `SELECT id, image_url, title, target_url
+       FROM public.tec_tenant_banners
+       WHERE tenant_id = $1 AND active = true
+       ORDER BY sort_order, id DESC
+       LIMIT 20`,
+      [tenantId]
     );
 
     return result.rows
       .map((row) => ({
         id: row.id,
-        title: null,
+        title: row.title,
         image_url: typeof row.image_url === 'string' ? row.image_url.trim() : '',
-        target_url: null
+        target_url: row.target_url
       }))
       .filter((banner) => banner.image_url !== '');
   }
 
-  private async bannersTableExists(): Promise<boolean> {
+  private async tenantBannersTableExists(): Promise<boolean> {
     const now = Date.now();
     if (this.cache && now - this.cache.at < TABLE_CACHE_MS) return this.cache.exists;
 
     const result = await this.database.query<{ table_name: string | null }>(
-      `SELECT to_regclass('public.banners')::text AS table_name`
+      `SELECT to_regclass('public.tec_tenant_banners')::text AS table_name`
     );
     const exists = Boolean(result.rows[0]?.table_name);
     this.cache = { exists, at: now };

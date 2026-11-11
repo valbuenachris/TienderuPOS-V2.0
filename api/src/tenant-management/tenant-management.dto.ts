@@ -25,28 +25,7 @@ export const ALLOWED_FEATURE_KEYS = [
 
 export type FeatureKey = (typeof ALLOWED_FEATURE_KEYS)[number];
 
-function validateFeatureKeys(value: Record<string, unknown> | undefined): void {
-  if (!value) return;
-  for (const key of Object.keys(value)) {
-    if (!ALLOWED_FEATURE_KEYS.includes(key as FeatureKey)) {
-      throw new Error(`Unknown feature key: \"${key}\"`);
-    }
-  }
-}
-
-export const ALLOWED_FEATURE_KEYS = [
-  'advanced_reports',
-  'crm',
-  'whatsapp_bot',
-  'app_management',
-  'ai_assistant',
-  'marketplace',
-  'api_access'
-] as const;
-
-export type FeatureKey = (typeof ALLOWED_FEATURE_KEYS)[number];
-
-function validateFeatureKeys(value: Record<string, unknown> | undefined): void {
+export function validateFeatureKeys(value: Record<string, unknown> | undefined): void {
   if (!value) return;
   for (const key of Object.keys(value)) {
     if (!ALLOWED_FEATURE_KEYS.includes(key as FeatureKey)) {

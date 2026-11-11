@@ -306,6 +306,19 @@ export class SistecreditoService {
     return verifySistecreditoJwt(jwt, buildSistecreditoToken(this.jwtSecret, saleId), this.audienceUrl);
   }
 
+  /** Validate server configuration and customer document before reserving stock. */
+  async validateCustomer(tenantId: string, customer: PosCustomer): Promise<{ documentType: string; documentNumber: string }> {
+    await this.requireCredentials(tenantId);
+    if (this.jwtSecret === '') throw new BadRequestException(SISTECREDITO_NOT_CONFIGURED_SERVER_MESSAGE);
+    const document = await this.loadCustomerDocument(customer.id);
+    const documentType = normalizeSistecreditoDocumentType(document?.documentType);
+    const documentNumber = normalizeSistecreditoDocumentNumber(document?.documentNumber);
+    if (documentType === null || documentNumber === null) {
+      throw new BadRequestException(SISTECREDITO_DOCUMENT_REQUIRED_MESSAGE);
+    }
+    return { documentType, documentNumber };
+  }
+
   async createCheckoutLink(input: {
     tenantId: string;
     saleId: number;
@@ -313,17 +326,7 @@ export class SistecreditoService {
     customer: PosCustomer;
   }): Promise<string> {
     const credentials = await this.requireCredentials(input.tenantId);
-    if (this.jwtSecret === '') {
-      throw new BadRequestException(SISTECREDITO_NOT_CONFIGURED_SERVER_MESSAGE);
-    }
-
-    // Sistecrédito exige el documento del comprador (CC/CE), igual que Addi en producción.
-    const document = await this.loadCustomerDocument(input.customer.id);
-    const documentType = normalizeSistecreditoDocumentType(document?.documentType);
-    const documentNumber = normalizeSistecreditoDocumentNumber(document?.documentNumber);
-    if (documentType === null || documentNumber === null) {
-      throw new BadRequestException(SISTECREDITO_DOCUMENT_REQUIRED_MESSAGE);
-    }
+    const { documentType, documentNumber } = await this.validateCustomer(input.tenantId, input.customer);
 
     const token = buildSistecreditoToken(this.jwtSecret, input.saleId);
     const authentication = buildSistecreditoJwt(token, this.audienceUrl);
@@ -342,7 +345,7 @@ export class SistecreditoService {
     try {
       this.logger.debug(
         `Sistecrédito create request: POST ${this.apiBase}${CREATE_TRANSACTION_PATH} ` +
-        `body=${JSON.stringify(body)} | headers: Ocp-Apim-Subscription-Key=${maskSecret(credentials.apiKey)}, ` +
+        `body=${JSON.stringify({ ...body, idDocument: '[redacted]' })} | headers: Ocp-Apim-Subscription-Key=${maskSecret(credentials.apiKey)}, ` +
         `SCLocation=0,0, country=co, SCOrigen=${this.origin}, Authentication=<JWT len=${authentication.length}>`
       );
       const response = await fetch(`${this.apiBase}${CREATE_TRANSACTION_PATH}`, {
@@ -387,7 +390,7 @@ export class SistecreditoService {
       const apiMessage = isRecord(parsed) ? readString(parsed.message) : null;
       this.logger.error(
         `Sistecrédito POST create-transaction -> ${response.status} sale=${input.saleId} ` +
-        `errorCode=${errorCode ?? 'n/a'}: ${text.slice(0, 600)}`
+        `errorCode=${errorCode ?? 'n/a'}`
       );
       const publicMessage = mapSistecreditoErrorDetail(errorCode, apiMessage);
       // El código se anexa solo cuando el mensaje es genérico (ayuda a soporte);
@@ -431,7 +434,7 @@ export class SistecreditoService {
       });
       const text = await response.text();
       if (!response.ok) {
-        this.logger.warn(`Sistecrédito getInfoCredit -> ${response.status}: ${text.slice(0, 300)}`);
+        this.logger.warn(`Sistecrédito getInfoCredit -> ${response.status}`);
         return null;
       }
       let parsed: unknown = null;

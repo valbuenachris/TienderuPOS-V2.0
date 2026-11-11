@@ -11,6 +11,8 @@ export interface PosClaims {
   /** Token audience: absent or 'pos_user' for POS staff, 'customer' for the B2C app, 'marketplace_customer' for tienderu.com. */
   type?: 'pos_user' | 'customer' | 'marketplace_customer';
   role?: string;
+  /** Customer token version; invalidated on password reset/activation via OTP. */
+  ver?: number;
   iat?: number;
   exp?: number;
 }

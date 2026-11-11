@@ -8,6 +8,7 @@ import {
   extractSaleIdFromWebhook,
   maskEmail,
   maskPhone,
+  redactAddiPayloadForLogs,
   maskSecret,
   normalizeAddiCellphone,
   normalizeAuthUrl,
@@ -111,6 +112,21 @@ describe('maskEmail / maskPhone', () => {
     assert.equal(maskPhone('3001234567'), '***4567');
     assert.equal(maskPhone('123'), '***');
   });
+});
+
+it('redacts customer and address fields from Addi logs', () => {
+  const payload = {
+    orderId: 'ORDER-7',
+    client: { firstName: 'CustomerName', idNumber: '123456789', address: { lineOne: 'PrivateAddress' } },
+    shippingAddress: { lineOne: 'PrivateAddress' },
+    billingAddress: { lineOne: 'PrivateAddress' }
+  };
+  const logged = JSON.stringify(redactAddiPayloadForLogs(payload));
+  assert.ok(logged.includes('ORDER-7'));
+  assert.ok(!logged.includes('CustomerName'));
+  assert.ok(!logged.includes('123456789'));
+  assert.ok(!logged.includes('PrivateAddress'));
+  assert.equal(payload.client.idNumber, '123456789');
 });
 
 // ── v0.3.96 · schema oficial (ADDI API · E-commerce CO) ──────────────────────

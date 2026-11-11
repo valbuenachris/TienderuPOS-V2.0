@@ -42,6 +42,7 @@ type CustomerLoginRow = {
   phone: string | null;
   password: string | null;
   points_balance: number;
+  token_version: number;
   tenant_status: string | null;
 };
 
@@ -58,6 +59,8 @@ export class AuthService {
   private readonly maxLoginAttempts: number;
   private readonly lockoutSeconds: number;
   private readonly rehashEnabled: boolean;
+  /** When set, customer-facing flows only accept this tenant (Princess Skin app). */
+  private readonly allowedCustomerTenantId: string | null;
 
   constructor(
     private readonly database: DatabaseService,
@@ -77,6 +80,8 @@ export class AuthService {
     this.rehashEnabled = config.get<string>('PASSWORD_REHASH_ENABLED') === 'true';
     this.defaultTenantId = this.validateUuid(config.getOrThrow<string>('DEFAULT_TENANT_ID'));
     this.hostTenantMap = this.parseHostMap(config.get<string>('TENANT_HOST_MAP') ?? '{}');
+    const allowed = (config.get<string>('CUSTOMER_APP_TENANT_ID') ?? '').trim();
+    this.allowedCustomerTenantId = allowed === '' ? null : allowed.toLowerCase();
   }
 
   async login(identityInput: string, password: string, host: string, ipAddress: string) {
@@ -250,6 +255,14 @@ export class AuthService {
 
     const matched = await this.findCustomerByIdentity(normalized, isEmail);
     const tenantId = matched?.tenant_id ?? this.resolveTenantFallback('');
+    // Aislamiento de la app del cliente: solo se aceptan cuentas del tenant autorizado.
+    if (this.allowedCustomerTenantId) {
+      const ok = matched !== null && matched.tenant_id.toLowerCase() === this.allowedCustomerTenantId;
+      if (!ok) {
+        await this.recordFailure(tenantId, ipAddress, normalized);
+        throw new UnauthorizedException('Invalid credentials');
+      }
+    }
     await this.assertLoginAllowed(tenantId, normalized);
 
     if (!matched || !matched.password) {
@@ -273,7 +286,8 @@ export class AuthService {
         sub: String(matched.id),
         type: 'customer',
         role: 'customer',
-        tenant_id: matched.tenant_id
+        tenant_id: matched.tenant_id,
+        ver: matched.token_version
       },
       { expiresIn: this.tokenTtl, issuer: 'pos-gres-v2', algorithm: 'HS256' }
     );
@@ -304,6 +318,11 @@ export class AuthService {
 
     const matched = await this.findCustomerByIdentity(normalized, isEmail);
     const tenantId = matched?.tenant_id ?? this.resolveTenantFallback('');
+    // Con el aislamiento de la app activo, la activación/recuperación usa el flujo
+    // seguro por código de WhatsApp; el endpoint inseguro queda deshabilitado.
+    if (this.allowedCustomerTenantId) {
+      throw new BadRequestException('Para activar tu cuenta usa el código de verificación por WhatsApp.');
+    }
     await this.assertLoginAllowed(tenantId, normalized);
 
     if (!matched) {
@@ -336,7 +355,8 @@ export class AuthService {
       : `c.phone IS NOT NULL AND c.phone <> '' AND regexp_replace(c.phone, '[^0-9]', '', 'g') = $1`;
     const result = await this.database.query<CustomerLoginRow>(
       `SELECT c.id, c.tenant_id::text AS tenant_id, c.name, c.email, c.phone, c.password,
-              COALESCE(c.points_balance, 0)::integer AS points_balance, t.status AS tenant_status
+              COALESCE(c.points_balance, 0)::integer AS points_balance,
+              c.token_version, t.status AS tenant_status
        FROM public.tec_customers c
        LEFT JOIN public.tec_tenants t ON t.id = c.tenant_id
        WHERE c.tenant_id IS NOT NULL

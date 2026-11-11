@@ -48,6 +48,11 @@ export class PaymentsService {
     if (combos.length > 0 && method !== 'cash' && method !== 'bold') {
       throw new BadRequestException('Los combos solo están disponibles para pago en efectivo/contraentrega o tarjetas/PSE.');
     }
+    // Validate the tenant's gateway before creating a sale and reserving stock.
+    // Gateway errors after creation still require a separate recovery workflow.
+    const settings = method === 'cash' ? null : await this.paymentSettings.requireProvider(tenantId, method);
+    if (method === 'addi') await this.addi.validateCustomer(customer);
+    if (method === 'sistecredito') await this.sistecredito.validateCustomer(tenantId, customer);
     const sale = await this.sales.createForCustomer(tenantId, customer, {
       store_id: input.store_id,
       items: input.items ?? [],
@@ -65,7 +70,7 @@ export class PaymentsService {
     }
 
     // Fail-closed: cada método usa las credenciales del tenant (no el .env del SaaS).
-    const settings = await this.paymentSettings.requireProvider(tenantId, method);
+    if (settings === null) throw new BadRequestException('Este método de pago no está configurado para esta tienda.');
     const callbackUrl = settings.returnUrl ?? this.config.get<string>('CUSTOMER_PAYMENT_RETURN_URL') ?? null;
 
     const amount = Number(sale.grand_total);

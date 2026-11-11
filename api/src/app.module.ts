@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { AddressesModule } from './addresses/addresses.module';
 import { AppManagementModule } from './app-management/app-management.module';
 import { AuthModule } from './auth/auth.module';
+import { AuthOtpModule } from './auth-otp/auth-otp.module';
 import { BillingModule } from './billing/billing.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { CategoriesModule } from './categories/categories.module';
@@ -39,6 +40,7 @@ import { UsersModule } from './users/users.module';
     }),
     DatabaseModule,
     AuthModule,
+    AuthOtpModule,
     AppManagementModule,
     CatalogModule,
     CombosModule,

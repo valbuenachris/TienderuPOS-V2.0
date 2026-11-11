@@ -129,6 +129,15 @@ export function maskPhone(value: string): string {
   return digits.length <= 4 ? '***' : `***${digits.slice(-4)}`;
 }
 
+export function redactAddiPayloadForLogs(body: Record<string, unknown>): Record<string, unknown> {
+  return {
+    ...body,
+    client: '[redacted]',
+    ...(body.shippingAddress ? { shippingAddress: '[redacted]' } : {}),
+    ...(body.billingAddress ? { billingAddress: '[redacted]' } : {})
+  };
+}
+
 /**
  * v0.3.96 (schema oficial): montos y cantidades viajan como STRING con punto
  * decimal ("45000.0", "2"). Los ejemplos del spec usan un decimal.
@@ -323,6 +332,23 @@ export class AddiService {
     return issued.token;
   }
 
+  /** Validate customer prerequisites before checkout reserves inventory. */
+  async validateCustomer(customer: PosCustomer): Promise<Extract<AddiCustomerDataResolution, { ok: true }>> {
+    const [documentNumber, address] = await Promise.all([
+      this.loadCustomerDocument(customer.id),
+      this.loadCustomerAddress(customer.id)
+    ]);
+    const resolved = resolveAddiCustomerData({
+      testDocumentNumber: this.testDocumentNumber,
+      documentNumber,
+      cellphone: customer.phone ?? '',
+      address,
+      sendShipping: this.sendShipping
+    });
+    if (!resolved.ok) throw new BadRequestException(resolved.message);
+    return resolved;
+  }
+
   async createCheckoutLink(input: {
     tenantId: string;
     saleId: number;
@@ -339,16 +365,7 @@ export class AddiService {
     const email = input.customer.email ?? '';
     const items = await this.loadSaleItems(input.saleId, input.tenantId);
     const taxAmount = await this.loadSaleTax(input.saleId, input.tenantId);
-    const customerDocument = await this.loadCustomerDocument(input.customer.id);
-    const address = await this.loadCustomerAddress(input.customer.id);
-    const resolved = resolveAddiCustomerData({
-      testDocumentNumber: this.testDocumentNumber,
-      documentNumber: customerDocument,
-      cellphone: input.customer.phone ?? '',
-      address,
-      sendShipping: this.sendShipping
-    });
-    if (!resolved.ok) throw new BadRequestException(resolved.message);
+    const resolved = await this.validateCustomer(input.customer);
     const body = buildAddiPayload({
       orderId,
       amount: input.amount,
@@ -370,20 +387,12 @@ export class AddiService {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
     try {
-      // El request REAL viaja sin máscara (JSON.stringify(body) en el fetch);
-      // esta copia es SOLO para el log y enmascara email/celular del client.
-      const client = body.client as Record<string, unknown>;
-      const debugBody: Record<string, unknown> = {
-        ...body,
-        client: {
-          ...client,
-          email: maskEmail(String(client.email ?? '')),
-          cellphone: maskPhone(String(client.cellphone ?? ''))
-        }
-      };
+      // The gateway receives the real payload; logs must not contain customer
+      // identity, document, phone or addresses.
+      const debugBody = redactAddiPayloadForLogs(body);
       const debugLine =
         `Addi create request (schema v0.3.96): POST ${this.apiBase}${this.applicationsPath} ` +
-        `body(debug; PII enmascarada solo aquí, el request real va sin máscara)=${JSON.stringify(debugBody)}`;
+        `body(redacted)=${JSON.stringify(debugBody)}`;
       if (this.debugPayload) {
         this.logger.warn(
           `${debugLine} | headers: Authorization=Bearer <redacted len=${accessToken.length}>, ` +
@@ -434,17 +443,16 @@ export class AddiService {
         if (nested) return nested;
       }
 
-      // Cuerpo COMPLETO + `errors[]` + `x-trace-id` (para soporte de Addi).
+      // Gateway responses can contain customer data; only log status/trace ID.
       const traceId = response.headers.get('x-trace-id') ?? response.headers.get('trace-id');
       const traceSuffix = traceId ? ` [trace-id ${traceId}]` : '';
-      this.logger.error(`Addi POST ${this.apiBase}${this.applicationsPath} -> ${response.status}${traceSuffix}: ${text}`);
+      this.logger.error(`Addi POST ${this.apiBase}${this.applicationsPath} -> ${response.status}${traceSuffix}`);
       let detail = text.slice(0, 300);
       if (isRecord(parsed) && Array.isArray(parsed.errors) && parsed.errors.length > 0) {
         const errors = parsed.errors
           .map((item) => (typeof item === 'string' ? item : JSON.stringify(item)))
           .join(' · ')
           .slice(0, 600);
-        this.logger.error(`Addi errors${traceSuffix}: ${errors}`);
         detail = errors.slice(0, 300);
       }
       if (response.status === 409) {

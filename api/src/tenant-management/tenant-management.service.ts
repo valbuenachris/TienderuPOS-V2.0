@@ -28,10 +28,31 @@ export interface PlanRecord {
   price_yearly: string | null;
   max_users: number | null;
   max_stores: number | null;
-  features: string[];
+  features: Record<string, boolean>;
   is_active: boolean;
   created_at: string | null;
   tenants_count: number;
+}
+
+const ALLOWED_FEATURE_KEYS = [
+  'advanced_reports',
+  'crm',
+  'whatsapp_bot',
+  'app_management',
+  'ai_assistant',
+  'marketplace',
+  'api_access'
+] as const;
+
+export type FeatureKey = (typeof ALLOWED_FEATURE_KEYS)[number];
+
+function validateFeatureKeys(value: Record<string, unknown> | undefined): void {
+  if (!value) return;
+  for (const key of Object.keys(value)) {
+    if (!ALLOWED_FEATURE_KEYS.includes(key as FeatureKey)) {
+      throw new Error(`Unknown feature key: "${key}"`);
+    }
+  }
 }
 
 export interface TenantManagementRow {
@@ -110,7 +131,7 @@ type PlanRow = {
   price_yearly: string | null;
   max_users: number | null;
   max_stores: number | null;
-  features: unknown;
+  features: Record<string, unknown>;
   is_active: boolean;
   created_at: string | null;
   tenants_count?: number;
@@ -207,9 +228,14 @@ function mapPlan(row: PlanRow): PlanRecord {
     price_yearly: row.price_yearly,
     max_users: row.max_users,
     max_stores: row.max_stores,
-    features: Array.isArray(row.features)
-      ? row.features.filter((feature): feature is string => typeof feature === 'string')
-      : [],
+    features: typeof row.features === 'object' && row.features !== null
+      ? Object.keys(row.features)
+          .filter((key): key is keyof typeof row.features => typeof key === 'string')
+          .reduce((acc, key) => {
+            const value = row.features[key];
+            return typeof value === 'boolean' ? { ...acc, [key]: value } : acc;
+          }, {} as Record<string, boolean>)
+      : {},
     is_active: row.is_active,
     created_at: row.created_at,
     tenants_count: row.tenants_count ?? 0
@@ -436,12 +462,14 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
 
   async createPlan(input: CreatePlanDto): Promise<PlanRecord> {
     this.assertReady();
+    validateFeatureKeys(input.features);
+    const featuresJson = input.features ? JSON.stringify(input.features) : '{}';
     const result = await this.database.query<PlanRow>(
       `INSERT INTO public.tec_subscription_plans
          (name, description, price_monthly, price_yearly, max_users, max_stores, features, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, COALESCE($8, true))
-       RETURNING id::text AS id, name, description, price_monthly, price_yearly,
-                 max_users, max_stores, features, is_active, created_at`,
+        VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, COALESCE($8, true))
+        RETURNING id::text AS id, name, description, price_monthly, price_yearly,
+                  max_users, max_stores, features, is_active, created_at`,
       [
         input.name.trim(),
         input.description?.trim() ?? null,
@@ -449,7 +477,7 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
         input.price_yearly ?? null,
         input.max_users ?? -1,
         input.max_stores ?? -1,
-        JSON.stringify(input.features ?? []),
+        featuresJson,
         input.is_active ?? null
       ]
     );
@@ -458,6 +486,7 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
 
   async updatePlan(id: string, input: UpdatePlanDto): Promise<PlanRecord> {
     this.assertReady();
+    validateFeatureKeys(input.features);
     const existing = await this.database.query<{ id: string }>(
       'SELECT id::text AS id FROM public.tec_subscription_plans WHERE id = $1 LIMIT 1',
       [id]

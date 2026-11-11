@@ -421,7 +421,7 @@ export interface SubscriptionPlan {
   price_yearly: string | null;
   max_users: number | null;
   max_stores: number | null;
-  features: string[];
+  features: Record<string, boolean>;
   is_active: boolean;
   created_at: string | null;
   tenants_count: number;
@@ -434,7 +434,7 @@ export interface SubscriptionPlanPayload {
   price_yearly?: string;
   max_users?: number;
   max_stores?: number;
-  features?: string[];
+  features?: Record<string, boolean>;
   is_active?: boolean;
 }
 

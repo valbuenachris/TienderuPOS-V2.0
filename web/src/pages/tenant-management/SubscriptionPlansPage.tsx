@@ -10,6 +10,16 @@ import type { SubscriptionPlan, SubscriptionPlanPayload } from '../../api';
 import { formatMoney } from '../../format';
 import { planLimitLabel } from './utils';
 
+const FEATURES_CONFIG: { key: string; label: string; description: string }[] = [
+  { key: 'advanced_reports', label: 'Reportes avanzados', description: 'Gráficos, top productos, calendario' },
+  { key: 'crm', label: 'CRM', description: 'Gestión de leads y automatizaciones' },
+  { key: 'whatsapp_bot', label: 'Bot de WhatsApp', description: 'Agente de ventas automatizado' },
+  { key: 'app_management', label: 'Tienda Virtual', description: 'App móvil, pedidos, reseñas, banners' },
+  { key: 'ai_assistant', label: 'Asistente IA', description: 'Chat con IA sobre datos del negocio' },
+  { key: 'marketplace', label: 'Marketplace', description: 'Vender en tienderu.com' },
+  { key: 'api_access', label: 'Acceso API', description: 'Integraciones externas' }
+];
+
 interface PlanFormState {
   name: string;
   description: string;
@@ -17,8 +27,14 @@ interface PlanFormState {
   priceYearly: string;
   maxUsers: string;
   maxStores: string;
-  featuresText: string;
+  featureFlags: Record<string, boolean>;
   isActive: boolean;
+}
+
+function emptyFeatureFlags(): Record<string, boolean> {
+  const flags: Record<string, boolean> = {};
+  for (const { key } of FEATURES_CONFIG) flags[key] = false;
+  return flags;
 }
 
 const EMPTY_FORM: PlanFormState = {
@@ -28,11 +44,17 @@ const EMPTY_FORM: PlanFormState = {
   priceYearly: '',
   maxUsers: '-1',
   maxStores: '-1',
-  featuresText: '',
+  featureFlags: emptyFeatureFlags(),
   isActive: true
 };
 
 function formFromPlan(plan: SubscriptionPlan): PlanFormState {
+  const flags = emptyFeatureFlags();
+  if (plan.features && typeof plan.features === 'object') {
+    for (const { key } of FEATURES_CONFIG) {
+      if (plan.features[key] === true) flags[key] = true;
+    }
+  }
   return {
     name: plan.name,
     description: plan.description ?? '',
@@ -40,7 +62,7 @@ function formFromPlan(plan: SubscriptionPlan): PlanFormState {
     priceYearly: plan.price_yearly ?? '',
     maxUsers: String(plan.max_users ?? -1),
     maxStores: String(plan.max_stores ?? -1),
-    featuresText: plan.features.join('\n'),
+    featureFlags: flags,
     isActive: plan.is_active
   };
 }
@@ -97,12 +119,12 @@ export default function SubscriptionPlansPage() {
       price_yearly: form.priceYearly.trim() || undefined,
       max_users: parseLimit(form.maxUsers),
       max_stores: parseLimit(form.maxStores),
-      features: form.featuresText.split('\n').map((line) => line.trim()).filter(Boolean),
+      features: form.featureFlags,
       is_active: form.isActive
     };
     saveMutation.mutate({ id: editingPlan?.id ?? null, payload }, {
       onSuccess: async (plan) => {
-        setNotice(`Plan “${plan.name}” ${editingPlan ? 'actualizado' : 'creado'}.`);
+        setNotice(`Plan "${plan.name}" ${editingPlan ? 'actualizado' : 'creado'}.`);
         setModalOpen(false);
         await queryClient.invalidateQueries({ queryKey: ['subscription-plans'] });
       },
@@ -113,11 +135,15 @@ export default function SubscriptionPlansPage() {
   function toggleActive(plan: SubscriptionPlan) {
     toggleMutation.mutate(plan, {
       onSuccess: async (updated) => {
-        setNotice(`Plan “${updated.name}” ${updated.is_active ? 'activado' : 'desactivado'}.`);
+        setNotice(`Plan "${updated.name}" ${updated.is_active ? 'activado' : 'desactivado'}.`);
         await queryClient.invalidateQueries({ queryKey: ['subscription-plans'] });
       },
       onError: (error: Error) => setNotice(error.message)
     });
+  }
+
+  function toggleFeature(key: string) {
+    setForm({ ...form, featureFlags: { ...form.featureFlags, [key]: !form.featureFlags[key] } });
   }
 
   return (
@@ -148,7 +174,11 @@ export default function SubscriptionPlansPage() {
             <ul className="plan-features">
               <li>{planLimitLabel(plan.max_users)} usuario(s)</li>
               <li>{planLimitLabel(plan.max_stores)} tienda(s)</li>
-              {plan.features.map((feature) => <li key={feature}>{feature}</li>)}
+              {FEATURES_CONFIG
+                .filter(({ key }) => plan.features?.[key])
+                .map(({ key, label }) => (
+                  <li key={key} className="feature-active">{label}</li>
+                ))}
             </ul>
             <div className="row-actions">
               <button
@@ -199,9 +229,22 @@ export default function SubscriptionPlansPage() {
           <label>Precio anual<input value={form.priceYearly} inputMode="decimal" placeholder="290.00" onChange={(event) => setForm({ ...form, priceYearly: event.target.value })} /></label>
           <label>Máx. usuarios (-1 = ilimitado)<input value={form.maxUsers} inputMode="numeric" onChange={(event) => setForm({ ...form, maxUsers: event.target.value })} /></label>
           <label>Máx. tiendas (-1 = ilimitado)<input value={form.maxStores} inputMode="numeric" onChange={(event) => setForm({ ...form, maxStores: event.target.value })} /></label>
-          <label>Características (una por línea)
-            <textarea rows={4} value={form.featuresText} onChange={(event) => setForm({ ...form, featuresText: event.target.value })} />
-          </label>
+          <fieldset className="feature-checkboxes">
+            <legend>Tools del plan</legend>
+            {FEATURES_CONFIG.map(({ key, label, description }) => (
+              <label key={key} className="checkbox-label feature-checkbox" onClick={() => toggleFeature(key)}>
+                <input
+                  type="checkbox"
+                  checked={form.featureFlags[key] ?? false}
+                  readOnly
+                />
+                <span>
+                  <strong>{label}</strong>
+                  <small className="muted"> — {description}</small>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <label className="checkbox-label">
             <input type="checkbox" checked={form.isActive} onChange={(event) => setForm({ ...form, isActive: event.target.checked })} />
             Plan activo

@@ -967,6 +967,52 @@ export class TenantManagementService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  async tenantHasFeature(tenantId: string, feature: string): Promise<boolean> {
+    if (!this.ready) return true;
+    try {
+      const result = await this.database.query<{ features: unknown }>(
+        `SELECT p.features
+         FROM public.tec_tenant_subscriptions s
+         LEFT JOIN public.tec_subscription_plans p ON p.id = s.plan_id
+         WHERE s.tenant_id = $1 AND s.status IN ('trial', 'active')
+         ORDER BY s.created_at DESC, s.id DESC
+         LIMIT 1`,
+        [tenantId]
+      );
+      const features = result.rows[0]?.features;
+      if (!features || typeof features !== 'object') return false;
+      return (features as Record<string, unknown>)[feature] === true;
+    } catch (error: unknown) {
+      this.logger.warn(
+        `tenantHasFeature error: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+      return true;
+    }
+  }
+
+  async getMyFeatures(tenantId: string): Promise<Record<string, boolean>> {
+    if (!this.ready) return {};
+    try {
+      const result = await this.database.query<{ features: unknown }>(
+        `SELECT p.features
+         FROM public.tec_tenant_subscriptions s
+         LEFT JOIN public.tec_subscription_plans p ON p.id = s.plan_id
+         WHERE s.tenant_id = $1 AND s.status IN ('trial', 'active')
+         ORDER BY s.created_at DESC, s.id DESC
+         LIMIT 1`,
+        [tenantId]
+      );
+      const features = result.rows[0]?.features;
+      if (!features || typeof features !== 'object') return {};
+      return features as Record<string, boolean>;
+    } catch (error: unknown) {
+      this.logger.warn(
+        `getMyFeatures error: ${error instanceof Error ? error.message : 'unknown'}`
+      );
+      return {};
+    }
+  }
+
   async bootstrapSubscription(
     client: SqlExecutor,
     tenantId: string,

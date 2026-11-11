@@ -541,6 +541,9 @@ export const createSubscriptionPlan = (payload: SubscriptionPlanPayload) =>
 export const updateSubscriptionPlan = (id: string, payload: Partial<SubscriptionPlanPayload>) =>
   apiRequest<SubscriptionPlan>(`/tenant-management/plans/${id}`, { method: 'PATCH', body: JSON.stringify(payload) });
 
+export const fetchMyFeatures = () =>
+  apiRequest<Record<string, boolean>>('/tenant-management/my-features');
+
 export const fetchTenantManagement = () =>
   apiRequest<TenantManagementRow[]>('/tenant-management/tenants');
 

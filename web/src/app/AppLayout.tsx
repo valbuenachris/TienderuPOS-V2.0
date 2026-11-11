@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
-import { useTenantsQuery } from '../pos-queries';
+import { usePlanFeaturesQuery, useTenantsQuery } from '../pos-queries';
 import platformLogoUrl from '../assets/tienderu-logo.svg';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { applyTheme, currentTheme } from '../theme';
@@ -51,6 +51,15 @@ const GLOBAL_ITEMS: NavItem[] = [
 
 const COLLAPSE_KEY = 'pos-gres-v2-sidebar-collapsed';
 
+const ROUTE_FEATURE_MAP: Record<string, string> = {
+  '/asistente': 'ai_assistant',
+  '/whatsapp': 'whatsapp_bot',
+  '/crm': 'crm',
+  '/tienda-virtual': 'app_management',
+  '/marketplace': 'marketplace',
+  '/reportes': 'advanced_reports'
+};
+
 export default function AppLayout() {
   const navigate = useNavigate();
   const {
@@ -89,9 +98,16 @@ export default function AppLayout() {
   const showGlobalMenu = isSuperAdmin && selectedTenantId === null;
   // v0.3.86: la vista global NUNCA usa branding de tenant (el token sigue siendo del
   // tenant hogar o del último seleccionado); muestra el logo de la plataforma.
+  const featuresQuery = usePlanFeaturesQuery(token, tenantId, !showGlobalMenu);
+  const planFeatures = featuresQuery.data ?? {};
   const sidebarLogoUrl = showGlobalMenu ? platformLogoUrl : (settings?.logo_url ?? null);
   const brandName = showGlobalMenu ? 'Tienderu POS · Manager' : settings?.site_name || 'POS';
-  const items = TENANT_ITEMS.filter((item) => !item.admin || isAdmin);
+  const items = TENANT_ITEMS.filter((item) => {
+    if (item.admin && !isAdmin) return false;
+    const feature = ROUTE_FEATURE_MAP[item.to];
+    if (feature && planFeatures[feature] === false) return false;
+    return true;
+  });
 
   useEffect(() => {
     setLogoBroken(false);

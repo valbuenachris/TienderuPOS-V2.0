@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
-import { TenantManagementController } from './tenant-management.controller';
+import { TenantManagementController, TenantFeaturesController } from './tenant-management.controller';
 import { TenantManagementService } from './tenant-management.service';
 
 @Module({
   imports: [AuthModule],
-  controllers: [TenantManagementController],
+  controllers: [TenantManagementController, TenantFeaturesController],
   providers: [TenantManagementService],
   exports: [TenantManagementService]
 })

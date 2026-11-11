@@ -57,6 +57,7 @@ import {
   fetchTenantActivity,
   fetchTenantManagement,
   fetchTenantPaymentSummary,
+  fetchMyFeatures,
   fetchTenantPayments,
   fetchTenantPaymentsByTenant,
   fetchTenantSubscription,
@@ -538,6 +539,16 @@ export function useSubscriptionPlansQuery(token: string | null, tenantId: string
     queryFn: fetchSubscriptionPlans,
     enabled: Boolean(token && tenantId && enabled),
     retry: false
+  });
+}
+
+export function usePlanFeaturesQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['plan-features', tenantId],
+    queryFn: fetchMyFeatures,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false,
+    staleTime: 60_000
   });
 }
 

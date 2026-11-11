@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
@@ -148,5 +149,16 @@ export class TenantManagementController {
     @Query('limit') limit?: string
   ) {
     return this.tenantManagement.listTenantActivity(parseUuid(id, 'id'), parsePagination(page, limit));
+  }
+}
+
+@Controller('tenant-management')
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+export class TenantFeaturesController {
+  constructor(private readonly tenantManagement: TenantManagementService) {}
+
+  @Get('my-features')
+  myFeatures(@Req() request: PosRequest) {
+    return this.tenantManagement.getMyFeatures(request.tenantId!);
   }
 }

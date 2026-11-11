@@ -245,6 +245,43 @@ export default function AppLayout() {
         </main>
       </div>
 
+      <nav className="bottom-nav">
+        {showGlobalMenu ? (
+          <>
+            <NavLink to="/dashboard/global" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>🌍</span><small>Dashboard</small>
+            </NavLink>
+            <NavLink to="/marketplace-global" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>🏬</span><small>Marketplace</small>
+            </NavLink>
+            <NavLink to="/tenant-management/tenants" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>🏢</span><small>Tenants</small>
+            </NavLink>
+            <button className="bottom-nav-item" onClick={() => setMenuOpen(true)}>
+              <span>☰</span><small>Menú</small>
+            </button>
+          </>
+        ) : (
+          <>
+            <NavLink to="/pos" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>🛒</span><small>POS</small>
+            </NavLink>
+            <NavLink to="/ventas" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>🧾</span><small>Ventas</small>
+            </NavLink>
+            <NavLink to="/dashboard" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>📊</span><small>Dashboard</small>
+            </NavLink>
+            <NavLink to="/productos" className="bottom-nav-item" onClick={() => setMenuOpen(false)}>
+              <span>📦</span><small>Productos</small>
+            </NavLink>
+            <button className="bottom-nav-item" onClick={() => setMenuOpen(true)}>
+              <span>☰</span><small>Menú</small>
+            </button>
+          </>
+        )}
+      </nav>
+
       {menuOpen ? <button className="sidebar-backdrop" aria-label="Cerrar menú" onClick={() => setMenuOpen(false)} /> : null}
     </div>
   );

@@ -98,8 +98,20 @@ export class AuthService {
       throw new UnauthorizedException('Invalid username or password');
     }
     if (matched.tenant_status === 'inactive' || matched.tenant_status === 'deleted') {
-      await this.recordFailure(tenantId, ipAddress, identity);
-      throw new ForbiddenException('El tenant está inactivo o suspendido');
+      if (matched.group_id !== null) {
+        const tenantGroup = await this.supabase.client.from('tec_groups')
+          .select('name').eq('id', matched.group_id).maybeSingle();
+        const groupName = tenantGroup.data?.name?.toLowerCase();
+        if (groupName === 'super_admin') {
+          console.warn(`Super admin login on inactive/deleted tenant ${tenantId}`);
+        } else {
+          await this.recordFailure(tenantId, ipAddress, identity);
+          throw new ForbiddenException('El tenant está inactivo o suspendido');
+        }
+      } else {
+        await this.recordFailure(tenantId, ipAddress, identity);
+        throw new ForbiddenException('El tenant está inactivo o suspendido');
+      }
     }
 
     const row = matched;

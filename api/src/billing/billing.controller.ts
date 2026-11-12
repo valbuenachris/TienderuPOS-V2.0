@@ -3,7 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
-import { RequestPaymentDto, BoldCheckoutDto } from './billing.dto';
+import { ChangePlanDto, RequestPaymentDto, BoldCheckoutDto } from './billing.dto';
 import { BillingService } from './billing.service';
 
 @Controller('billing')
@@ -34,5 +34,10 @@ export class BillingController {
   @Post('verify-bold')
   verifyBold(@Req() request: PosRequest) {
     return this.billing.verifyBoldPayments(request.tenantId!, request.posUser?.id ?? null);
+  }
+
+  @Post('change-plan')
+  changePlan(@Req() request: PosRequest, @Body() body: ChangePlanDto) {
+    return this.billing.changePlan(request.tenantId!, body, request.posUser?.id ?? null);
   }
 }

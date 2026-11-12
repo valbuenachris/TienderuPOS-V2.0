@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
 
 export const BILLING_PAYMENT_METHODS = ['cash', 'CC', 'Transferencia', 'Sistecredito', 'ADI', 'credito'];
 
@@ -22,4 +22,13 @@ export class BoldCheckoutDto {
   @MinLength(3)
   @MaxLength(160)
   invoice_id!: string;
+}
+
+export class ChangePlanDto {
+  @IsUUID()
+  plan_id!: string;
+
+  @IsOptional()
+  @IsIn(['monthly', 'yearly'])
+  billing_cycle?: 'monthly' | 'yearly';
 }

@@ -1,9 +1,9 @@
-import { BadRequestException, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { todayInBusinessTimezone } from '../common/timezone';
 import { DatabaseService } from '../database/database.service';
 import { TenantManagementService } from '../tenant-management/tenant-management.service';
 import { BoldService, BoldWebhookEvent } from './bold.service';
-import { RequestPaymentDto } from './billing.dto';
+import { ChangePlanDto, RequestPaymentDto } from './billing.dto';
 
 export type BillingInvoiceStatus = 'paid' | 'pending' | 'overdue' | 'cancelled';
 
@@ -54,6 +54,14 @@ type SubscriptionRow = {
   next_billing_date: string | null;
   last_payment_date: string | null;
   last_payment_amount: string | null;
+};
+
+type PlanRow = {
+  id: string;
+  name: string;
+  price_monthly: string | null;
+  price_yearly: string | null;
+  is_active: boolean;
 };
 
 type PaymentRow = {
@@ -333,6 +341,83 @@ export class BillingService {
     return { confirmed, failed, pending };
   }
 
+  async changePlan(tenantId: string, input: ChangePlanDto, performedBy?: number | null) {
+    if (!this.bold.isEnabled()) {
+      throw new ServiceUnavailableException('Bold no está configurado; contacta al administrador');
+    }
+    const subscription = await this.subscriptionFor(tenantId);
+    if (!subscription?.id) throw new BadRequestException('El tenant no tiene una suscripción registrada');
+    if (subscription.status === 'trial') throw new BadRequestException('No puedes cambiar de plan durante el período de prueba');
+
+    const [currentPlanResult, targetPlanResult] = await Promise.all([
+      this.database.query<PlanRow>(
+        `SELECT p.id::text AS id, p.name, p.price_monthly, p.price_yearly, p.is_active
+         FROM public.tec_tenant_subscriptions s
+         JOIN public.tec_subscription_plans p ON p.id = s.plan_id
+         WHERE s.tenant_id = $1
+         ORDER BY s.created_at DESC, s.id DESC
+         LIMIT 1`,
+        [tenantId]
+      ),
+      this.database.query<PlanRow>(
+        `SELECT id::text AS id, name, price_monthly, price_yearly, is_active
+         FROM public.tec_subscription_plans WHERE id = $1 LIMIT 1`,
+        [input.plan_id]
+      )
+    ]);
+    const current = currentPlanResult.rows[0];
+    const target = targetPlanResult.rows[0];
+
+    if (!current) throw new BadRequestException('No se pudo determinar el plan actual');
+    if (!target) throw new NotFoundException('El plan seleccionado no existe');
+    if (!target.is_active) throw new BadRequestException('El plan seleccionado no está activo');
+    if (current.id === target.id) throw new BadRequestException('Ya estás en este plan');
+
+    const cycle = input.billing_cycle ?? subscription.billing_cycle ?? 'monthly';
+    const currentPrice = Number(cycle === 'yearly' ? current.price_yearly : current.price_monthly ?? 0);
+    const targetPrice = Number(cycle === 'yearly' ? target.price_yearly : target.price_monthly ?? 0);
+
+    if (targetPrice <= currentPrice) {
+      throw new BadRequestException(
+        'Para degradar de plan contacta al administrador. Solo puedes mejorar (upgrade) tu plan.'
+      );
+    }
+
+    const difference = targetPrice - currentPrice;
+    const reference = `UPG-${Date.now().toString(36)}-${input.plan_id.slice(0, 8)}`.slice(0, 60);
+
+    const link = await this.bold.createPaymentLink({
+      amount: difference,
+      description: `Upgrade: ${current.name} → ${target.name}`,
+      reference
+    });
+
+    const paymentDate = todayInBusinessTimezone();
+    const notes = `Upgrade ${current.name} → ${target.name} · ${reference}`;
+    const inserted = await this.database.query<{ id: string }>(
+      `INSERT INTO public.tec_tenant_payments
+         (subscription_id, tenant_id, amount, payment_date, payment_method, status, notes, bold_payment_id, invoice_url)
+       VALUES ($1, $2, $3, $4::date, 'bold', 'pending', $5, $6, $7)
+       RETURNING id::text AS id`,
+      [subscription.id, tenantId, difference, paymentDate, notes, link.paymentLink, link.url]
+    );
+
+    await this.tenantManagement.logActivity(
+      tenantId,
+      'upgrade_requested',
+      { from_plan: current.name, to_plan: target.name, amount: difference, reference },
+      performedBy ?? null
+    );
+
+    return {
+      id: inserted.rows[0]?.id ?? null,
+      checkout_url: link.url,
+      from_plan: current.name,
+      to_plan: target.name,
+      amount: difference
+    };
+  }
+
   async handleBoldWebhook(event: BoldWebhookEvent): Promise<{ handled: boolean }> {
     const type = event.type ?? '';
     const data = event.data ?? {};
@@ -380,6 +465,34 @@ export class BillingService {
         );
         return { handled: false };
       }
+
+      // Detectar si es un upgrade (referencia UPG-)
+      const notes = (payment as unknown as { notes?: string }).notes ?? '';
+      const upgradeMatch = notes.match(/Upgrade (.+) → (.+) · UPG-/);
+      if (upgradeMatch) {
+        const targetPlanName = upgradeMatch[2];
+        const planResult = await this.database.query<{ id: string }>(
+          `SELECT id::text AS id FROM public.tec_subscription_plans WHERE name = $1 LIMIT 1`,
+          [targetPlanName]
+        );
+        if (planResult.rows[0]) {
+          await this.database.query(
+            `UPDATE public.tec_tenant_subscriptions
+             SET plan_id = $2::uuid, updated_at = now()
+             WHERE tenant_id = $1
+             ORDER BY created_at DESC, id DESC
+             LIMIT 1`,
+            [payment.tenant_id, planResult.rows[0].id]
+          );
+          await this.tenantManagement.logActivity(
+            payment.tenant_id,
+            'plan_upgraded',
+            { from_plan: upgradeMatch[1], to_plan: targetPlanName, payment_id: payment.id, gateway: 'bold' },
+            null
+          );
+        }
+      }
+
       const settled = await this.settleBoldPayment(payment.id, paymentId, null, 'bold_webhook');
       return { handled: settled };
     }

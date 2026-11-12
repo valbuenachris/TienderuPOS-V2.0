@@ -3,9 +3,11 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
-import { useApiMutation, useCustomersQuery, useManagedSettingsQuery } from '../pos-queries';
-import { deleteSettingsLogo, updateSettings, uploadSettingsLogo } from '../api';
+import { useApiMutation, useCustomersQuery, useManagedSettingsQuery, useCurrentInvoiceQuery, useSubscriptionPlansQuery } from '../pos-queries';
+import { deleteSettingsLogo, updateSettings, uploadSettingsLogo, changePlan } from '../api';
 import type { PosSettings, UpdateSettingsPayload } from '../api';
+import { formatMoney } from '../format';
+import { formatDateOnly } from '../format';
 import BillingTab from './settings/BillingTab';
 
 const CURRENCIES = ['COP', 'USD', 'EUR', 'MXN', 'PEN', 'CLP', 'ARS', 'BRL'];
@@ -70,7 +72,7 @@ function toForm(settings: PosSettings | null): SettingsForm {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
-  const { token, tenantId, stores } = useSession();
+  const { token, tenantId, stores, settings } = useSession();
   const settingsQuery = useManagedSettingsQuery(token, tenantId);
   const current = settingsQuery.data ?? null;
   const storeId = stores[0]?.id ?? null;
@@ -86,6 +88,12 @@ export default function SettingsPage() {
   const [logoBroken, setLogoBroken] = useState(false);
   const [saving, setSaving] = useState(false);
   const [tab, setTab] = useState<'general' | 'billing'>('general');
+
+  const currentQuery = useCurrentInvoiceQuery(token, tenantId, Boolean(token && tenantId));
+  const plansQuery = useSubscriptionPlansQuery(token, tenantId, Boolean(token && tenantId));
+  const subscription = currentQuery.data?.subscription ?? null;
+  const plans = plansQuery.data ?? [];
+  const upgradeMutation = useApiMutation((planId: string) => changePlan(planId));
 
   const saveMutation = useApiMutation((payload: UpdateSettingsPayload) => updateSettings(payload));
   const logoMutation = useApiMutation((file: File) => uploadSettingsLogo(file));
@@ -215,6 +223,16 @@ export default function SettingsPage() {
     setLogoBroken(false);
     setDirty(true);
     setNotice('');
+  }
+
+  function upgradePlan(planId: string) {
+    setNotice('');
+    upgradeMutation.mutate(planId, {
+      onSuccess: (result) => {
+        window.location.href = result.checkout_url;
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
   }
 
   return (
@@ -388,11 +406,50 @@ export default function SettingsPage() {
             </label>
           </section>
 
-          {supported ? (
-            <p className="muted">
-              Columnas habilitadas: {supported.join(', ') || 'ninguna'}. Las deshabilitadas requieren las sentencias
-              ALTER TABLE documentadas en el README.
-            </p>
+          {subscription ? (
+            <section className="settings-section">
+              <h2>Plan y suscripción</h2>
+              <div className="detail-grid" style={{ marginBottom: 12 }}>
+                <div className="detail-item">
+                  <span>Plan actual</span>
+                  <strong>{subscription.plan_name ?? '—'}</strong>
+                </div>
+                <div className="detail-item">
+                  <span>Estado</span>
+                  <strong>{subscription.status === 'active' ? 'Activo' : subscription.status}</strong>
+                </div>
+                <div className="detail-item">
+                  <span>Próximo cobro</span>
+                  <strong>{subscription.next_billing_date ? formatDateOnly(subscription.next_billing_date) : '—'}</strong>
+                </div>
+              </div>
+              {plans.filter(p => p.is_active).length > 0 ? (
+                <div className="plan-mini-grid">
+                  {plans.filter(p => p.is_active).map(plan => {
+                    const isCurrent = plan.name === subscription?.plan_name;
+                    const currentPlan = plans.find(p => p.name === subscription?.plan_name);
+                    const currentPrice = Number(currentPlan?.price_monthly ?? 0);
+                    const targetPrice = Number(plan.price_monthly ?? 0);
+                    const isUpgrade = targetPrice > (currentPrice || 0);
+                    return (
+                      <div key={plan.id} className={`plan-card ${isCurrent ? 'row-inactive' : ''}`} style={{ padding: 12 }}>
+                        <strong>{plan.name}</strong>
+                        <span className="muted">{formatMoney(plan.price_monthly, settings?.currency_prefix || '$')}/mes</span>
+                        {isCurrent ? (
+                          <span className="badge paid">Plan actual</span>
+                        ) : isUpgrade ? (
+                          <button className="primary" type="button" onClick={() => upgradePlan(plan.id)} disabled={upgradeMutation.isPending}>
+                            {upgradeMutation.isPending ? 'Procesando…' : '↑ Mejorar'}
+                          </button>
+                        ) : (
+                          <span className="muted">Contacta al admin para degradar</span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </section>
           ) : null}
 
           <div className="modal-actions">

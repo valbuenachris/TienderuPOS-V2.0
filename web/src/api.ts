@@ -745,6 +745,20 @@ export const startBoldPayment = (invoiceId: string) =>
 export const verifyBoldPayments = () =>
   apiRequest<{ confirmed: number; failed: number; pending: number }>('/billing/verify-bold', { method: 'POST' });
 
+export interface ChangePlanResult {
+  id: string | null;
+  checkout_url: string;
+  from_plan: string;
+  to_plan: string;
+  amount: number;
+}
+
+export const changePlan = (planId: string) =>
+  apiRequest<ChangePlanResult>('/billing/change-plan', {
+    method: 'POST',
+    body: JSON.stringify({ plan_id: planId })
+  });
+
 export const switchTenant = (tenantId: string) =>
   apiRequest<SwitchTenantResult>('/auth/switch-tenant', {
     method: 'POST',

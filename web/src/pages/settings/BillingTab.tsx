@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, Panel } from '../../components/ui';
 import { useSession } from '../../app/session';
 import { useApiMutation, useBillingInvoicesQuery, useCurrentInvoiceQuery } from '../../pos-queries';
-import { requestBillingPayment, startBoldPayment, verifyBoldPayments } from '../../api';
+import { startBoldPayment, verifyBoldPayments } from '../../api';
 import type { BillingInvoice, BillingInvoiceStatus } from '../../api';
 import { formatDateOnly, formatMoney } from '../../format';
 import { daysUntil } from '../tenant-management/utils';
@@ -23,14 +23,6 @@ const STATUS_BADGES: Record<BillingInvoiceStatus, string> = {
   cancelled: 'badge'
 };
 
-const PAY_METHODS = [
-  { value: 'Transferencia', label: 'Transferencia bancaria' },
-  { value: 'cash', label: 'Efectivo' },
-  { value: 'Sistecredito', label: 'Sistecrédito' },
-  { value: 'ADI', label: 'Addi' },
-  { value: 'credito', label: 'Crédito tienda' }
-];
-
 export default function BillingTab() {
   const queryClient = useQueryClient();
   const { token, tenantId, settings } = useSession();
@@ -39,15 +31,8 @@ export default function BillingTab() {
   const currentQuery = useCurrentInvoiceQuery(token, tenantId, Boolean(token && tenantId));
 
   const [notice, setNotice] = useState('');
-  const [payTarget, setPayTarget] = useState<BillingInvoice | null>(null);
   const [detailTarget, setDetailTarget] = useState<BillingInvoice | null>(null);
-  const [method, setMethod] = useState(PAY_METHODS[0].value);
-  const [notes, setNotes] = useState('');
-  const [payError, setPayError] = useState('');
 
-  const payMutation = useApiMutation((input: { invoiceId: string; method: string; notes: string }) =>
-    requestBillingPayment(input.invoiceId, { payment_method: input.method, notes: input.notes || undefined })
-  );
   const boldMutation = useApiMutation((invoiceId: string) => startBoldPayment(invoiceId));
   const verifyMutation = useApiMutation(() => verifyBoldPayments());
   const [searchParams] = useSearchParams();
@@ -88,12 +73,14 @@ export default function BillingTab() {
     await queryClient.invalidateQueries({ queryKey: ['billing-current'] });
   }
 
-  function openPay(invoice: BillingInvoice) {
+  function payWithBold(invoice: BillingInvoice) {
     setNotice('');
-    setPayError('');
-    setMethod(PAY_METHODS[0].value);
-    setNotes('');
-    setPayTarget(invoice);
+    boldMutation.mutate(invoice.id, {
+      onSuccess: (result) => {
+        window.location.href = result.checkout_url;
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
   }
 
   return (
@@ -107,7 +94,7 @@ export default function BillingTab() {
         <Notice tone="error">
           ⚠️ <strong>Factura vencida</strong> · {overdue.invoice_number} por {formatMoney(overdue.amount, currency)}
           {overdueDays > 0 ? ` (venció hace ${overdueDays} día(s))` : ''}.
-          <button className="quiet" type="button" onClick={() => openPay(overdue)}> Pagar ahora</button>
+          <button className="quiet" type="button" onClick={() => payWithBold(overdue)}> Pagar ahora</button>
         </Notice>
       ) : null}
 
@@ -161,7 +148,7 @@ export default function BillingTab() {
                   <td className="row-actions">
                     <button className="quiet" type="button" onClick={() => setDetailTarget(invoice)}>Ver</button>
                     {invoice.status === 'pending' || invoice.status === 'overdue' ? (
-                      <button className="quiet" type="button" onClick={() => openPay(invoice)}>Pagar</button>
+                      <button className="quiet" type="button" onClick={() => payWithBold(invoice)}>Pagar</button>
                     ) : null}
                   </td>
                 </tr>
@@ -173,79 +160,6 @@ export default function BillingTab() {
           </table>
         </div>
       </Panel>
-
-      <Modal
-        open={payTarget !== null}
-        eyebrow="PAGO"
-        title={payTarget ? `Pagar · ${payTarget.invoice_number}` : 'Pagar factura'}
-        onClose={() => setPayTarget(null)}
-      >
-        {payTarget ? (
-          <div className="stack">
-            <Notice>
-              Monto a pagar: <strong>{formatMoney(payTarget.amount, currency)}</strong> ({payTarget.plan_name ?? 'plan'} ·{' '}
-              {payTarget.billing_cycle === 'yearly' ? 'anual' : 'mensual'}). Al continuar serás redirigido a{' '}
-              <strong>Bold</strong> para pagar de forma segura; al volver confirmaremos el pago automáticamente.
-            </Notice>
-            {payError ? <Notice tone="error">{payError}</Notice> : null}
-            <label>Método de pago
-              <select value={method} onChange={(event) => setMethod(event.target.value)}>
-                {PAY_METHODS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-              </select>
-            </label>
-            <label>Referencia / notas (opcional)
-              <input value={notes} maxLength={500} onChange={(event) => setNotes(event.target.value)} placeholder="Ej: transferencia #1234" />
-            </label>
-            <div className="modal-actions">
-              <button className="quiet" type="button" onClick={() => setPayTarget(null)} disabled={payMutation.isPending || boldMutation.isPending}>
-                Cancelar
-              </button>
-              <a
-                className="quiet link-button"
-                href={`mailto:${settings?.email || ''}?subject=Solicitud%20de%20pago%20${encodeURIComponent(payTarget.invoice_number)}`}
-              >
-                ✉️ Contactar administrador
-              </a>
-              <button
-                className="quiet"
-                type="button"
-                disabled={payMutation.isPending || boldMutation.isPending}
-                title="Sin pasarela: deja la solicitud pendiente para que el administrador la confirme"
-                onClick={() => {
-                  payMutation.mutate(
-                    { invoiceId: payTarget.id, method, notes: notes.trim() },
-                    {
-                      onSuccess: async () => {
-                        setNotice(`Solicitud de pago para ${payTarget.invoice_number} enviada. Queda pendiente de confirmación.`);
-                        setPayTarget(null);
-                        await refresh();
-                      },
-                      onError: (error: Error) => setPayError(error.message)
-                    }
-                  );
-                }}
-              >
-                {payMutation.isPending ? 'Enviando…' : 'Registro manual'}
-              </button>
-              <button
-                className="primary"
-                type="button"
-                disabled={payMutation.isPending || boldMutation.isPending}
-                onClick={() => {
-                  boldMutation.mutate(payTarget.id, {
-                    onSuccess: (result) => {
-                      window.location.href = result.checkout_url;
-                    },
-                    onError: (error: Error) => setPayError(error.message)
-                  });
-                }}
-              >
-                {boldMutation.isPending ? 'Redirigiendo…' : '💳 Pagar con Bold'}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
 
       <Modal
         open={detailTarget !== null}

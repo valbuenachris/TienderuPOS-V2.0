@@ -4,7 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Modal, Notice, PageHeader, Pagination, Panel } from '../components/ui';
 import { useSession } from '../app/session';
 import { useApiMutation, useManagedCustomersQuery } from '../pos-queries';
-import { createManagedCustomer, updateManagedCustomer } from '../api';
+import { createManagedCustomer, deleteManagedCustomer, updateManagedCustomer } from '../api';
 import type { ManagedCustomer, ManagedCustomerPayload } from '../api';
 
 export default function CustomersPage() {
@@ -24,6 +24,7 @@ export default function CustomersPage() {
   const saveMutation = useApiMutation((input: { id: number | null; payload: ManagedCustomerPayload }) =>
     input.id === null ? createManagedCustomer(input.payload) : updateManagedCustomer(input.id, input.payload)
   );
+  const deleteMutation = useApiMutation((id: number) => deleteManagedCustomer(id));
 
   function defaultStoreValue(): string {
     if (isAdmin) return '';
@@ -70,6 +71,20 @@ export default function CustomersPage() {
     saveMutation.mutate({ id: editingId, payload }, {
       onSuccess: async () => {
         setNotice(editingId === null ? 'Cliente creado.' : 'Cliente actualizado.');
+        resetForm();
+        await queryClient.invalidateQueries({ queryKey: ['managed-customers'] });
+      },
+      onError: (error: Error) => setNotice(error.message)
+    });
+  }
+
+  function confirmDelete() {
+    if (editingId === null) return;
+    if (!window.confirm('¿Eliminar este cliente? Se perderán sus datos de contacto, pero las ventas históricas se conservarán.')) return;
+    setNotice('');
+    deleteMutation.mutate(editingId, {
+      onSuccess: async () => {
+        setNotice('Cliente eliminado.');
         resetForm();
         await queryClient.invalidateQueries({ queryKey: ['managed-customers'] });
       },
@@ -144,6 +159,11 @@ export default function CustomersPage() {
           <button className="primary" type="submit" disabled={saveMutation.isPending}>
             {saveMutation.isPending ? 'Guardando…' : editingId === null ? 'Crear cliente' : 'Guardar cambios'}
           </button>
+          {editingId !== null ? (
+            <button className="danger" type="button" onClick={confirmDelete} disabled={deleteMutation.isPending}>
+              {deleteMutation.isPending ? 'Eliminando…' : 'Eliminar cliente'}
+            </button>
+          ) : null}
         </form>
       </Modal>
     </>

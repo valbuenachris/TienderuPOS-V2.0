@@ -1157,6 +1157,9 @@ export const createManagedCustomer = (payload: ManagedCustomerPayload) =>
 export const updateManagedCustomer = (id: number, payload: ManagedCustomerPayload) =>
   apiRequest<ManagedCustomer>(`/customers/${id}`, { method: 'PUT', body: JSON.stringify(payload) });
 
+export const deleteManagedCustomer = (id: number) =>
+  apiRequest<{ deleted: boolean }>(`/customers/${id}`, { method: 'DELETE' });
+
 export const fetchExpenses = (from: string | undefined, to: string | undefined, page = 1, limit = 20) =>
   apiRequest<Paginated<ExpenseRecord>>(withQuery('/expenses', { from, to, page, limit }));
 

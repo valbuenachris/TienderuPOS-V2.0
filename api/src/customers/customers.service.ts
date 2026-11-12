@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PosUser } from '../auth/auth.types';
 import { Paginated, PaginationQuery, buildPaginated } from '../common/pagination';
 import { isAdminRole } from '../common/roles';
@@ -20,6 +20,8 @@ function normalizePhone(value: string | null | undefined): string {
 
 @Injectable()
 export class CustomersService {
+  private readonly logger = new Logger(CustomersService.name);
+
   constructor(private readonly database: DatabaseService) {}
 
   private isAdmin(user: PosUser): boolean {
@@ -120,6 +122,36 @@ export class CustomersService {
     const updated = result.rows[0];
     if (!updated) throw new NotFoundException('Customer not found in this tenant');
     return updated;
+  }
+
+  async delete(tenantId: string, user: PosUser, customerId: number): Promise<{ deleted: boolean }> {
+    if (!this.isAdmin(user)) {
+      const assignedStore = this.staffStoreId(user);
+      const existing = await this.database.query<CustomerScopeRow>(
+        'SELECT id, store_id FROM public.tec_customers WHERE tenant_id = $1 AND id = $2 LIMIT 1',
+        [tenantId, customerId]
+      );
+      const customer = existing.rows[0];
+      if (!customer) throw new NotFoundException('Customer not found in this tenant');
+      if (customer.store_id !== assignedStore) {
+        throw new ForbiddenException('POS users can only delete customers of their own store');
+      }
+    }
+    const result = await this.database.query(
+      `UPDATE public.tec_customers
+       SET name = 'Cliente eliminado',
+           email = NULL,
+           phone = NULL,
+           cf1 = NULL,
+           cf2 = NULL,
+           points_balance = 0
+       WHERE tenant_id = $1 AND id = $2
+       RETURNING id`,
+      [tenantId, customerId]
+    );
+    if (result.rowCount !== 1) throw new NotFoundException('Customer not found in this tenant');
+    this.logger.log(`Customer deleted tenant=${tenantId} customer=${customerId} by user=${user.id}`);
+    return { deleted: true };
   }
 
   private async assertStore(tenantId: string, storeId?: number): Promise<void> {

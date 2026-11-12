@@ -3,7 +3,7 @@ import type { ChangeEvent, FormEvent } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Notice, PageHeader, Panel } from '../components/ui';
 import { useSession } from '../app/session';
-import { useApiMutation, useCustomersQuery, useManagedSettingsQuery, useCurrentInvoiceQuery, useSubscriptionPlansQuery } from '../pos-queries';
+import { useApiMutation, useCustomersQuery, useManagedSettingsQuery, useCurrentInvoiceQuery, usePublicPlansQuery } from '../pos-queries';
 import { deleteSettingsLogo, updateSettings, uploadSettingsLogo, changePlan } from '../api';
 import type { PosSettings, UpdateSettingsPayload } from '../api';
 import { formatMoney } from '../format';
@@ -90,7 +90,7 @@ export default function SettingsPage() {
   const [tab, setTab] = useState<'general' | 'billing'>('general');
 
   const currentQuery = useCurrentInvoiceQuery(token, tenantId, Boolean(token && tenantId));
-  const plansQuery = useSubscriptionPlansQuery(token, tenantId, Boolean(token && tenantId));
+  const plansQuery = usePublicPlansQuery(token, tenantId);
   const subscription = currentQuery.data?.subscription ?? null;
   const plans = plansQuery.data ?? [];
   const upgradeMutation = useApiMutation((planId: string) => changePlan(planId));

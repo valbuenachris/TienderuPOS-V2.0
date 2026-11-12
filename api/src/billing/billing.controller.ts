@@ -5,11 +5,15 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
 import { ChangePlanDto, RequestPaymentDto, BoldCheckoutDto } from './billing.dto';
 import { BillingService } from './billing.service';
+import { TenantManagementService } from '../tenant-management/tenant-management.service';
 
 @Controller('billing')
 @UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
 export class BillingController {
-  constructor(private readonly billing: BillingService) {}
+  constructor(
+    private readonly billing: BillingService,
+    private readonly tenantManagement: TenantManagementService
+  ) {}
 
   @Get('invoices')
   listInvoices(@Req() request: PosRequest) {
@@ -19,6 +23,11 @@ export class BillingController {
   @Get('current-invoice')
   currentInvoice(@Req() request: PosRequest) {
     return this.billing.currentInvoice(request.tenantId!);
+  }
+
+  @Get('plans')
+  listPlans() {
+    return this.tenantManagement.listPlans();
   }
 
   @Post('pay')

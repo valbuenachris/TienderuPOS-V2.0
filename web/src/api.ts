@@ -535,6 +535,9 @@ export interface TenantActivityLog {
 export const fetchSubscriptionPlans = () =>
   apiRequest<SubscriptionPlan[]>('/tenant-management/plans');
 
+export const fetchPublicPlans = () =>
+  apiRequest<SubscriptionPlan[]>('/billing/plans');
+
 export const createSubscriptionPlan = (payload: SubscriptionPlanPayload) =>
   apiRequest<SubscriptionPlan>('/tenant-management/plans', { method: 'POST', body: JSON.stringify(payload) });
 

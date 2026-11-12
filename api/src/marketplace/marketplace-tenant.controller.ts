@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { MarketplaceOrderStatusDto, MarketplaceSettingsDto } from './marketplace.dto';
 import { MarketplaceOrdersService } from './marketplace-orders.service';
@@ -12,7 +13,7 @@ import { MarketplaceSettingsService } from './marketplace-settings.service';
  * Panel del vendedor (admin del tenant): opt-in, pedidos por despachar y resumen.
  */
 @Controller('marketplace')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard, TenantOperationalGuard)
 export class MarketplaceTenantController {
   constructor(
     private readonly settings: MarketplaceSettingsService,

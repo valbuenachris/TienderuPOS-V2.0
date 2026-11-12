@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { CreateUserDto, SetUserActiveDto, UpdateUserDto } from './user.dto';
 import { UsersService } from './users.service';
@@ -19,7 +20,7 @@ function parseInteger(value: unknown, field: string): number {
 }
 
 @Controller('users')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard, TenantOperationalGuard)
 export class UsersController {
   constructor(private readonly users: UsersService) {}
 

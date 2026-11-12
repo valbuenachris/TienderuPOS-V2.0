@@ -17,6 +17,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { UpdateSettingsDto } from './settings.dto';
 import { SettingsService } from './settings.service';
 
@@ -28,7 +29,7 @@ function requireTenant(request: PosRequest): string {
 }
 
 @Controller('settings')
-@UseGuards(JwtAuthGuard, TenantContextGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, TenantOperationalGuard)
 export class SettingsController {
   constructor(private readonly settings: SettingsService) {}
 

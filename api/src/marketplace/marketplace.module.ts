@@ -5,6 +5,7 @@ import { CatalogModule } from '../catalog/catalog.module';
 import { PaymentsModule } from '../payments/payments.module';
 import { SalesModule } from '../sales/sales.module';
 import { WhatsappModule } from '../whatsapp/whatsapp.module';
+import { TenantManagementModule } from '../tenant-management/tenant-management.module';
 import { MarketplaceAdminController } from './marketplace-admin.controller';
 import { MarketplaceAuthController } from './marketplace-auth.controller';
 import { MarketplaceBrandingService } from './marketplace-branding.service';
@@ -28,7 +29,7 @@ import { MarketplaceWhatsappSettingsService } from './marketplace-whatsapp-setti
 import { MarketplaceWhatsappWebhookController } from './marketplace-whatsapp-webhook.controller';
 
 @Module({
-  imports: [AiModule, AuthModule, CatalogModule, PaymentsModule, SalesModule, WhatsappModule],
+  imports: [AiModule, AuthModule, CatalogModule, PaymentsModule, SalesModule, WhatsappModule, TenantManagementModule],
   controllers: [
     MarketplacePublicController,
     MarketplaceAuthController,

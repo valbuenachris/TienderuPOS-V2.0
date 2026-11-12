@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, Post, Query, Req, Us
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { CloseRegisterDto, OpenRegisterDto } from './register.dto';
 import { RegistersService } from './registers.service';
 
@@ -30,7 +31,7 @@ function parseDate(value?: unknown): string | undefined {
 }
 
 @Controller('registers')
-@UseGuards(JwtAuthGuard, TenantContextGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, TenantOperationalGuard)
 export class RegistersController {
   constructor(private readonly registers: RegistersService) {}
 

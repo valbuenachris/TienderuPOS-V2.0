@@ -544,6 +544,14 @@ export const updateSubscriptionPlan = (id: string, payload: Partial<Subscription
 export const fetchMyFeatures = () =>
   apiRequest<Record<string, boolean>>('/tenant-management/my-features');
 
+export interface OperationalState {
+  blocked: boolean;
+  status: string | null;
+}
+
+export const fetchOperationalState = () =>
+  apiRequest<OperationalState>('/tenant-management/operational-state');
+
 export const fetchTenantManagement = () =>
   apiRequest<TenantManagementRow[]>('/tenant-management/tenants');
 

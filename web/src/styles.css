@@ -1589,3 +1589,27 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 [data-theme='dark'] .bottom-nav-item { color: var(--d-muted); }
 [data-theme='dark'] .bottom-nav-item.active { color: var(--d-brand); }
 [data-theme='dark'] .modal-actions { background: var(--d-surface); }
+
+/* Suspension banner */
+.suspension-banner {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: #fef2c0;
+  border: 1px solid #f5d76e;
+  color: #7c5c00;
+  font-size: 14px;
+  font-weight: 600;
+}
+.suspension-banner a {
+  color: #147d4a;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.suspension-banner a:hover { color: #0f673c; }
+[data-theme='dark'] .suspension-banner { background: #3a2e00; border-color: #5c4a00; color: #f5d76e; }
+[data-theme='dark'] .suspension-banner a { color: #4ae08a; }

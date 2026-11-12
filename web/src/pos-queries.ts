@@ -58,6 +58,7 @@ import {
   fetchTenantManagement,
   fetchTenantPaymentSummary,
   fetchMyFeatures,
+  fetchOperationalState,
   fetchTenantPayments,
   fetchTenantPaymentsByTenant,
   fetchTenantSubscription,
@@ -549,6 +550,16 @@ export function usePlanFeaturesQuery(token: string | null, tenantId: string | nu
     enabled: Boolean(token && tenantId && enabled),
     retry: false,
     staleTime: 60_000
+  });
+}
+
+export function useOperationalStateQuery(token: string | null, tenantId: string | null, enabled = true) {
+  return useQuery({
+    queryKey: ['operational-state', tenantId],
+    queryFn: fetchOperationalState,
+    enabled: Boolean(token && tenantId && enabled),
+    retry: false,
+    refetchInterval: 30_000
   });
 }
 

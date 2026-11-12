@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useSession } from './session';
-import { usePlanFeaturesQuery, useTenantsQuery } from '../pos-queries';
+import { usePlanFeaturesQuery, useTenantsQuery, useOperationalStateQuery } from '../pos-queries';
 import platformLogoUrl from '../assets/tienderu-logo.svg';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { applyTheme, currentTheme } from '../theme';
@@ -100,6 +100,8 @@ export default function AppLayout() {
   // tenant hogar o del último seleccionado); muestra el logo de la plataforma.
   const featuresQuery = usePlanFeaturesQuery(token, tenantId, !showGlobalMenu);
   const planFeatures = featuresQuery.data ?? {};
+  const opStateQuery = useOperationalStateQuery(token, tenantId, !showGlobalMenu);
+  const isBlocked = opStateQuery.data?.blocked === true;
   const sidebarLogoUrl = showGlobalMenu ? platformLogoUrl : (settings?.logo_url ?? null);
   const brandName = showGlobalMenu ? 'Tienderu POS · Manager' : settings?.site_name || 'POS';
   const items = TENANT_ITEMS.filter((item) => {
@@ -241,6 +243,12 @@ export default function AppLayout() {
         </button>
         <main className="page">
           <Breadcrumbs />
+          {isBlocked ? (
+            <div className="suspension-banner">
+              <span>⚠️ Tu suscripción está suspendida. </span>
+              <a href="/config" onClick={(event) => { event.preventDefault(); navigate('/config'); }}>Ir a pagar</a>
+            </div>
+          ) : null}
           <Outlet />
         </main>
       </div>

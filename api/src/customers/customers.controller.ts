@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Delete, Get, Param, Post, Put, Q
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { CreateCustomerDto, UpdateCustomerDto } from './customer.dto';
 import { CustomersService } from './customers.service';
@@ -23,7 +24,7 @@ function optionalInteger(value: unknown, field: string): number | undefined {
 }
 
 @Controller('customers')
-@UseGuards(JwtAuthGuard, TenantContextGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, TenantOperationalGuard)
 export class CustomersController {
   constructor(private readonly customers: CustomersService) {}
 

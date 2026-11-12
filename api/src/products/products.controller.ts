@@ -18,6 +18,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { CreateProductDto, SetStockDto, UpdateProductDto } from './product.dto';
 import { ProductsService, ProductImageSlot } from './products.service';
@@ -47,7 +48,7 @@ function parseSlot(value: unknown): ProductImageSlot {
 }
 
 @Controller('products')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard, TenantOperationalGuard)
 export class ProductsController {
   constructor(private readonly products: ProductsService) {}
 

@@ -15,6 +15,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { PosRequest } from '../auth/auth.types';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { AppManagementService } from './app-management.service';
 import { AdjustPointsDto, CreateBannerDto, UpdateDeliveryStatusDto } from './app-management.dto';
@@ -36,7 +37,7 @@ function parseBannerId(value: string): string {
 }
 
 @Controller('admin')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard, TenantOperationalGuard)
 export class AppManagementController {
   constructor(private readonly appManagement: AppManagementService) {}
 

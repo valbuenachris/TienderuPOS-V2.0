@@ -3,6 +3,7 @@ import { AdminGuard } from '../auth/admin.guard';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { PosRequest } from '../auth/auth.types';
 import { TenantContextGuard } from '../auth/tenant-context.guard';
+import { TenantOperationalGuard } from '../auth/tenant-operational.guard';
 import { parsePagination } from '../common/pagination';
 import { CreateExpenseDto, UpdateExpenseDto } from './expense.dto';
 import { ExpensesService } from './expenses.service';
@@ -27,7 +28,7 @@ function parseDate(value?: unknown): string | undefined {
 }
 
 @Controller('expenses')
-@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard)
+@UseGuards(JwtAuthGuard, TenantContextGuard, AdminGuard, TenantOperationalGuard)
 export class ExpensesController {
   constructor(private readonly expenses: ExpensesService) {}
 

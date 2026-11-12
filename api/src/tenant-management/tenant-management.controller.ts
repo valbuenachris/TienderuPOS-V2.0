@@ -161,4 +161,9 @@ export class TenantFeaturesController {
   myFeatures(@Req() request: PosRequest) {
     return this.tenantManagement.getMyFeatures(request.tenantId!);
   }
+
+  @Get('operational-state')
+  operationalState(@Req() request: PosRequest) {
+    return this.tenantManagement.operationalState(request.tenantId!);
+  }
 }
